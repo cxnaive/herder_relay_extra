@@ -1,4 +1,27 @@
-# Herdr Mobile Relay
+# Herdr Relay Extra
+
+基于 [0cv/herdr-mobile-relay](https://github.com/0cv/herdr-mobile-relay) 0.24.0
+的文件扩展版本，供 Herdr Pocket 等移动客户端使用。上游基线为
+[`09b5278`](https://github.com/0cv/herdr-mobile-relay/commit/09b52781399114a7576d40fcdf91ccefd7686be6)。
+
+- 下载工作目录中的文件（单文件最大 12 MiB），包括 PDF、图片与二进制文件。
+- 控制者设备可保存已有 UTF-8 文本文件（最大 1 MiB），使用 SHA-256 版本校验拒绝旧内容覆盖。
+- 沿用设备配对、端到端加密、精确 Agent 会话校验和写入审计。
+
+**安装位置：运行 Herdr、保存项目文件的那台电脑或服务器上的 relay。**
+本仓库已经包含扩展，无需另打补丁；不需要修改 Herdr 主程序或网关。
+
+**[扩展说明、构建与运行 →](docs/mobile-files.md)** ·
+**[接口协议 →](docs/mobile-files-protocol.md)** ·
+**[测试结果与待验证项 →](docs/mobile-files-validation.md)**
+
+当前提供源码，尚未发布本分支的预编译 release。
+下方是上游使用文档，其中 `herdr plugin install 0cv/herdr-mobile-relay`
+会安装上游原版；要使用文件扩展，请按上面的源码构建说明操作。
+
+---
+
+# Herdr Mobile Relay (upstream)
 
 [![check](https://github.com/0cv/herdr-mobile-relay/actions/workflows/check.yml/badge.svg)](https://github.com/0cv/herdr-mobile-relay/actions/workflows/check.yml)
 

@@ -1065,7 +1065,28 @@ func (s *Server) Run(ctx context.Context) error {
 			}
 			catalog = fitSlashCommandCatalog(slashcmd.Revise(catalog), requestID, "list_slash_commands", paneID)
 			s.sendCommandResult(client, requestID, "list_slash_commands", true, "completed", "", paneID, catalog)
-		case "workspace_tree", "workspace_file", "workspace_git_status", "workspace_git_diff":
+		case "workspace_file_write":
+			agent, exists := s.state.Agent(inbound.PaneID)
+			if !exists || inbound.Cwd == "" || inbound.Cwd != strings.TrimSpace(agent.Cwd) {
+				s.sendAuditedCommandResult(client, msg, inbound.RequestID, action, false, "failed", "Agent workspace changed; reload the file", inbound.PaneID, nil)
+				break
+			}
+			cwd := strings.TrimSpace(agent.Cwd)
+			data, writeErr := workspace.WriteMobileFile(cwd, inbound.Path, inbound.Text, inbound.ExpectedRevision, func() error {
+				current, ok := s.state.Agent(inbound.PaneID)
+				if client.Context().Err() != nil || !ok || strings.TrimSpace(current.Cwd) != cwd ||
+					s.authorizeDeviceAction(client, scope.Action, inbound.DeviceID) != nil ||
+					validateExactPaneTarget(s.state, inbound, authenticated) != nil {
+					return errors.New("Device or workspace changed before save")
+				}
+				return nil
+			})
+			if writeErr != nil {
+				s.sendAuditedCommandResult(client, msg, inbound.RequestID, action, false, "failed", writeErr.Error(), inbound.PaneID, nil)
+				break
+			}
+			s.sendAuditedCommandResult(client, msg, inbound.RequestID, action, true, "completed", "", inbound.PaneID, data)
+		case "workspace_tree", "workspace_file", "workspace_file_read", "workspace_git_status", "workspace_git_diff":
 			requestID := inbound.RequestID
 			paneID := inbound.PaneID
 			agent, exists := s.state.Agent(paneID)
@@ -1082,6 +1103,12 @@ func (s *Server) Run(ctx context.Context) error {
 				data, inspectErr = workspace.TreeFor(cwd)
 			case "workspace_file":
 				data, inspectErr = workspace.ReadFile(cwd, inbound.Path)
+			case "workspace_file_read":
+				if inbound.Cwd != "" && inbound.Cwd != cwd {
+					inspectErr = errors.New("Agent workspace changed; reload the file list")
+				} else {
+					data, inspectErr = workspace.ReadMobileFile(cwd, inbound.Path)
+				}
 			case "workspace_git_status":
 				data, inspectErr = workspace.GitStatusFor(client.Context(), cwd)
 			case "workspace_git_diff":

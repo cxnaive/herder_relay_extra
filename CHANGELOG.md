@@ -5,6 +5,12 @@ project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Allow mobile clients to download workspace files up to 12 MiB, including PDFs,
+  and let controller devices save existing UTF-8 files up to 1 MiB. Saving checks
+  the file revision and refuses stale edits, symbolic links, and Git metadata.
+
 ## [0.24.0] - 2026-11-02
 
 ### Added
