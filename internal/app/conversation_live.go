@@ -310,6 +310,9 @@ func (s *Server) runRecordedConversationFeed(feed *conversationFeed) {
 		nextStamp, tokenErr := s.conversationM.ChangeToken(feed.ctx, conversationScope(feed.agent))
 		if first || tokenErr != nil || nextStamp != stamp || previous.State != conversation.BrowseReady && !time.Now().Before(retryAt) {
 			page, readErr := s.conversationB.ReadPage(feed.ctx, conversation.BrowseRequest{Scope: conversationScope(feed.agent), Limit: 200})
+			if readErr == nil {
+				page = recoverRecordedWindow(feed.ctx, conversationScope(feed.agent), previous, page, s.conversationB.ReadPage)
+			}
 			if readErr == nil && s.conversationCurrent(feed) {
 				feed.mu.Lock()
 				seq := feed.sequence + 1
@@ -333,7 +336,7 @@ func (s *Server) runRecordedConversationFeed(feed *conversationFeed) {
 						changed = append(changed, entry)
 					}
 				}
-				if !first && ((len(previous.Entries) > 0 && !overlap && len(page.Entries) > 0) || page.SourceRevision != previous.SourceRevision || page.State != previous.State || (page.State != conversation.BrowseReady && (len(changed) > 0 || len(page.Entries) != len(previous.Entries))) || page.Available != previous.Available || page.ReasonCode != previous.ReasonCode || page.Reason != previous.Reason || page.Diagnostics != previous.Diagnostics || recordedWindowRemoved(previous, page) || recordedPlanChanged(previous, page)) {
+				if !first && ((len(previous.Entries) > 0 && !overlap && len(page.Entries) > 0) || page.SourceRevision != previous.SourceRevision || page.State != previous.State || (page.State != conversation.BrowseReady && (len(changed) > 0 || len(page.Entries) != len(previous.Entries))) || page.Available != previous.Available || page.ReasonCode != previous.ReasonCode || (page.State != conversation.BrowseReady && page.Reason != previous.Reason) || recordedDiagnosticsChanged(previous, page) || recordedWindowRemoved(previous, page) || recordedPlanChanged(previous, page)) {
 					kind = "reset"
 					changed = nil
 				}

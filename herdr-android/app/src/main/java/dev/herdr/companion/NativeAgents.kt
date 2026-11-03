@@ -30,7 +30,7 @@ import java.util.concurrent.Executors
 /** Native Agent screens share the file browser's controls, typography and Android input methods. */
 class NativeAgents(private val context: Context, private val engine: RelayEngine, private val vault: Vault,
     private val inventory: () -> Map<String, JSONArray>, private val workspace: (String, JSONObject) -> Unit,
-    private val pickAttachment: () -> Unit, private val detailVisibility: (Boolean) -> Unit, private val monitoring: () -> Unit = {}) {
+    private val pickAttachment: () -> Unit, private val detailVisibility: (Boolean) -> Unit, private val monitoring: () -> Unit = {}, private val downloads: DocumentDownloads? = null, private val unrestrictedFiles: (String) -> Boolean = { false }) {
     private val main = Handler(Looper.getMainLooper())
     private val io = Executors.newSingleThreadExecutor()
     private val configs = mutableMapOf<String, JSONObject>()
@@ -83,6 +83,7 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
     private var speech: android.speech.tts.TextToSpeech? = null
     private var transientToast: Toast? = null
     private var conversation = ConversationState()
+    private var conversationPoll = 0
     private var historyPending = false
     private var historyOlder = false
     private var historyRequest = 0
@@ -91,7 +92,6 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
     private var historyControl: HistoryLoadView? = null
     private var resumeOlderAfterReconnect = false
     private val conversationCache = ConversationMemoryCache()
-    private var autoContextPages = 0
     private var content = ""
     private var fingerprint = ""
     private var frame = JSONObject()
@@ -117,9 +117,10 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
 
     fun attach(container: FrameLayout) { host = container; active = true; render() }
     fun pause() { rememberConversation(); saveDraft(); active = false; updateImageAvailability(); stopStreams(); detailVisibility(false) }
+    fun fileAccessChanged(id: String) { if (relay == id) { reviewer?.close(); reviewer = null; conversationImages.clear(); if (active) render() } }
     fun destroy() { pause(); transientToast?.cancel(); speech?.stop(); speech?.shutdown(); conversationImages.close(); conversationCache.clear(); io.shutdown() }
     fun back(): Boolean { if (selected == null) return false; rememberConversation(); saveDraft(); stopStreams(); selected = null; render(); return true }
-    fun open(relayId: String, agent: JSONObject) { rememberConversation(); saveDraft(); stopStreams(); composer = null; relay = relayId; selected = JSONObject(agent.toString()); runPresentation.clear(); terminalHistoryLines = 500; loadingOlderTerminal = false; terminalReadPending = false; expandedToolGroups.clear(); expandedToolItems.clear(); conversationImages.clear(); autoContextPages = 0; mode = "conversation"; conversation = conversationCache.get(WorkspaceBinding.fromAgent(relayId, agent)) ?: ConversationState(); resumeOlderAfterReconnect = false; historyMessage = ""; attachments = JSONArray(); content = ""; fingerprint = ""; frame = JSONObject(); uploading = false; uiDraft = vault.read(draftKey()).orEmpty(); if (active) render() }
+    fun open(relayId: String, agent: JSONObject) { rememberConversation(); saveDraft(); stopStreams(); composer = null; relay = relayId; selected = JSONObject(agent.toString()); runPresentation.clear(); terminalHistoryLines = 500; loadingOlderTerminal = false; terminalReadPending = false; expandedToolGroups.clear(); expandedToolItems.clear(); conversationImages.clear(); mode = "conversation"; conversation = conversationCache.get(WorkspaceBinding.fromAgent(relayId, agent)) ?: ConversationState(); resumeOlderAfterReconnect = false; historyMessage = ""; attachments = JSONArray(); content = ""; fingerprint = ""; frame = JSONObject(); uploading = false; uiDraft = vault.read(draftKey()).orEmpty(); if (active) render() }
     private fun name(agent: JSONObject) = AgentPresentation.title(agent)
     private fun current(): JSONObject? { val captured = selected ?: return null; val rows = inventory()[relay] ?: return null; return (0 until rows.length()).map { rows.getJSONObject(it) }.find { WorkspaceBinding.fromAgent(relay, it) == WorkspaceBinding.fromAgent(relay, captured) } }
     private fun role(id: String = relay) = engine.snapshot().optJSONObject("auth")?.optJSONObject("relays")?.optJSONObject(id)?.optString("role") ?: "reader"
@@ -383,6 +384,7 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
         val command = AgentProtocol.command(relay, agent, type)
         if (type in listOf("get_pi_prompt_capability", "send_pi_prompt_unconfirmed")) command.remove("cwd")
         payload.keys().forEach { command.put(it, payload.get(it)) }
+        FileReadScope.apply(command, unrestrictedFiles(relay))
         val target = WorkspaceBinding.fromAgent(relay, agent)
         engine.request(relay, command, timeout) { data, error ->
             if (trackAfterNavigation || target == selected?.let { WorkspaceBinding.fromAgent(relay, it) }) callback(data, error)
@@ -399,16 +401,21 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
     private fun loadHistory(older: Boolean = false) {
         if (historyPending || !active || mode != "conversation") return
         if (older && conversation.next.isEmpty()) { toast("已到最早消息"); return }
+        if (!older) conversationPoll++
         historyPending = true; historyOlder = older; historyMessage = ""; historyProgress = null
         updateHistoryControl(); stateLabel?.text = if (older) "正在读取更早消息…已读内容保留" else "正在同步对话…"
         val owner = epoch; val requestOwner = ++historyRequest
         var preparations = 0
+        val recovery = if (!older) ConversationRecentRecovery(conversation) else null
+        val recoveryStarted = SystemClock.elapsedRealtime()
+        var recoveryIncomplete = false
         val initial = ConversationHistoryRequest(older, if (older) conversation.next else "", !older && capability("conversation_activity"))
         fun readPage(pageRequest: ConversationHistoryRequest) {
-            request("get_conversation_history", pageRequest.payload(), 90000) { data, error ->
+            request("get_conversation_history", pageRequest.payload(), 90000) { response, error ->
+                var data = response
                 if (owner != epoch || requestOwner != historyRequest || !active || mode != "conversation") return@request
                 if (error != null || data == null) {
-                    if (pageRequest.older) resumeOlderAfterReconnect = true
+                    if (older) resumeOlderAfterReconnect = true
                     historyPending = false; historyMessage = "读取失败，已读历史保留；可重试"; updateHistoryControl()
                     stateLabel?.text = error ?: "对话不可用"; return@request
                 }
@@ -418,14 +425,28 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
                     if (++preparations > 90) { historyPending = false; historyMessage = "历史仍在整理，可稍后重试"; updateHistoryControl(); return@request }
                     historyProgress = data.optJSONObject("progress"); historyMessage = "正在整理历史…"; updateHistoryControl()
                     stateLabel?.text = if (pageRequest.older) "正在整理更早历史…当前对话会保留" else "正在整理历史…"
-                    main.postDelayed({ if (owner == epoch && requestOwner == historyRequest && active) readPage(pageRequest.afterPreparing(data)) }, 800)
+                    val preparedRequest = pageRequest.afterPreparing(data)
+                    main.postDelayed({ if (owner == epoch && requestOwner == historyRequest && active) readPage(preparedRequest) }, 800)
                     return@request
                 }
+                if (recovery != null && data.optBoolean("available") && data.optString("state") != "failed") {
+                    try { recovery.accept(data) } catch (_: IllegalArgumentException) {
+                        historyPending = false; historyMessage = "补齐对话时版本发生变化，请重试"; updateHistoryControl(); return@request
+                    }
+                    if (recovery.needsMore && SystemClock.elapsedRealtime() - recoveryStarted < 20000) {
+                        historyMessage = "正在补齐中途回复与图片…已读取 ${recovery.size} 条"; updateHistoryControl()
+                        stateLabel?.text = historyMessage
+                        main.post { if (owner == epoch && requestOwner == historyRequest && active) readPage(ConversationHistoryRequest(true, recovery.next, false)) }
+                        return@request
+                    }
+                    recoveryIncomplete = recovery.incomplete
+                    data = recovery.page()
+                }
                 historyPending = false; historyProgress = null
-                if (!conversation.page(data, pageRequest.older, preserveLoaded = true)) {
-                    historyMessage = if (pageRequest.older) "历史版本已变化，请刷新后重试" else "暂未读到会话，可重试"; updateHistoryControl()
+                if (!conversation.page(data, older, preserveLoaded = true)) {
+                    historyMessage = if (older) "历史版本已变化，请刷新后重试" else "暂未读到会话，可重试"; updateHistoryControl()
                     val code = data.optString("reason_code").ifBlank { data.optJSONObject("error")?.optString("code").orEmpty() }
-                    if (pageRequest.older && code in listOf("cursor_expired", "invalid_cursor", "source_changed", "snapshot_expired")) {
+                    if (older && code in listOf("cursor_expired", "invalid_cursor", "source_changed", "snapshot_expired")) {
                         conversation.resetCursor(); resumeOlderAfterReconnect = false
                         historyMessage = "历史游标已过期，点重试重新同步"; updateHistoryControl()
                     }
@@ -438,42 +459,41 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
                     }
                     return@request
                 }
-                historyMessage = ""; if (pageRequest.older) resumeOlderAfterReconnect = false
+                historyMessage = if (recoveryIncomplete) "最近对话尚未完整补齐，可加载更早消息继续" else ""; if (older) resumeOlderAfterReconnect = false
                 rememberConversation(); updateHistoryControl()
                 stateLabel?.text = when {
+                    recoveryIncomplete -> "最近对话未完整补齐 · 已读内容保留"
                     data.optString("live_state") == "incomplete" -> "历史可能不完整"
                     conversation.next.isNotBlank() -> "已同步 ${conversation.entries.size} 条 · 可加载更早消息"
                     else -> "已同步 ${conversation.entries.size} 条对话"
                 }
-                renderConversation(pageRequest.older)
-                if (!pageRequest.older) pollConversation(owner)
-                if (!pageRequest.older && resumeOlderAfterReconnect && conversation.next.isNotBlank()) {
+                renderConversation(older); historyOlder = false
+                if (!older) pollConversation(owner)
+                if (!older && resumeOlderAfterReconnect && conversation.next.isNotBlank()) {
                     resumeOlderAfterReconnect = false; main.post { if (owner == epoch) loadHistory(true) }; return@request
                 }
-                // A small recent tail can contain only tools. Fetch bounded context so the
-                // latest user request is not silently missing from an otherwise healthy log.
-                if (conversation.next.isNotBlank() && conversation.entries.values.none { it.optString("role") == "user" } && autoContextPages < 2) {
-                    autoContextPages++
-                    main.post { if (owner == epoch && active) loadHistory(true) }
-                }
+
             }
         }
         readPage(initial)
     }
-    private fun pollConversation(owner: Int) {
-        if (owner != epoch || !active || mode != "conversation") return
-        if (conversation.subscription.isEmpty()) { main.postDelayed({ if (owner == epoch) loadHistory() }, 4000); return }
+    private fun pollConversation(owner: Int, poll: Int = conversationPoll) {
+        if (owner != epoch || poll != conversationPoll || !active || mode != "conversation") return
+        if (conversation.subscription.isEmpty()) { main.postDelayed({ if (owner == epoch && poll == conversationPoll) loadHistory() }, 4000); return }
         request("get_conversation_updates", JSONObject().put("source_revision", conversation.revision).put("after", conversation.sequence).put("subscription_id", conversation.subscription), 18000) { data, error ->
-            if (owner != epoch || !active) return@request
+            if (owner != epoch || poll != conversationPoll || !active) return@request
             if (error != null || data == null || !conversation.update(data)) {
                 fun refreshAfterHistory() {
-                    if (owner != epoch || !active) return
+                    if (owner != epoch || poll != conversationPoll || !active) return
                     if (historyPending) main.postDelayed({ refreshAfterHistory() }, 500) else loadHistory()
                 }
                 main.postDelayed({ refreshAfterHistory() }, 1000); return@request
             }
-            if (data.optString("kind") != "heartbeat") renderConversation()
-            main.postDelayed({ pollConversation(owner) }, 100)
+            if (data.optString("kind") != "heartbeat") {
+                if (!historyPending) stateLabel?.text = "已同步 ${conversation.entries.size} 条" + if (conversation.next.isNotBlank()) " · 可加载更早消息" else "对话"
+                renderConversation()
+            }
+            main.postDelayed({ pollConversation(owner, poll) }, 100)
         }
     }
     private fun renderConversation(prepended: Boolean = false) {
@@ -521,7 +541,7 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
     private fun renderConversationImages(container: LinearLayout, entry: JSONObject, shown: MutableSet<String>) {
         val binding = selected?.let { WorkspaceBinding.fromAgent(relay, it) } ?: return
         val cwd = binding.cwd
-        for (image in ConversationPresentation.images(entry, cwd)) {
+        for (image in ConversationPresentation.images(entry, cwd, unrestrictedFiles(relay))) {
             val fingerprint = sha(image.source.toByteArray(Charsets.UTF_8))
             if (!shown.add(image.workspacePath ?: fingerprint)) continue
             val key = deliveryKey() + ":" + entry.getString("id") + ":" + fingerprint
@@ -535,9 +555,9 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
                 }
             }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6); bottomMargin = dp(12) })
         }
-        for (ref in ReviewReferences.documents(entry, cwd)) {
+        for (ref in ReviewReferences.documents(entry, cwd, unrestrictedFiles(relay))) {
             if (!shown.add("document:${ref.path}#${ref.anchor}:${ref.line}")) continue
-            val card = button("${if (ref.kind == "pdf") "PDF" else "Markdown"}  ·  ${ref.label}  ›") { openReview(ref) }
+            val card = button("${when (ref.kind) { "pdf" -> "PDF"; "markdown" -> "Markdown"; else -> "文件" }}  ·  ${ref.label}  ›") { openReview(ref) }
             card.contentDescription = "查看文档：${ref.path}"
             card.isAllCaps = false
             container.addView(card, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4); bottomMargin = dp(8) })
@@ -545,18 +565,28 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
     }
     private fun openReviewLink(link: String) {
         val cwd = current()?.optString("cwd").orEmpty()
-        val ref = ReviewReferences.local(link, cwd)
+        val ref = ReviewReferences.local(link, cwd, unrestricted = unrestrictedFiles(relay))
         if (ref != null) openReview(ref) else DocumentReviewer.confirmExternal(context, link)
     }
     private fun openReview(ref: ReviewReference) {
         val agent = current() ?: return
         val binding = WorkspaceBinding.fromAgent(relay, agent)
+        val unrestricted = unrestrictedFiles(relay)
         reviewer?.close()
-        reviewer = DocumentReviewer(context, binding.cwd, { active && current()?.let { WorkspaceBinding.fromAgent(relay, it) } == binding }) { path, done ->
+        val download: ((String, Boolean) -> Unit)? = if (capability("workspace_file_download_v1") && downloads != null) { path, share ->
+            val view = reviewer; val version = view?.requestVersion; val id = relay
+            downloads.start(path, share, { active && unrestrictedFiles(relay) == unrestricted && reviewer === view && view?.isOpen == true && view.requestVersion == version && current()?.let { WorkspaceBinding.fromAgent(relay, it) } == binding }) { payload, callback ->
+                engine.request(id, FileReadScope.apply(AgentProtocol.command(id, agent, "workspace_file_download"), unrestricted).apply { payload.keys().forEach { put(it, payload.get(it)) } }, 60000, callback)
+            }
+        } else null
+        reviewer = DocumentReviewer(context, binding.cwd, { active && unrestrictedFiles(relay) == unrestricted && current()?.let { WorkspaceBinding.fromAgent(relay, it) } == binding }, download, unrestricted) { path, done ->
             val extended = capability("workspace_file_read_v1") || capability("workspace_mobile_files_v1")
             val view = reviewer; val version = view?.requestVersion
-            if (capability("workspace_file_read_v1")) DocumentTransfer.read(path,
-                { active && reviewer === view && view?.isOpen == true && view.requestVersion == version && current()?.let { WorkspaceBinding.fromAgent(relay, it) } == binding },
+            if (capability("workspace_file_download_v1")) DocumentTransfer.preview(path,
+                { active && unrestrictedFiles(relay) == unrestricted && reviewer === view && view?.isOpen == true && view.requestVersion == version && current()?.let { WorkspaceBinding.fromAgent(relay, it) } == binding },
+                { type, payload, callback -> request(type, payload, 30000, callback = callback) }, done)
+            else if (capability("workspace_file_read_v1")) DocumentTransfer.read(path,
+                { active && unrestrictedFiles(relay) == unrestricted && reviewer === view && view?.isOpen == true && view.requestVersion == version && current()?.let { WorkspaceBinding.fromAgent(relay, it) } == binding },
                 { payload, callback -> request("workspace_file_read", payload, 30000, callback = callback) }, done)
             else if (path.endsWith(".pdf", true) && !extended) done(null, "此 Relay 未提供 PDF 读取能力，请升级 Relay 后重试")
             else request(if (extended) "workspace_file_read" else "workspace_file", JSONObject().put("path", path), 30000, callback = done)
@@ -739,6 +769,7 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
         if (agent == null || !managementReady(id) || key in pendingMutations || vault.read(key) != null) { done(null, "当前不可修改：请检查连接、控制者权限、会话身份和待核对的操作"); return }
         val command = AgentProtocol.command(id, agent, type)
         payload.keys().forEach { command.put(it, payload.get(it)) }
+        FileReadScope.apply(command, unrestrictedFiles(relay))
         vault.write(key, "unconfirmed:$type"); pendingMutations += key; updateSendState()
         engine.request(id, command, 25000) { data, error ->
             pendingMutations -= key

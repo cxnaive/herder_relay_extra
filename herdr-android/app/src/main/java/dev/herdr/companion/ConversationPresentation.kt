@@ -21,13 +21,13 @@ object ConversationPresentation {
         if (!path.startsWith(root) || path == root) return null
         root.relativize(path).toString()
     }.getOrNull()
-    fun images(entry: JSONObject, cwd: String): List<Image> {
+    fun images(entry: JSONObject, cwd: String, unrestricted: Boolean = false): List<Image> {
         val result = linkedMapOf<String, Image>()
         fun add(source: String, caption: String = "") {
             if (result.size >= 8 || source.isBlank() || source.length > 16 * 1024 * 1024) return
             val inline = source.startsWith("data:image/")
             if (!inline && !imageSuffix.containsMatchIn(source)) return
-            val path = if (inline) null else workspacePath(source, cwd)
+            val path = if (inline) null else if (unrestricted) ReviewReferences.local(source, cwd, unrestricted = true)?.path else workspacePath(source, cwd)
             val label = caption.ifBlank { if (inline) "图像" else source.substringAfterLast('/').take(160) }
             result.putIfAbsent(path?.let { "workspace:$it" } ?: source, Image(source, label, path))
         }

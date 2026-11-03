@@ -115,6 +115,8 @@ class MainActivity : ComponentActivity() {
     private var fileGeneration = 0
     private var pdf: PdfPreview? = null
     private var fileReviewer: DocumentReviewer? = null
+    private val documentDownloads = DocumentDownloads(this)
+    private val unrestrictedFiles = mutableSetOf<String>()
     private var editor: EditText? = null
     private var fileBody: FrameLayout? = null
     private var editToggle: Button? = null
@@ -165,7 +167,7 @@ class MainActivity : ComponentActivity() {
         root.addView(nav)
         engine = sharedRelay.engine
         nativeAgents = NativeAgents(this, engine, vault, { agents }, ::selectWorkspace,
-            { attachmentPicker.launch(arrayOf("*/*")) }, { detail -> agentDetailVisible = detail; updateChrome() }, { monitorDialog() })
+            { attachmentPicker.launch(arrayOf("*/*")) }, { detail -> agentDetailVisible = detail; updateChrome() }, { monitorDialog() }, documentDownloads, { it in unrestrictedFiles })
         setContentView(root)
         ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.ime())
@@ -202,7 +204,7 @@ class MainActivity : ComponentActivity() {
         monitorControlsChanged()
     }
     override fun onStop() { keepDraft(); nativeAgents.pause(); sharedRelay.detachUI(this); super.onStop() }
-    override fun onDestroy() { transientToast?.cancel(); main.removeCallbacks(persistDraft); pdf?.close(); fileReviewer?.close(); nativeAgents.destroy(); sharedRelay.detachUI(this); super.onDestroy() }
+    override fun onDestroy() { documentDownloads.close(); transientToast?.cancel(); main.removeCallbacks(persistDraft); pdf?.close(); fileReviewer?.close(); nativeAgents.destroy(); sharedRelay.detachUI(this); super.onDestroy() }
 
     private fun readRelays() { relays = runCatching { JSONObject(vault.read("state") ?: "{}").optJSONArray("relays") ?: JSONArray() }.getOrElse { JSONArray() } }
     private fun updateChrome() {
@@ -229,6 +231,7 @@ class MainActivity : ComponentActivity() {
                     "push_config" -> {
                         val list = message.optJSONArray("capabilities") ?: JSONArray()
                         capabilities[id] = (0 until list.length()).map { list.getString(it) }.toSet()
+                        updateFileAccess(id, message.optBoolean("filesystem_read"))
                     }
                     "blocked", "agent_update" -> {
                         val list = agents[id] ?: JSONArray()
@@ -266,7 +269,7 @@ class MainActivity : ComponentActivity() {
         if (::sharedRelay.isInitialized && event.optString("type") == "message" && event.optJSONObject("message")?.optString("type") == "agents") openMonitorRoute()
     }
     private fun updateHeader() {
-        heading.text = when (tab) { "agents" -> "Agent 工作台"; "devices" -> "我的设备"; else -> if (file != null) FileRules.safeName(file!!.optString("path")) else "Agent 工作区" }
+        heading.text = when (tab) { "agents" -> "Agent 工作台"; "devices" -> "我的设备"; else -> if (file != null) FileRules.safeName(file!!.optString("path")) else if (relayId in unrestrictedFiles) "电脑文件" else "Agent 工作区" }
         heading.maxLines = 1; heading.ellipsize = android.text.TextUtils.TruncateAt.END
         val connected = statuses[relayId] == "connected"
         stateDot.setTextColor(if (connected) accent else muted)
@@ -312,11 +315,42 @@ class MainActivity : ComponentActivity() {
                 AlertDialog.Builder(this).setTitle("从本机移除设备？").setMessage("这会清除本机的连接凭据。电脑端的设备授权可在 Agent 工作台的设置中撤销。")
                     .setPositiveButton("移除") { _, _ -> engine.call("remove", id) }.setNegativeButton("取消", null).show()
             }, LinearLayout.LayoutParams(0, dp(46), 1f))
-            card.addView(row); body.addView(card.space(0, 0, 0, 12))
+            card.addView(row)
+            if (capabilities[id]?.contains("filesystem_read_opt_in_v1") == true) card.addView(button(if (id in unrestrictedFiles) "工作区外文件访问：已开启 ⚠" else "工作区外文件访问：关闭") { fileAccessDialog(id) })
+            body.addView(card.space(0, 0, 0, 12))
         }
         body.addView(label("HERDR POCKET  ${BuildConfig.VERSION_NAME}", 12, accent).space(0, 28, 0, 8))
-        body.addView(label("原生 Agent 对话、终端、审批与文件工具\n基于 Herdr Mobile Relay 0.24.0 · AGPL-3.0-or-later\n文件下载与 PDF：单个文件最大 12 MiB；文本编辑：UTF-8，最大 1 MiB。", 12, muted))
+        body.addView(label("原生 Agent 对话、终端、审批与文件工具\n基于 Herdr Mobile Relay 0.24.0 · AGPL-3.0-or-later\n内置预览：图片/PDF 最大 12 MiB，文本最大 1 MiB。超限文件可下载/分享，分片写入手机缓存，需要足够存储空间。", 12, muted))
         body.addView(button("查看开源许可证") { AlertDialog.Builder(this).setTitle("GNU AGPL v3").setMessage(assets.open("LICENSE").bufferedReader().readText()).setPositiveButton("关闭", null).show() }.space(0, 14, 0, 0))
+    }
+    private fun updateFileAccess(id: String, enabled: Boolean) {
+        if (::sharedRelay.isInitialized) sharedRelay.rememberFileAccess(id, enabled)
+        val changed = if (enabled) unrestrictedFiles.add(id) else unrestrictedFiles.remove(id)
+        if (!changed) return
+        documentDownloads.cancel(); fileReviewer?.close(); fileReviewer = null
+        if (id == relayId) {
+            fileGeneration++; treeRequest++; treePending = false; busy = false; file = null; entries = JSONArray(); directoryPage = null; treeRoot = ""
+            directory = if (enabled) selectedAgent?.optString("cwd").orEmpty().trim('/') else ""
+            if (tab == "files" && selectedAgent != null) loadTree()
+        }
+        if (::nativeAgents.isInitialized) nativeAgents.fileAccessChanged(id)
+        if (tab == "devices") renderDevices()
+    }
+    private fun fileAccessDialog(id: String) {
+        engine.request(id, JSONObject().put("type", "file_access_get").put("protocol", 3), 15000) { data, error ->
+            if (error != null || data == null) { toast(error ?: "未读取到文件权限"); return@request }
+            val enabled = data.optBoolean("filesystem_read"); updateFileAccess(id, enabled)
+            val role = engine.snapshot().optJSONObject("auth")?.optJSONObject("relays")?.optJSONObject(id)?.optString("role")
+            if (role != "controller") { toast("仅控制者设备可以开启工作区外文件访问"); return@request }
+            AlertDialog.Builder(this).setTitle(if (enabled) "关闭工作区外文件访问？" else "允许访问这台电脑的工作区外文件？")
+                .setMessage(if (enabled) "关闭后恢复 Agent 工作区限制，并取消当前文件读取和下载。" else "仅为当前手机授权。开启后可以浏览、预览和下载 Relay 运行用户有权限读取的电脑文件，包括密钥、配置等私密文件。\n\n仅限只读，不允许修改或删除；不会自动上传文件。授权保存在电脑 Relay，可随时在此关闭。")
+                .setNegativeButton("取消", null).setPositiveButton(if (enabled) "关闭访问" else "我了解风险，开启") { _, _ ->
+                    engine.request(id, JSONObject().put("type", "file_access_set").put("protocol", 3).put("filesystem_read", !enabled), 15000) { result, failure ->
+                        if (failure != null || result == null) toast(failure ?: "设置失败")
+                        else { updateFileAccess(id, result.optBoolean("filesystem_read")); toast(if (result.optBoolean("filesystem_read")) "已开启只读文件访问；文件页可返回 / 根目录" else "已恢复工作区限制") }
+                    }
+                }.show()
+        }
     }
     private fun pairDialog() {
         val input = EditText(this).apply { hint = "herdr-tcp://IP:端口/#invite=… 或 HTTPS 链接"; inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI; minLines = 3; maxLines = 6 }
@@ -339,7 +373,7 @@ class MainActivity : ComponentActivity() {
     }
     private fun agentName(agent: JSONObject): String = AgentPresentation.title(agent)
     private fun selectWorkspace(relay: String, agent: JSONObject) {
-        relayId = relay; selectedAgent = JSONObject(agent.toString()); directory = ""; query = ""; treeRoot = ""; entries = JSONArray(); busy = false
+        relayId = relay; selectedAgent = JSONObject(agent.toString()); directory = if (relay in unrestrictedFiles) agent.optString("cwd").trim('/') else ""; query = ""; treeRoot = ""; entries = JSONArray(); busy = false
         directoryPage = null; treeError = ""; treeTruncated = false; treePending = false; treeRequest++
         tab = "files"; fileGeneration++; loadTree()
     }
@@ -388,8 +422,22 @@ class MainActivity : ComponentActivity() {
             if (directory.isEmpty()) returnToSelectedAgent() else navigateDirectory(FileRules.parent(directory))
         })
         body.addView(crumb)
-        body.addView(label("${agentName(selectedAgent!!)} 的工作区", 18, ink, true).space(0, 8, 0, 4))
-        val absoluteDirectory = treeRoot.ifBlank { selectedAgent!!.optString("cwd") }.trimEnd('/') + if (directory.isEmpty()) "" else "/$directory"
+        body.addView(label(if (relayId in unrestrictedFiles) "电脑文件 · 只读访问已扩展" else "${agentName(selectedAgent!!)} 的工作区", 18, ink, true).space(0, 8, 0, 4))
+        if (relayId in unrestrictedFiles) {
+            val jumps = LinearLayout(this)
+            jumps.addView(button("/ 根目录") { navigateDirectory("") }, LinearLayout.LayoutParams(0, dp(46), 1f))
+            jumps.addView(button("Agent 工作目录") { navigateDirectory(selectedAgent!!.optString("cwd").trim('/')) }, LinearLayout.LayoutParams(0, dp(46), 1f))
+            jumps.addView(button("输入路径") {
+                val input = EditText(this).apply { setSingleLine(); hint = "/home/…"; setText("/$directory") }
+                AlertDialog.Builder(this).setTitle("跳转到电脑目录").setView(input).setNegativeButton("取消", null).setPositiveButton("打开") { _, _ ->
+                    val raw = input.text.toString().trim()
+                    val path = runCatching { java.nio.file.Paths.get(raw).normalize() }.getOrNull()
+                    if (path == null || !path.isAbsolute) toast("请输入绝对目录路径") else navigateDirectory(path.toString().trim('/'))
+                }.show()
+            }, LinearLayout.LayoutParams(0, dp(46), 1f))
+            body.addView(jumps)
+        }
+        val absoluteDirectory = (treeRoot.ifBlank { if (relayId in unrestrictedFiles) "/" else selectedAgent!!.optString("cwd") }.trimEnd('/') + if (directory.isEmpty()) "" else "/$directory").ifBlank { "/" }
         body.addView(label(absoluteDirectory, 12, muted).apply { maxLines = 3; setTextIsSelectable(true) }.space(0, 4, 0, 10))
         searchField = EditText(this).apply {
             hint = if (directoryPaging()) "筛选当前目录已加载的条目…" else "搜索已加载的工作区条目…"; setTextColor(ink); setHintTextColor(muted); textSize = 14f; setSingleLine(); setText(query)
@@ -463,6 +511,7 @@ class MainActivity : ComponentActivity() {
         }.show()
     }
     private fun command(type: String) = JSONObject().put("type", type).apply {
+        FileReadScope.apply(this, relayId in unrestrictedFiles)
         selectedAgent?.let { a ->
             put("pane_id", a.optString("pane_id")); put("cwd", a.optString("cwd"))
             put("target", JSONObject().put("server_session_id", a.optString("server_session_id").ifBlank { "primary" })
@@ -516,21 +565,29 @@ class MainActivity : ComponentActivity() {
                 val raw = if (data.optString("kind") == "image") data.optString("data_url").substringAfter(',') else Base64.encodeToString(data.optString("text").toByteArray(), Base64.NO_WRAP)
                 data.put("data", raw)
             }
-            file = data; fileGeneration++; originalText = if (data.optString("kind") == "text") bytes().toString(Charsets.UTF_8) else ""
+            file = data; fileGeneration++; originalText = if (data.optString("kind") == "text" && data.optBoolean("preview_available", true)) bytes().toString(Charsets.UTF_8) else ""
             draft = originalText; editing = false; render()
         }
-        if (capabilities[relayId]?.contains("workspace_file_read_v1") == true) {
+        if (capabilities[relayId]?.contains("workspace_file_download_v1") == true) {
+            DocumentTransfer.preview(path, { selectedBinding() == binding && fileGeneration == generation && selectedAgentIsCurrent() },
+                { type, payload, callback -> engine.request(relayId, command(type).apply { payload.keys().forEach { put(it, payload.get(it)) } }, 30000, callback) }, receive)
+        } else if (capabilities[relayId]?.contains("workspace_file_read_v1") == true) {
             DocumentTransfer.read(path, { selectedBinding() == binding && fileGeneration == generation },
                 { payload, callback -> engine.request(relayId, command("workspace_file_read").put("path", path).apply { payload.keys().forEach { put(it, payload.get(it)) } }, 30000, callback) }, receive)
         } else engine.request(relayId, command(if (extended) "workspace_file_read" else "workspace_file").put("path", path), callback = receive)
     }
-    private fun openFileReviewer(path: String) {
+    private fun openFileReviewer(path: String, reference: ReviewReference = ReviewReference(path)) {
         val binding = selectedBinding() ?: return
         if (!selectedAgentIsCurrent()) return
         fileReviewer?.close()
-        fileReviewer = DocumentReviewer(this, binding.cwd, { selectedBinding() == binding && selectedAgentIsCurrent() }) { requested, done ->
+        val download: ((String, Boolean) -> Unit)? = if (capabilities[relayId]?.contains("workspace_file_download_v1") == true) { path, share -> downloadOriginal(path, share, binding, true) } else null
+        fileReviewer = DocumentReviewer(this, binding.cwd, { selectedBinding() == binding && selectedAgentIsCurrent() }, download, relayId in unrestrictedFiles) { requested, done ->
             val extended = capabilities[relayId]?.any { it in setOf("workspace_mobile_files_v1", "workspace_file_read_v1") } == true
-            if (capabilities[relayId]?.contains("workspace_file_read_v1") == true) {
+            if (capabilities[relayId]?.contains("workspace_file_download_v1") == true) {
+                val view = fileReviewer; val version = view?.requestVersion
+                DocumentTransfer.preview(requested, { fileReviewer === view && view?.isOpen == true && view.requestVersion == version && selectedBinding() == binding && selectedAgentIsCurrent() },
+                    { type, payload, callback -> engine.request(relayId, command(type).apply { payload.keys().forEach { put(it, payload.get(it)) } }, 30000, callback) }, done)
+            } else if (capabilities[relayId]?.contains("workspace_file_read_v1") == true) {
                 val view = fileReviewer; val version = view?.requestVersion
                 DocumentTransfer.read(requested, { fileReviewer === view && view?.isOpen == true && view.requestVersion == version && selectedBinding() == binding && selectedAgentIsCurrent() },
                     { payload, callback -> engine.request(relayId, command("workspace_file_read").apply { payload.keys().forEach { put(it, payload.get(it)) } }, 30000, callback) }, done)
@@ -538,7 +595,7 @@ class MainActivity : ComponentActivity() {
                 if (selectedBinding() == binding && selectedAgentIsCurrent()) done(data, error)
             }
         }
-        fileReviewer?.open(ReviewReference(path))
+        fileReviewer?.open(reference)
     }
     private fun renderFile() {
         val doc = file ?: return
@@ -547,17 +604,17 @@ class MainActivity : ComponentActivity() {
         selectedAgent?.let { body.addView(label("${agentName(it)} · ${it.optString("cwd")}", 12, accent).apply { maxLines = 2 }) }
         body.addView(label("${doc.optString("path")}  ·  ${FileRules.size(doc.optLong("size"))}", 12, muted).space(0, 5, 0, 12))
         val actions = LinearLayout(this)
-        if (doc.optString("kind") == "text") {
+        if (doc.optString("kind") == "text" && doc.optBoolean("preview_available", true)) {
             editToggle = button(if (editing) "预览" else "编辑", true) { editing = !editing; showFileBody(); updateEditorState() }
             editToggle!!.isEnabled = canEdit()
             actions.addView(editToggle, LinearLayout.LayoutParams(0, dp(46), 1f))
             saveButton = button("保存") { saveFile() }
             actions.addView(saveButton, LinearLayout.LayoutParams(0, dp(46), 1f))
         }
-        if (doc.optString("kind") in listOf("pdf", "image") || FileRules.isMarkdown(doc.optString("path"))) {
+        if (doc.optBoolean("preview_available", true) && (doc.optString("kind") in listOf("pdf", "image") || FileRules.isMarkdown(doc.optString("path")))) {
             body.addView(button("全屏查看 · 缩放 / 阅读") { openFileReviewer(doc.optString("path")) })
         }
-        actions.addView(button("下载") { val docNow = file ?: return@button; pendingExport = FileRules.safeName(docNow.optString("path")) to currentBytes(); picker.launch(pendingExport!!.first) }, LinearLayout.LayoutParams(0, dp(46), 1f))
+        actions.addView(button("下载") { val docNow = file ?: return@button; if (capabilities[relayId]?.contains("workspace_file_download_v1") == true && draft == originalText) { selectedBinding()?.let { downloadOriginal(docNow.optString("path"), false, it) }; return@button }; pendingExport = FileRules.safeName(docNow.optString("path")) to currentBytes(); picker.launch(pendingExport!!.first) }, LinearLayout.LayoutParams(0, dp(46), 1f))
         actions.addView(button("分享") { shareFile() }, LinearLayout.LayoutParams(0, dp(46), 1f))
         body.addView(actions)
         editStatus = label("", 12, muted); body.addView(editStatus!!.space(0, 8, 0, 8))
@@ -567,6 +624,9 @@ class MainActivity : ComponentActivity() {
     private fun showFileBody() {
         pdf?.close(); pdf = null; val holder = fileBody ?: return; holder.removeAllViews(); editor = null
         val doc = file ?: return
+        if (!doc.optBoolean("preview_available", true)) {
+            holder.addView(label(doc.optString("preview_reason").ifBlank { "此文件不支持预览；可以下载或分享原文件" }, 15, muted).space(10, 24, 10, 0)); return
+        }
         when (doc.optString("kind")) {
             "text" -> if (editing) {
                 editor = EditText(this).apply {
@@ -578,7 +638,13 @@ class MainActivity : ComponentActivity() {
                 }; holder.addView(editor, FrameLayout.LayoutParams(-1, -1))
             } else {
                 val text = label(draft, 15, ink).apply { setLineSpacing(0f, 1f); setTextIsSelectable(true); setPadding(dp(12), dp(12), dp(12), dp(24)) }
-                if (FileRules.isMarkdown(doc.optString("path"))) Markwon.builder(this).usePlugin(TablePlugin.create(this)).usePlugin(StrikethroughPlugin.create()).build().setMarkdown(text, draft)
+                if (FileRules.isMarkdown(doc.optString("path"))) Markwon.builder(this).usePlugin(CodexFileCitations.plugin()).usePlugin(TablePlugin.create(this)).usePlugin(StrikethroughPlugin.create())
+                    .usePlugin(object : io.noties.markwon.AbstractMarkwonPlugin() {
+                        override fun configureConfiguration(builder: io.noties.markwon.MarkwonConfiguration.Builder) { builder.linkResolver { _, link ->
+                            val ref = ReviewReferences.local(link, selectedBinding()?.cwd.orEmpty(), doc.optString("path"), unrestricted = relayId in unrestrictedFiles)
+                            if (ref != null) openFileReviewer(ref.path, ref) else DocumentReviewer.confirmExternal(this@MainActivity, link)
+                        } }
+                    }).build().setMarkdown(text, draft)
                 else text.typeface = Typeface.MONOSPACE
                 holder.addView(ScrollView(this).apply { addView(text) })
             }
@@ -659,8 +725,19 @@ class MainActivity : ComponentActivity() {
     }
     private fun bytes() = Base64.decode(file?.optString("data").orEmpty(), Base64.DEFAULT)
     private fun currentBytes() = if (file?.optString("kind") == "text") draft.toByteArray(Charsets.UTF_8) else bytes()
+    private fun downloadOriginal(path: String, share: Boolean, binding: WorkspaceBinding, fromReviewer: Boolean = false) {
+        val captured = selectedAgent?.let { JSONObject(it.toString()) } ?: return
+        val id = relayId; val unrestricted = id in unrestrictedFiles; val view = fileReviewer; val version = view?.requestVersion; val generation = fileGeneration
+        documentDownloads.start(path, share, { (id in unrestrictedFiles) == unrestricted && selectedBinding() == binding && selectedAgentIsCurrent() &&
+            if (fromReviewer) fileReviewer === view && view?.isOpen == true && view.requestVersion == version else fileGeneration == generation }) { payload, callback ->
+            engine.request(id, FileReadScope.apply(AgentProtocol.command(id, captured, "workspace_file_download"), unrestricted).apply { payload.keys().forEach { put(it, payload.get(it)) } }, 60000, callback)
+        }
+    }
     private fun shareFile() {
         val doc = file ?: return
+        if (capabilities[relayId]?.contains("workspace_file_download_v1") == true && draft == originalText) {
+            selectedBinding()?.let { downloadOriginal(doc.optString("path"), true, it) }; return
+        }
         runCatching {
             val folder = File(cacheDir, "shared/${UUID.randomUUID()}").apply { mkdirs() }
             val output = File(folder, FileRules.safeName(doc.optString("path"))).apply { writeBytes(currentBytes()) }

@@ -177,6 +177,9 @@ var actionCatalog = map[string]ActionMetadata{
 	"workspace_create":           mutateAction("workspace_create", true, true),
 	"workspace_file":             readAction("workspace_file"),
 	"workspace_file_read":        readAction("workspace_file_read"),
+	"workspace_file_download":    readAction("workspace_file_download"),
+	"file_access_get":            readAction("file_access_get"),
+	"file_access_set":            mutateAction("file_access_set", false, true),
 	"workspace_git_diff":         readAction("workspace_git_diff"),
 	"workspace_git_status":       readAction("workspace_git_status"),
 	"workspace_rename":           mutateAction("workspace_rename", true, true),
@@ -190,6 +193,8 @@ var actionCatalog = map[string]ActionMetadata{
 }
 
 type Inbound struct {
+	FileScope            string          `json:"file_scope,omitempty"`
+	FilesystemRead       *bool           `json:"filesystem_read,omitempty"`
 	Model                string          `json:"model,omitempty"`
 	Effort               string          `json:"effort,omitempty"`
 	SettingsRevision     string          `json:"settings_revision,omitempty"`
@@ -256,6 +261,7 @@ type Inbound struct {
 	Origin               string          `json:"origin,omitempty"`
 	ExpectedOrigin       string          `json:"expected_origin,omitempty"`
 	ExpectedVersion      string          `json:"expected_version,omitempty"`
+	MetadataOnly         bool            `json:"metadata_only,omitempty"`
 	ExpectedRevision     string          `json:"expected_revision,omitempty"`
 	Subscription         json.RawMessage `json:"subscription,omitempty"`
 	Policy               json.RawMessage `json:"policy,omitempty"`
@@ -478,6 +484,7 @@ type HerdrStatus struct {
 }
 
 type PushConfig struct {
+	FilesystemRead bool   `json:"filesystem_read"`
 	Type           string `json:"type"`
 	VAPIDPublicKey string `json:"vapid_public_key"`
 	Host           string `json:"host"`
@@ -533,6 +540,8 @@ var Capabilities = []string{
 	"conversation_activity",
 	"workspace_inspection",
 	"workspace_file_read_v1",
+	"workspace_file_download_v1",
+	"filesystem_read_opt_in_v1",
 	"workspace_directory_v1",
 	"agent_model_settings_v1",
 	"agent_run_state_v1",

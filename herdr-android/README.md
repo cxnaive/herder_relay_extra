@@ -1,8 +1,10 @@
-# Herdr Pocket · Android 0.2.15
+# Herdr Pocket · Android 0.2.17
 
-与本仓库根目录的 **Relay 0.23.5+codexfix.9** 配套的原生 Android 客户端，不使用 WebView 运行 Agent 界面。
+与本仓库根目录的 **Relay 0.23.5+codexfix.11** 配套的原生 Android 客户端，不使用 WebView 运行 Agent 界面。
 
 ## 安装
+
+0.2.17 发布于 `android-v0.2.17`，包含文件访问/下载改进及此前 0.2.16 的对话漏补修复。配套 Relay 安装包见 `native-v0.23.5-codexfix.11`，Gateway codexfix.6 无需更新。
 
 0.2.15 工作区逐层分页修复发布于 `android-v0.2.15`，配套 Relay 安装包见 `native-v0.23.5-codexfix.9`。目录分页需要 Relay codexfix.9，旧 Relay 继续使用有限的工作区树并提示升级。
 
@@ -50,3 +52,9 @@ export ANDROID_HOME=/path/to/android-sdk
 许可证及依赖说明见 [LICENSE](LICENSE)、[THIRD_PARTY.md](THIRD_PARTY.md)。Android 早期参考源基于 upstream 0.24.0，保留在 `UPSTREAM.json` 和 `third_party/`；本次配套 Relay 则以根目录及 `../VERSION.json` 标注为准。
 
 `relay/` 下是接口说明，不要求再打旧增量补丁。根目录已经包含当前 Relay 改动。私有部署记录、用户会话日志、配对密钥和旧诊断截图不随源码发布。
+
+## 文件预览、下载与电脑文件访问
+
+0.2.17 / Relay codexfix.11 将预览和下载分开：图片/PDF 预览最多 12 MiB，文本预览最多 1 MiB；超限仍可点开文件信息、下载或分享原文件。下载显示进度并支持取消，使用私有缓存，需要足够空间；中断后重试从头开始。
+
+对话及 Markdown 的本地文件链接不限扩展名。默认只访问当前 Agent 工作区；在“我的设备 → 对应电脑 → 工作区外文件访问”可由控制者明确开启更大只读范围。该授权按当前手机/电脑分别保存在 Relay，开启后文件页提供根目录、Agent 工作目录和绝对路径跳转。可能接触密钥等私密文件，请仅在信任设备时开启。详见 [文件访问说明](../docs/file-access.md)。

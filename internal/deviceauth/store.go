@@ -49,16 +49,17 @@ var (
 )
 
 type Credential struct {
-	DeviceID     string    `json:"device_id"`
-	CredentialID string    `json:"credential_id"`
-	Name         string    `json:"name"`
-	Role         Role      `json:"role"`
-	Locale       string    `json:"locale"`
-	PairedAt     time.Time `json:"paired_at"`
-	LastSeenAt   time.Time `json:"last_seen_at,omitempty"`
-	Version      uint64    `json:"version"`
-	Revoked      bool      `json:"revoked"`
-	Current      bool      `json:"current,omitempty"`
+	FilesystemRead bool      `json:"filesystem_read,omitempty"`
+	DeviceID       string    `json:"device_id"`
+	CredentialID   string    `json:"credential_id"`
+	Name           string    `json:"name"`
+	Role           Role      `json:"role"`
+	Locale         string    `json:"locale"`
+	PairedAt       time.Time `json:"paired_at"`
+	LastSeenAt     time.Time `json:"last_seen_at,omitempty"`
+	Version        uint64    `json:"version"`
+	Revoked        bool      `json:"revoked"`
+	Current        bool      `json:"current,omitempty"`
 }
 
 type Invitation struct {
@@ -581,4 +582,28 @@ func invitationFromRecord(record *invitationRecord) Invitation {
 		Role:         record.Role,
 		Locale:       record.Locale,
 	}
+}
+
+// SetFilesystemRead is opt-in, per credential, and grants no write operations.
+func (s *Store) SetFilesystemRead(credentialID string, version uint64, enabled bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	index := s.credentialIndex(credentialID)
+	if index < 0 {
+		return ErrNotFound
+	}
+	record := &s.state.Credentials[index]
+	if record.Revoked || record.Version != version {
+		return ErrRevoked
+	}
+	if record.Role != RoleController {
+		return ErrInvalidRole
+	}
+	previous := record.FilesystemRead
+	record.FilesystemRead = enabled
+	if err := s.persistLocked(); err != nil {
+		record.FilesystemRead = previous
+		return fmt.Errorf("persist file access setting: %w", err)
+	}
+	return nil
 }

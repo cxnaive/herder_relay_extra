@@ -23,7 +23,7 @@ class ReviewReferenceTest {
         assertEquals("实验设置", ReviewReferences.local("#%E5%AE%9E%E9%AA%8C%E8%AE%BE%E7%BD%AE", "/work/project", "docs/readme.md")!!.anchor)
     }
     @Test fun refusesRemoteUrlsEncodedTraversalAndUnsupportedSchemes() {
-        for (path in listOf("../secret.md", "%2e%2e/secret.md", "docs/%2e%2e/%2e%2e/secret.pdf", "/work/project-other/x.md", "file:///tmp/a.pdf", "https://example.com/paper.pdf", "javascript:alert(1)", "content://files/a.pdf", "//host/a.md", "%2f%2fhost/a.md", "a.md%00", "a.txt")) {
+        for (path in listOf("../secret.md", "%2e%2e/secret.md", "docs/%2e%2e/%2e%2e/secret.pdf", "/work/project-other/x.md", "file:///tmp/a.pdf", "https://example.com/paper.pdf", "javascript:alert(1)", "content://files/a.pdf", "//host/a.md", "%2f%2fhost/a.md", "a.md%00")) {
             assertNull(path, ReviewReferences.local(path, "/work/project"))
         }
         assertNull(ReviewReferences.local("x.md", "relative-root"))
@@ -39,4 +39,17 @@ class ReviewReferenceTest {
         val images = ReviewReferences.markdownImages("![one](fig.png) ![two](fig.png) ![outside](../../private.png) ![web](https://site/a.png)", "/work/project", "docs/readme.md")
         assertEquals(listOf("docs/fig.png"), images.map { it.path })
     }
+    @Test fun anyWorkspaceFileLinkOpensWithoutAnExtensionAllowlist() {
+        for (path in listOf("results/archive.zip", "logs/run.jsonl", "data/table.csv", "src/main.py:42", "LICENSE", "file:///work/project/output/model.bin")) {
+            val ref = ReviewReferences.local(path, "/work/project")
+            assertNotNull(path, ref); assertEquals("file", ref!!.kind)
+        }
+        assertEquals(42, ReviewReferences.local("src/main.py:42", "/work/project")!!.line)
+        assertNull(ReviewReferences.local("a%0afile", "/work/project"))
+        assertNull(ReviewReferences.local("../private.zip", "/work/project"))
+        assertNull(ReviewReferences.local("file://remote/work/project/a.zip", "/work/project"))
+        val refs = ReviewReferences.documents(JSONObject().put("text", "[下载压缩包](output/archive.zip) [无后缀](LICENSE) `src/main.py:42` 普通路径 /work/project/output/result.csv\n`not a filename`\n```\n/work/project/hidden.bin\n```"), "/work/project")
+        assertEquals(setOf("output/archive.zip", "LICENSE", "src/main.py", "output/result.csv"), refs.map { it.path }.toSet())
+    }
+
 }

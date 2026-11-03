@@ -55,9 +55,26 @@ class ConversationState {
         val oldNext = next; val hadOlder = loadedOlder
         val retained = if (older || preserve) LinkedHashMap(entries) else linkedMapOf()
         entries.clear()
-        if (preserve) entries.putAll(retained)
-        for (i in 0 until rows.length()) rows.optJSONObject(i)?.let { entries[it.getString("id")] = it }
-        if (older) entries.putAll(retained)
+        if (preserve) {
+            // Insert recovered middle pages before their next known anchor, not after the newest message.
+            val old = retained.values.toList(); var index = 0
+            val positions = old.mapIndexed { i, entry -> entry.getString("id") to i }.toMap()
+            val firstShared = (0 until rows.length()).firstNotNullOfOrNull { rows.optJSONObject(it)?.let { row -> positions[row.optString("id")] } }
+            if (firstShared == null) { entries.putAll(retained); index = old.size }
+            else while (index < firstShared) { val kept = old[index++]; entries[kept.getString("id")] = kept }
+            for (i in 0 until rows.length()) rows.optJSONObject(i)?.let { entry ->
+                val position = positions[entry.getString("id")]
+                if (position != null && position >= index) {
+                    while (index < position) { val kept = old[index++]; entries[kept.getString("id")] = kept }
+                    index = position + 1
+                }
+                entries[entry.getString("id")] = entry
+            }
+            while (index < old.size) { val kept = old[index++]; entries.putIfAbsent(kept.getString("id"), kept) }
+        } else {
+            for (i in 0 until rows.length()) rows.optJSONObject(i)?.let { entries[it.getString("id")] = it }
+            if (older) entries.putAll(retained)
+        }
         next = if (preserve && hadOlder) oldNext else value.optString("next_cursor")
         loadedOlder = older || (preserve && hadOlder)
         if (!older) {

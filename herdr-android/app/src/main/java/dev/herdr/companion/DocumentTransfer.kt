@@ -7,6 +7,23 @@ import java.util.Base64
 
 /** Assemble small authenticated frames; never combine bytes from different file revisions. */
 object DocumentTransfer {
+    /** Metadata is independent of preview bytes, so large files still open. */
+    fun preview(path: String, valid: () -> Boolean,
+        request: (String, JSONObject, (JSONObject?, String?) -> Unit) -> Unit,
+        done: (JSONObject?, String?) -> Unit) {
+        request("workspace_file_download", JSONObject().put("path", path).put("metadata_only", true)) response@ { data, error ->
+            if (!valid()) return@response
+            if (error != null || data == null) { done(null, error ?: "未返回文件信息"); return@response }
+            try { DownloadSink.validateMetadata(data, path) } catch (_: Exception) { done(null, "文件信息无效，请重新打开"); return@response }
+            if (!data.optBoolean("preview_available")) { done(data, null); return@response }
+            read(path, valid, { payload, callback -> request("workspace_file_read", payload, callback) }) { preview, failure ->
+                // Even a decode/read failure must not remove the file's download entry.
+                if (failure != null || preview == null) done(JSONObject(data.toString()).put("preview_available", false).put("preview_reason", failure ?: "预览失败"), null)
+                else done(preview, null)
+            }
+        }
+    }
+
     fun read(path: String, valid: () -> Boolean, request: (JSONObject, (JSONObject?, String?) -> Unit) -> Unit,
         done: (JSONObject?, String?) -> Unit) {
         val output = ByteArrayOutputStream()

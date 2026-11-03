@@ -23,3 +23,18 @@ func TestDocumentReadIsReadOnlyAndProtocolFenced(t *testing.T) {
 		t.Fatal("preview patch unexpectedly added file writes")
 	}
 }
+
+func TestDownloadReadHasSameAuthorizationAsPreview(t *testing.T) {
+	action, ok := protocol.ClassifyAction("workspace_file_download")
+	if !ok || action.Class != protocol.ActionReadOnly || action.Audited {
+		t.Fatal("download is not a read-only action")
+	}
+	for _, role := range []string{"reader", "controller"} {
+		if authorizeAuthenticatedIdentity(transport.AuthenticatedIdentity{Role: role}, true, action, "") != nil {
+			t.Fatal("download denied for", role)
+		}
+	}
+	if validDocumentEnvelope(protocol.Inbound{Type: "workspace_file_download", Protocol: 2, PaneID: "p", Target: &protocol.TargetRef{PaneID: "p"}}) {
+		t.Fatal("legacy protocol accepted")
+	}
+}

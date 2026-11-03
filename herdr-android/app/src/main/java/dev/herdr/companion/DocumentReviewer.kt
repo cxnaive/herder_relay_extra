@@ -25,6 +25,8 @@ import java.util.concurrent.Executors
 /** Full-screen, read-only route. The underlying conversation and draft remain mounted. */
 class DocumentReviewer(private val context: Context, private val cwd: String,
     private val current: () -> Boolean,
+    private val download: ((String, Boolean) -> Unit)? = null,
+    private val unrestricted: Boolean = false,
     private val fetch: (String, (JSONObject?, String?) -> Unit) -> Unit) {
     private val worker = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
@@ -42,6 +44,7 @@ class DocumentReviewer(private val context: Context, private val cwd: String,
     private val root = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(0xff101b22.toInt()) }
     private val title = label("文档查看", 17f)
     private val subtitle = label("", 11f).apply { setTextColor(muted); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.MIDDLE }
+    private val fileActions = LinearLayout(context)
     private val controls = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL }
     private val body = FrameLayout(context)
     private val dialog = object : Dialog(context, android.R.style.Theme_Material_NoActionBar) {
@@ -55,6 +58,7 @@ class DocumentReviewer(private val context: Context, private val cwd: String,
             addView(LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; title.maxLines = 1; title.ellipsize = android.text.TextUtils.TruncateAt.END; addView(title); addView(subtitle) }, LinearLayout.LayoutParams(0, -2, 1f))
             addView(button("×", "关闭文档查看器") { close() }, LinearLayout.LayoutParams(dp(52), dp(56)))
         })
+        root.addView(fileActions, LinearLayout.LayoutParams(-1, -2))
         root.addView(controls, LinearLayout.LayoutParams(-1, -2)); root.addView(body, LinearLayout.LayoutParams(-1, 0, 1f))
         dialog.setContentView(root)
         dialog.setOnDismissListener { dispose() }
@@ -75,8 +79,8 @@ class DocumentReviewer(private val context: Context, private val cwd: String,
         navigate(ref, false)
     }
     fun openLink(link: String, from: ReviewReference? = selected) {
-        val ref = ReviewReferences.local(link, cwd, from?.path.orEmpty())
-        if (ref != null) { navigate(ref, true); return }
+        val ref = ReviewReferences.local(link, cwd, from?.path.orEmpty(), unrestricted = unrestricted)
+        if (ref != null) { if (isOpen) navigate(ref, true) else open(ref); return }
         confirmExternal(context, link)
     }
     private fun goBack() { if (history.isNotEmpty()) navigate(history.removeLast(), false) else close() }
@@ -91,12 +95,22 @@ class DocumentReviewer(private val context: Context, private val cwd: String,
         if (remember) selected?.let { if (history.size >= 12) history.removeFirst(); history.addLast(it) }
         selected = ref; val owner = ++generation
         pdf?.close(); pdf = null; image?.setBitmap(null); image = null; thumbnails.clear(); controls.removeAllViews(); body.removeAllViews()
-        title.text = ref.label; subtitle.text = "${ref.kind.uppercase()} · ${ref.path.ifBlank { "对话内嵌图像" }}"
+        fileActions.removeAllViews()
+        if (download != null && ref.inlineImage == null && ref.path.isNotBlank()) {
+            fileActions.addView(button("下载原文件", "下载原文件到手机") { if (current()) download.invoke(ref.path, false) }, LinearLayout.LayoutParams(0, dp(48), 1f))
+            fileActions.addView(button("分享", "下载后分享原文件") { if (current()) download.invoke(ref.path, true) }, LinearLayout.LayoutParams(0, dp(48), 1f))
+        }
+        val displayPath = if (ref.inlineImage != null) "对话内嵌图像" else (if (unrestricted) "/" else "") + ref.path
+        title.text = ref.label; subtitle.text = "${ref.kind.uppercase()} · $displayPath"
         body.addView(label("正在读取原始文件…", 15f).apply { gravity = Gravity.CENTER }, FrameLayout.LayoutParams(-1, -1))
         fun accept(data: JSONObject?, error: String?) {
             if (closed || owner != generation) return
             if (!current()) { close(); return }
             if (error != null || data == null) { failure(error ?: "未返回文件", ref); return }
+            if (data.has("size")) subtitle.text = "${FileRules.size(data.optLong("size"))} · $displayPath"
+            if (data.has("preview_available") && !data.optBoolean("preview_available")) {
+                failure(data.optString("preview_reason").ifBlank { "此文件不支持预览；可以下载或分享原文件" }, ref); return
+            }
             worker.execute {
                 try {
                     val bytes = ReviewDecoding.bytes(data)
@@ -151,7 +165,7 @@ class DocumentReviewer(private val context: Context, private val cwd: String,
             }).build().setMarkdown(value, text)
         if (!rawMarkdown) value.movementMethod = TableAwareMovementMethod.create()
         column.addView(value)
-        if (!rawMarkdown) for (imageRef in ReviewReferences.markdownImages(text, cwd, ref.path)) {
+        if (!rawMarkdown) for (imageRef in ReviewReferences.markdownImages(text, cwd, ref.path, unrestricted)) {
             val image = ConversationPresentation.Image(imageRef.path, imageRef.label, imageRef.path)
             val owner = generation
             column.addView(thumbnails.view(image, "$owner:${imageRef.path}", { navigate(imageRef, true) }) { path, done ->
@@ -194,7 +208,7 @@ class DocumentReviewer(private val context: Context, private val cwd: String,
     companion object {
         fun confirmExternal(context: Context, link: String) {
             val uri = runCatching { Uri.parse(link) }.getOrNull()
-            if (uri?.scheme != "https" || uri.host.isNullOrBlank() || uri.userInfo != null) { Toast.makeText(context, "只能预览当前工作区内的图片、PDF 和 Markdown；该引用不可访问", Toast.LENGTH_LONG).show(); return }
+            if (uri?.scheme != "https" || uri.host.isNullOrBlank() || uri.userInfo != null) { Toast.makeText(context, "只能读取当前工作区内的文件；该引用不可访问", Toast.LENGTH_LONG).show(); return }
             AlertDialog.Builder(context).setTitle("打开外部链接？").setMessage("将交给浏览器打开，不会发送 Relay 配对凭据。\n\n$link")
                 .setPositiveButton("浏览器打开") { _, _ -> runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, uri)) }.onFailure { Toast.makeText(context, "没有可用的浏览器", Toast.LENGTH_SHORT).show() } }
                 .setNegativeButton("取消", null).show()

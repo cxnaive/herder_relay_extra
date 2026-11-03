@@ -18,6 +18,7 @@ class MockTcpMonitorRelay : AutoCloseable {
     // Only foreground tests opt in; monitor tests still reject every non-metadata request.
     @Volatile var foregroundCommand: ((JSONObject) -> JSONObject?)? = null
     private val server = ServerSocket(0)
+    @Volatile var role = "reader"
     val secret = ByteArray(32) { 17 }
     private val rendezvous = ByteArray(32) { 18 }
     private val relayId = RelayCrypto.encode(ByteArray(16) { 19 })
@@ -35,7 +36,7 @@ class MockTcpMonitorRelay : AutoCloseable {
         .put("server_session_id", "primary").put("workspace_id", "project").put("cwd", "/fixture/project").put("agent", "codex").put("name", "Codex").put("tab_label", "writer-$id").put("status", "working")
     fun state(): JSONObject = JSONObject().put("relays", JSONArray().put(JSONObject().put("id", "fixture").put("label", "模拟电脑").put("transport", "hybrid")
         .put("gatewayUrl", "tcp://127.0.0.1:${server.localPort}").put("gatewayRelayId", relayId).put("rendezvousKey", RelayCrypto.encode(rendezvous)).put("paired", true)))
-        .put("auth", JSONObject().put("version", 1).put("relays", JSONObject().put("fixture", JSONObject().put("kind", "credential").put("id", "credential-a").put("version", 1).put("deviceId", "device-a").put("role", "reader").put("secret", RelayCrypto.encode(secret)))))
+        .put("auth", JSONObject().put("version", 1).put("relays", JSONObject().put("fixture", JSONObject().put("kind", "credential").put("id", "credential-a").put("version", 1).put("deviceId", "device-a").put("role", role).put("secret", RelayCrypto.encode(secret)))))
     private val acceptor = Thread({
         while (!stopped.get()) {
             val peer = try { server.accept() } catch (_: Exception) { break }
@@ -89,7 +90,7 @@ class MockTcpMonitorRelay : AutoCloseable {
             return JSONObject(RelayCrypto.aes(incoming, seq, "c2s", frame.copyOfRange(10, frame.size), false).toString(Charsets.UTF_8))
         }
         require(receive().getString("type") == "e2ee_client_finish")
-        send(JSONObject().put("type", "e2ee_server_finish").put("version", 2).put("device_id", "device-a").put("credential_id", "credential-a").put("credential_version", 1).put("role", "reader").put("locale", "zh"))
+        send(JSONObject().put("type", "e2ee_server_finish").put("version", 2).put("device_id", "device-a").put("credential_id", "credential-a").put("credential_version", 1).put("role", role).put("locale", "zh"))
         send(JSONObject().put("type", "push_config").put("protocol", 3).put("inventory", JSONObject().put("state", "ready")).put("capabilities", JSONArray(listOf("agent_run_state_v1") + extraCapabilities)))
         send(JSONObject().put("type", "agents").put("agents", agents))
         send(JSONObject().put("type", "workspaces").put("workspaces", JSONArray().put(JSONObject().put("workspace_id", "project").put("cwd", "/fixture/project").put("label", "模拟工作空间"))))

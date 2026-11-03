@@ -1,5 +1,6 @@
 {
   "type": "push_config",
+  "filesystem_read": false,
   "vapid_public_key": "BTest-key-base64url",
   "host": "dev-workstation",
   "home": "/home/dev",
@@ -30,6 +31,8 @@
     "pane_size_opt_in_rows",
     "workspace_inspection",
     "workspace_file_read_v1",
+    "workspace_file_download_v1",
+    "filesystem_read_opt_in_v1",
     "workspace_directory_v1",
     "semantic_input",
     "manual_terminal_input",

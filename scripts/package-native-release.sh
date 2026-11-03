@@ -37,6 +37,8 @@ for component in relay gateway; do
     cp docs/native-deployment.md "$STAGE/DEPLOYMENT.md"
     cp docs/native-tcp.md "$STAGE/NATIVE-TCP.md"
     cp docs/workspace-directory.md "$STAGE/WORKSPACE-DIRECTORY.md"
+    cp docs/file-access.md "$STAGE/FILE-ACCESS.md"
+    cp docs/conversation-recovery.md "$STAGE/CONVERSATION-RECOVERY.md"
     cp "$templates"/*.sh "$templates"/*.service "$templates/relay.env.example" "$STAGE/"
     if [ "$component" = relay ]; then
         cp "$templates/init-config.py" "$STAGE/"

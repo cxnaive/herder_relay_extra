@@ -1,8 +1,23 @@
-# 验证记录 · Android 0.2.15 / Relay codexfix.9
+# 验证记录 · Android 0.2.17 / Relay codexfix.11
+
+## 0.2.17 / Relay codexfix.11 · 文件下载与可选扩展读取
+
+- **200 个 JVM/Robolectric 测试通过**；`testDebugUnitTest assembleDebug assembleDebugAndroidTest lintDebug` 成功，lint **0 errors / 64 warnings**。APK versionCode **20** / versionName **0.2.17**，保持原调试签名；发布标签为 `android-v0.2.17` / `native-v0.23.5-codexfix.11`。
+- 原生 UI 验证超限文件仍打开详情，下载/分享均可点击；不支持预览的链接也能打开。验证 Android 系统保存位置选择器、FileProvider 分享、分片进度、取消/权限范围变化清理临时文件、迟到响应丢弃。
+- TCP + E2EE fixture 从文件列表打开 13 MiB 以上的文件，不请求预览；分片完成后实际读回分享 URI，逐字节核对。验证开启前的风险确认、开启后 `/` 根目录与 Agent 工作目录跳转、关闭授权，以及每个请求的确切 Agent 身份和显式 scope。
+- Go 全套 tests/vet 通过，`workspace/deviceauth/app/protocol` race 通过；覆盖默认拒绝、设备隔离/持久化、撤销/版本变化、只读动作限制、路径逃逸、分片偏移/散列/大小和同大小文件变化。
+- 仅更新电脑 Relay 至 **codexfix.11**；公网 TCP+E2EE 验证工作区外合成文件 **13,631,505 bytes / 27 chunks** 完整下载且 SHA-256 相符，并验证目录读取、旧 Agent 身份拒绝、workspace scope 未被隐式扩展。Herdr PID 和 Agent terminal/session 清单保持不变，Gateway 未变。
+- 合成文件详情截图已目视检查；**没有连接物理 Android 设备验收**。权限需由用户显式开启，新设备默认关闭；不在源码或测试报告中记录生产设备凭据、真实文件或对话内容。
+
+## 先前版本验证记录
 
 验证日期：2026-11-03。
 
 ## Android
+
+- 0.2.16 针对近期原始日志被大图片/工具结果挤出窗口导致的中途缺口，覆盖同版本近期补读、保留已读旧页/游标、插入顺序、版本变化/停滞游标拒绝及补读边界。
+- 真实本地 TCP+E2EE UI fixture 预置“旧用户消息 + 旧工具缓存”，新尾页只有后续命令；验证客户端继续回读中间说明和 view_image，顺序正确且两层工具保持折叠，图片/文字在折叠外。
+- `screenshots/qa-0.2.16/recovered-commentary.png` 是虚构会话和合成图片，已目视核对。没有连接真实 Android 手机。此本地修复随 0.2.17 一并发布。
 
 - 0.2.15 新增按目录分页读取；真实本地 TCP+E2EE UI fixture 验证根目录补页、进入子目录和返回上层分别请求正确 path，目录全路径/Tab 名称及只读能力文案正确，空目录独立显示；默认隐藏点号条目，开关可显示并恢复隐藏。
 - 分页模型验证根目录/路径/版本匹配、重复页/越界条目/不完整页拒绝；旧响应不会被接受为另一个目录的内容。截图 `screenshots/qa-0.2.15/workspace-directory.png` 使用虚构目录，已目视核对。
@@ -20,14 +35,20 @@
 - 0.2.12 的新增回归在修复前复现对话标题/完成通知串工作空间，修复后通过；覆盖电脑/服务会话隔离、同目录不同工作空间、缺失元数据回退、空工作空间保留及工作空间改名。
 - `WorkspaceLabelUiTest` 使用虚构数据生成 `screenshots/qa-0.2.12/workspace-header.png`，已目视核对；同时验证标题更新不改变选中会话的目标身份。
 
-- 183 个 JVM/Robolectric 测试通过；`testDebugUnitTest assembleDebug assembleDebugAndroidTest lintDebug` 成功。
-- Lint：0 errors / 58 warnings。Debug APK 的 versionCode 为 18、versionName 为 0.2.15。
+- 188 个 JVM/Robolectric 测试通过；`testDebugUnitTest assembleDebug assembleDebugAndroidTest lintDebug` 成功。
+- Lint：0 errors / 60 warnings。Debug APK 的 versionCode 为 19、versionName 为 0.2.16。
 - 原生 TCP fixture 验证 gateway 分帧、ECDH/HMAC/AES-GCM E2EE、后台监控、单个静音、重连不重复通知及新轮次提醒。fixture 不接触用户真实会话。
 - 前台 Activity 与 Service 共用连接；前台退场后监控继续，停止服务释放 wake lock；权限拒绝/撤销、Android 15 specialUse 声明和通知跳转已覆盖。
 - 回归覆盖工作空间/Tab 隔离、Codex 会话匹配、分页缓存、工具双层折叠、图片/PDF/Markdown 查看、模型与思考强度、运行状态与真实轮次计时。
 - `screenshots/qa-0.2.11` 中两张图片由原生 UI 测试生成，使用虚构数据，不是真机截图。
 
 ## Relay
+
+- codexfix.10 的失败前回归复现了大图片结果之后错误 reset / 中途说明和图像调用缺失；修复后追加回读找到已有记录连接点，保留中间工具和文字。正常窗口移动的说明/SourceTruncated 不再引起不必要的重置。
+- Codex 结构化 image/input_image/output_image 块不再变成巨量 Base64 工具文本；原有文字和 view_image 路径关联保留。普通字符串和非图片工具输出保持原样。
+- 回读使用原有确切会话 scope 和分页校验，覆盖上下文取消、跨源 revision、游标停滞及最多 32 步的边界。不会读取其他会话或修改原始日志。
+- Go 全套 tests/vet 及 app/conversation/protocol/transport race 均通过。私有公网 TCP 回读核对受影响轮次的 14 条说明/看图记录完整，结构化图片结果为短标记，不再包含 Base64 工具文本；测试日志和原文未纳入源码。
+- 仅重启电脑 Relay 切到 codexfix.10，Herdr PID 和 Agent terminal/session 清单保持不变，Gateway 未更新。该本地修复随 0.2.17 / codexfix.11 一并发布。
 
 - 新增只读 `workspace_list` / `workspace_directory_v1`：只列当前目录，最多 200 项/页，响应条目预算 192 KiB，最多扫描当前目录 100,000 项，不递归子目录；使用上下文超时和两个并发槽。
 - 沿用 descriptor-rooted 文件系统访问，拒绝符号链接目录、路径逃逸及无效/过期游标；绑定已鉴权设备、确切 Agent/服务会话/terminal/generation 和工作目录，读取后再次检查授权与身份。不增加文件写入权限。

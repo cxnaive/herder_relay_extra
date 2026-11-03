@@ -309,7 +309,7 @@ func (s *Server) authorizeDeviceAction(client *transport.ClientConn, action prot
 }
 
 func authorizeAuthenticatedIdentity(identity transport.AuthenticatedIdentity, authenticated bool, action protocol.ActionMetadata, deviceID string) *protocol.ApiError {
-	if (action.Operation == "workspace_list" || action.Operation == "get_pi_integration" || action.Operation == "get_agent_run_state" || action.Operation == "get_agent_settings" || action.Operation == "set_agent_settings") && !authenticated {
+	if (action.Operation == "file_access_get" || action.Operation == "file_access_set" || action.Operation == "workspace_list" || action.Operation == "get_pi_integration" || action.Operation == "get_agent_run_state" || action.Operation == "get_agent_settings" || action.Operation == "set_agent_settings") && !authenticated {
 		apiErr := protocol.NewApiError(protocol.ErrorReaderDenied, map[string]any{"operation": action.Operation})
 		return &apiErr
 	}
@@ -749,6 +749,8 @@ func (s *Server) Run(ctx context.Context) error {
 			return nil
 		})
 		switch action {
+		case "file_access_get", "file_access_set":
+			s.handleFileAccess(client, inbound, msg)
 		case "get_agent_run_state":
 			s.handleAgentRunState(commandCtx, client, inbound)
 		case "get_agent_settings", "set_agent_settings":
@@ -1070,11 +1072,19 @@ func (s *Server) Run(ctx context.Context) error {
 			}
 			catalog = fitSlashCommandCatalog(slashcmd.Revise(catalog), requestID, "list_slash_commands", paneID)
 			s.sendCommandResult(client, requestID, "list_slash_commands", true, "completed", "", paneID, catalog)
-		case "workspace_file_read":
+		case "workspace_file_read", "workspace_file_download":
 			s.handleWorkspaceDocument(commandCtx, client, inbound)
 		case "workspace_list":
 			s.handleWorkspaceDirectory(commandCtx, client, inbound)
 		case "workspace_tree", "workspace_file", "workspace_git_status", "workspace_git_diff":
+			if inbound.FileScope != "" && inbound.FileScope != "workspace" {
+				if inbound.Type == "workspace_file" {
+					s.handleWorkspaceDocument(commandCtx, client, inbound)
+				} else {
+					s.sendCommandResult(client, inbound.RequestID, inbound.Type, false, "failed", "This operation only supports workspace scope", inbound.PaneID, nil)
+				}
+				break
+			}
 			requestID := inbound.RequestID
 			paneID := inbound.PaneID
 			agent, exists := s.state.Agent(paneID)
@@ -2786,6 +2796,7 @@ func (s *Server) sendConnectionSnapshot(client *transport.ClientConn) {
 	speechLanguages := s.rememberSpeechLanguages(speechStatus.Languages)
 	herdrStatus := herdrStatusPayload(herdrCapabilityStatus)
 	s.hub.Send(client, protocol.PushConfig{
+		FilesystemRead:  s.filesystemReadAllowed(client),
 		Type:            "push_config",
 		VAPIDPublicKey:  vapidPublicKey,
 		Host:            s.hostname,

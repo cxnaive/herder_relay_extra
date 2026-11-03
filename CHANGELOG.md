@@ -17,6 +17,15 @@ project follows [Semantic Versioning](https://semver.org/).
 - Allow an operator-selected local Codex session to be bound to an exact terminal and live process when Herdr omits its session ID; reject stale, renamed, replaced or ambiguous bindings instead of guessing by directory.
 - Locate resumed Codex threads through the read-only state database and validate the rollout's session metadata. Rotated `<thread-id>_<segment-id>.jsonl` files no longer appear to have no conversation.
 
+## [Android 0.2.17 / Relay 0.23.5+codexfix.11] - 2026-11-03
+
+### Added
+- Separate bounded previews from streamed original-file downloads: large/unsupported files still open with metadata and download/share actions, without the 12 MiB preview ceiling blocking downloads.
+- Open local conversation file links of any type; optionally allow outside-workspace read-only browsing, previews and downloads with a default-off, controller-only per-device setting enforced by the Relay.
+
+### Fixed
+- Recover intervening recorded conversation entries when large image/tool result records evict the recent byte window; preserve commentary and image calls outside Android tool disclosures and avoid serializing image Base64 as tool-detail text.
+
 ## [Android 0.2.15 / Relay 0.23.5+codexfix.9] - 2026-11-03
 
 ### Fixed

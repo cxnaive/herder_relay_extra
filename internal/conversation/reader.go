@@ -766,7 +766,7 @@ func parseToolActivity(agent string, record map[string]any) ([]ToolActivity, []t
 		case "functioncalloutput", "customtoolcalloutput", "localshellcalloutput":
 			return nil, []toolResult{{
 				id:     strings.TrimSpace(firstString(payload, "call_id", "id")),
-				output: textValue(firstValue(payload, "output", "content")),
+				output: codexToolOutput(firstValue(payload, "output", "content")),
 				failed: payload["is_error"] == true,
 			}}
 		}
@@ -921,6 +921,31 @@ func firstValue(record map[string]any, keys ...string) any {
 		}
 	}
 	return nil
+}
+
+// Image bytes are not tool-detail text. Keep textual blocks and a small marker;
+// the view_image call's path supplies the authenticated workspace preview.
+func codexToolOutput(value any) string {
+	blocks, ok := value.([]any)
+	if !ok {
+		return textValue(value)
+	}
+	image := false
+	for _, raw := range blocks {
+		block, _ := raw.(map[string]any)
+		switch normalizedBlockType(block["type"]) {
+		case "image", "inputimage", "outputimage", "imageurl":
+			image = true
+		}
+	}
+	if !image {
+		return textValue(value)
+	}
+	text := textBlocks(value)
+	if text != "" {
+		return text + "\n[Image output; see image preview]"
+	}
+	return "[Image output; see image preview]"
 }
 
 func textValue(value any) string {

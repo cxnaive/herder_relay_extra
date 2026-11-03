@@ -2,17 +2,17 @@
   "repository": "cxnaive/herder_relay_extra",
   "snapshot_date": "2026-11-03",
   "android": {
-    "version": "0.2.15",
-    "version_code": 18,
+    "version": "0.2.17",
+    "version_code": 20,
     "source_path": "herdr-android",
-    "release_tag": "android-v0.2.15",
-    "artifact": "Herdr-Pocket-0.2.15-debug.apk",
+    "release_tag": "android-v0.2.17",
+    "artifact": "Herdr-Pocket-0.2.17-debug.apk",
     "reference_upstream_revision": "09b52781399114a7576d40fcdf91ccefd7686be6",
     "signature": "debug",
     "signing_certificate_sha256": "fe1ddf4d04f46d45168d53ca25dd2b379f242b6cd9b23169c9717258cf5232b9"
   },
   "relay": {
-    "version": "0.23.5+codexfix.9",
+    "version": "0.23.5+codexfix.11",
     "source_path": ".",
     "upstream_version": "0.23.5",
     "upstream_revision": "27054011fd8137d5f9702cc9e718aff1bd73443d"
@@ -24,11 +24,11 @@
   },
   "prior_repository_head": "d07403b246a2220c3447dcd84084d7d717140361",
   "native_release": {
-    "tag": "native-v0.23.5-codexfix.9",
+    "tag": "native-v0.23.5-codexfix.11",
     "targets": [
       "linux/amd64"
     ],
-    "relay_artifact": "herdr-mobile-relay_0.23.5-codexfix.9_linux_amd64.tar.gz",
+    "relay_artifact": "herdr-mobile-relay_0.23.5-codexfix.11_linux_amd64.tar.gz",
     "gateway_artifact": "herdr-gateway_0.23.5-codexfix.6_linux_amd64.tar.gz",
     "checksums": "SHA256SUMS.txt"
   }

@@ -31,3 +31,12 @@ func recordedPlanChanged(previous, page conversation.BrowsePage) bool {
 	current, _ := json.Marshal(page.OMOPlan)
 	return !bytes.Equal(old, current)
 }
+
+// SourceTruncated describes the raw recent-byte boundary, not lost semantic
+// messages. Moving this boundary on append must not reset a recovered feed.
+func recordedDiagnosticsChanged(previous, page conversation.BrowsePage) bool {
+	before, after := previous.Diagnostics, page.Diagnostics
+	before.SourceTruncated = false
+	after.SourceTruncated = false
+	return before != after
+}

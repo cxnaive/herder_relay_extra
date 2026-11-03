@@ -49,6 +49,7 @@ class SharedRelay private constructor(context: Context) {
         engine.pause(); online.clear(); freshAgents.clear()
         configs.values.forEach { it.put("inventory", JSONObject().put("state", "stale")) }
     }
+    fun rememberFileAccess(id: String, enabled: Boolean) { mainThread(); configs[id]?.put("filesystem_read", enabled) }
     private fun message(id: String, value: JSONObject) = JSONObject().put("type", "message").put("relayId", id).put("message", value)
     private fun replay(listener: (JSONObject) -> Unit) {
         for (id in agents.keys + configs.keys + online) {
