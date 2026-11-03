@@ -1,0 +1,148 @@
+name: build-artifacts
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-artifacts-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  native-binaries:
+    name: Native binaries (${{ matrix.target }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux_amd64
+            goos: linux
+            goarch: amd64
+            suffix: ""
+          - target: linux_arm64
+            goos: linux
+            goarch: arm64
+            suffix: ""
+          - target: windows_amd64
+            goos: windows
+            goarch: amd64
+            suffix: ".exe"
+          - target: windows_arm64
+            goos: windows
+            goarch: arm64
+            suffix: ".exe"
+          - target: darwin_arm64
+            goos: darwin
+            goarch: arm64
+            suffix: ""
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: 1.27.3
+          cache: true
+
+      - name: Build and package binaries
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          BINARY_SUFFIX: ${{ matrix.suffix }}
+          TARGET: ${{ matrix.target }}
+          REVISION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          relay_version="$(jq -r '.relay.version' VERSION.json)"
+          gateway_version="$(jq -r '.native_gateway.version' VERSION.json)"
+          test "$relay_version" != null
+          test "$gateway_version" != null
+
+          output="dist/$TARGET"
+          mkdir -p "$output"
+          relay_binary="$output/herdr-mobile-relay$BINARY_SUFFIX"
+          gateway_binary="$output/herdr-gateway$BINARY_SUFFIX"
+
+          CGO_ENABLED=0 go build -mod=readonly -trimpath \
+            -ldflags "-s -w -X main.version=$relay_version -X main.revision=$REVISION" \
+            -o "$relay_binary" ./cmd/herdr-mobile-relay
+          CGO_ENABLED=0 go build -mod=readonly -trimpath \
+            -ldflags "-s -w -X main.version=$gateway_version -X main.revision=$REVISION" \
+            -o "$gateway_binary" ./cmd/herdr-gateway
+
+          jq -n \
+            --arg target "$TARGET" \
+            --arg goos "$GOOS" \
+            --arg goarch "$GOARCH" \
+            --arg revision "$REVISION" \
+            --arg relay_version "$relay_version" \
+            --arg gateway_version "$gateway_version" \
+            --arg relay_sha256 "$(sha256sum "$relay_binary" | awk '{print $1}')" \
+            --arg gateway_sha256 "$(sha256sum "$gateway_binary" | awk '{print $1}')" \
+            '{schema: 1, target: $target, goos: $goos, goarch: $goarch, revision: $revision, components: {
+              relay: {version: $relay_version, file: ($target | if startswith("windows_") then "herdr-mobile-relay.exe" else "herdr-mobile-relay" end), sha256: $relay_sha256},
+              gateway: {version: $gateway_version, file: ($target | if startswith("windows_") then "herdr-gateway.exe" else "herdr-gateway" end), sha256: $gateway_sha256}
+            }}' > "$output/BUILD-INFO.json"
+
+          (
+            cd "$output"
+            printf '%s  %s\n' \
+              "$(sha256sum "herdr-mobile-relay$BINARY_SUFFIX" | awk '{print $1}')" "herdr-mobile-relay$BINARY_SUFFIX" \
+              "$(sha256sum "herdr-gateway$BINARY_SUFFIX" | awk '{print $1}')" "herdr-gateway$BINARY_SUFFIX" \
+              > SHA256SUMS.txt
+            zip -X -9 "../herdr-native-binaries_${TARGET}.zip" \
+              "herdr-mobile-relay$BINARY_SUFFIX" \
+              "herdr-gateway$BINARY_SUFFIX" \
+              BUILD-INFO.json SHA256SUMS.txt
+          )
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: native-binaries-${{ matrix.target }}
+          path: dist/herdr-native-binaries_${{ matrix.target }}.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  android-apk:
+    name: Android Debug APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: android-actions/setup-android@v4
+
+      - name: Install Android SDK packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build and test Android app
+        working-directory: herdr-android
+        run: ./gradlew --no-daemon testDebugUnitTest assembleDebug assembleDebugAndroidTest lintDebug
+
+      - name: Name APK
+        run: mkdir -p dist && cp herdr-android/app/build/outputs/apk/debug/app-debug.apk "dist/Herdr-Pocket-$(jq -r '.android.version' VERSION.json)-debug.apk"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: android-apk
+          path: dist/Herdr-Pocket-*-debug.apk
+          if-no-files-found: error
+          retention-days: 14
