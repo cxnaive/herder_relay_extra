@@ -39,24 +39,24 @@ class DocumentReviewer(private val context: Context, private val cwd: String,
     private val history = ArrayDeque<ReviewReference>()
     private var rawMarkdown = false
     private var textSize = 17f
-    private val ink = 0xffe8f0f2.toInt()
-    private val muted = 0xff97adb6.toInt()
-    private val root = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(0xff101b22.toInt()) }
-    private val title = label("文档查看", 17f)
-    private val subtitle = label("", 11f).apply { setTextColor(muted); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.MIDDLE }
-    private val fileActions = LinearLayout(context)
+    private val ink = AgentStyle.ink
+    private val muted = AgentStyle.muted
+    private val root = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(AgentStyle.background) }
+    private val title = label("文档查看", 17f).apply { typeface = AgentStyle.medium }
+    private val subtitle = label("", 12f).apply { setTextColor(muted); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.MIDDLE }
+    private val fileActions = LinearLayout(context).apply { setPadding(dp(16), dp(12), dp(16), dp(12)) }
     private val controls = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL }
     private val body = FrameLayout(context)
-    private val dialog = object : Dialog(context, android.R.style.Theme_Material_NoActionBar) {
+    private val dialog = object : Dialog(context, R.style.Theme_HerdrPocket) {
         @Suppress("OVERRIDE_DEPRECATION")
         override fun onBackPressed() { goBack() }
     }
     init {
         root.addView(LinearLayout(context).apply {
             gravity = Gravity.CENTER_VERTICAL
-            addView(button("‹", "返回上一份文档或对话") { goBack() }, LinearLayout.LayoutParams(dp(52), dp(56)))
+            addView(AgentStyle.iconButton(context, "back", "返回上一份文档或对话") { goBack() }, LinearLayout.LayoutParams(dp(52), dp(56)))
             addView(LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; title.maxLines = 1; title.ellipsize = android.text.TextUtils.TruncateAt.END; addView(title); addView(subtitle) }, LinearLayout.LayoutParams(0, -2, 1f))
-            addView(button("×", "关闭文档查看器") { close() }, LinearLayout.LayoutParams(dp(52), dp(56)))
+            addView(AgentStyle.iconButton(context, "close", "关闭文档查看器") { close() }, LinearLayout.LayoutParams(dp(52), dp(56)))
         })
         root.addView(fileActions, LinearLayout.LayoutParams(-1, -2))
         root.addView(controls, LinearLayout.LayoutParams(-1, -2)); root.addView(body, LinearLayout.LayoutParams(-1, 0, 1f))
@@ -97,7 +97,7 @@ class DocumentReviewer(private val context: Context, private val cwd: String,
         pdf?.close(); pdf = null; image?.setBitmap(null); image = null; thumbnails.clear(); controls.removeAllViews(); body.removeAllViews()
         fileActions.removeAllViews()
         if (download != null && ref.inlineImage == null && ref.path.isNotBlank()) {
-            fileActions.addView(button("下载原文件", "下载原文件到手机") { if (current()) download.invoke(ref.path, false) }, LinearLayout.LayoutParams(0, dp(48), 1f))
+            fileActions.addView(AgentStyle.button(context, "下载原文件", primary = true) { if (current()) download.invoke(ref.path, false) }.apply { contentDescription = "下载原文件到手机" }, LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(8) })
             fileActions.addView(button("分享", "下载后分享原文件") { if (current()) download.invoke(ref.path, true) }, LinearLayout.LayoutParams(0, dp(48), 1f))
         }
         val displayPath = if (ref.inlineImage != null) "对话内嵌图像" else (if (unrestricted) "/" else "") + ref.path
@@ -159,7 +159,7 @@ class DocumentReviewer(private val context: Context, private val cwd: String,
         controls.addView(button(if (rawMarkdown) "排版" else "源码", "切换 Markdown 排版与源码") { rawMarkdown = !rawMarkdown; showMarkdown(ref, text) }, LinearLayout.LayoutParams(dp(84), dp(48)))
         controls.addView(label("只读 · 可选择复制", 11f).apply { setTextColor(muted) }, LinearLayout.LayoutParams(0, -2, 1f))
         if (rawMarkdown) { value.typeface = Typeface.MONOSPACE; value.text = text }
-        else Markwon.builder(context).usePlugin(CodexFileCitations.plugin()).usePlugin(TablePlugin.create(context)).usePlugin(StrikethroughPlugin.create())
+        else Markwon.builder(context).usePlugin(PocketMarkdown(context)).usePlugin(CodexFileCitations.plugin()).usePlugin(TablePlugin.create(context)).usePlugin(StrikethroughPlugin.create())
             .usePlugin(object : io.noties.markwon.AbstractMarkwonPlugin() {
                 override fun configureConfiguration(builder: io.noties.markwon.MarkwonConfiguration.Builder) { builder.linkResolver { _, link -> openLink(link, ref) } }
             }).build().setMarkdown(value, text)
@@ -195,8 +195,10 @@ class DocumentReviewer(private val context: Context, private val cwd: String,
     }
     private fun failure(message: String, ref: ReviewReference) {
         body.removeAllViews()
-        body.addView(LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setPadding(dp(24), dp(24), dp(24), dp(24))
+        val content = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(40), dp(24), dp(24))
+            addView(ImageView(context).apply { setImageDrawable(AgentIcon("file", muted)); importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO }, LinearLayout.LayoutParams(dp(36), dp(36)).apply { bottomMargin = dp(20) })
+            addView(label(ref.label, 22f).apply { typeface = AgentStyle.medium }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(12) })
             val missing = message.equals("Workspace file was not found", ignoreCase = true)
             addView(label(if (missing) "找不到引用的文件" else message, 15f))
             if (missing) {
@@ -204,14 +206,13 @@ class DocumentReviewer(private val context: Context, private val cwd: String,
                 addView(label("实际读取路径：\n$absolute", 13f).apply { setTextColor(muted); setTextIsSelectable(true) })
                 addView(label("名称或发布标签不一定是本地文件；也可能文件已移动。请使用完整文件路径或有效下载链接。不会自动寻找其他目录中的同名文件。", 13f).apply { setTextColor(muted) })
             }
-            addView(button("重新读取", "重试读取文档") { navigate(ref, false) })
-        }, FrameLayout.LayoutParams(-1, -1))
+            addView(AgentStyle.button(context, "重新读取", subtle = true) { navigate(ref, false) }.apply { contentDescription = "重试读取文档" }, LinearLayout.LayoutParams(-2, dp(48)).apply { topMargin = dp(20) })
+        }
+        body.addView(ScrollView(context).apply { addView(content) }, FrameLayout.LayoutParams(AgentStyle.contentWidth(context, 600), -1, Gravity.CENTER_HORIZONTAL))
     }
     private fun dp(n: Int) = (n * context.resources.displayMetrics.density).toInt()
-    private fun label(text: String, size: Float) = TextView(context).apply { this.text = text; textSize = size; setTextColor(ink) }
-    private fun button(text: String, description: String, click: () -> Unit) = Button(context).apply {
-        this.text = text; textSize = 13f; isAllCaps = false; setTextColor(ink); background = android.graphics.drawable.InsetDrawable(AgentStyle.shape(context, 0xff1d323c.toInt(), 12), dp(3), dp(4), dp(3), dp(4)); minWidth = 0; minimumWidth = 0; setPadding(0, 0, 0, 0); contentDescription = description; setOnClickListener { click() }
-    }
+    private fun label(text: String, size: Float) = TextView(context).apply { this.text = text; textSize = size; setTextColor(ink); setLineSpacing(0f, 1.2f) }
+    private fun button(text: String, description: String, click: () -> Unit) = AgentStyle.button(context, text, action = click).apply { contentDescription = description; setPadding(dp(4), 0, dp(4), 0) }
     companion object {
         fun confirmExternal(context: Context, link: String) {
             val uri = runCatching { Uri.parse(link) }.getOrNull()

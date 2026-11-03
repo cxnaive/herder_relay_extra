@@ -1,0 +1,27 @@
+<resources>
+    <!-- Native controls remain native; only the dark product palette and typography are themed. -->
+    <style name="Theme.HerdrPocket" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">#A6DBC9</item>
+        <item name="android:colorControlNormal">#A5AFB9</item>
+        <item name="android:colorControlActivated">#A6DBC9</item>
+        <item name="android:colorButtonNormal">#252C32</item>
+        <item name="android:textColorPrimary">#EDF0F3</item>
+        <item name="android:textColorSecondary">#A5AFB9</item>
+        <item name="android:textColorHint">#A5AFB9</item>
+        <item name="android:colorBackground">#111417</item>
+        <item name="android:windowBackground">#111417</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:alertDialogTheme">@style/Theme.HerdrPocket.Dialog</item>
+    </style>
+    <style name="Theme.HerdrPocket.Dialog" parent="android:style/Theme.Material.Dialog.Alert">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">#A6DBC9</item>
+        <item name="android:colorBackground">#1B2025</item>
+        <item name="android:textColorPrimary">#EDF0F3</item>
+        <item name="android:textColorSecondary">#A5AFB9</item>
+        <item name="android:windowMinWidthMajor">88%</item>
+        <item name="android:windowMinWidthMinor">88%</item>
+    </style>
+</resources>

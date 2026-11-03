@@ -70,7 +70,15 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
     private var identitySubtitle: TextView? = null
     private var sendButton: View? = null
     private var terminal: NativeTerminalView? = null
-    private var terminalScroll: ScrollView? = null
+    private var terminalScroll: TerminalViewport? = null
+    private var terminalKeys: TerminalExtraKeys? = null
+    private var terminalOlderButton: Button? = null
+    private var terminalHistorySpinner: ProgressBar? = null
+    private var terminalHistoryMessage = ""
+    private var terminalHasMore = true
+    private var terminalRequest = 0
+    private var terminalSavedY = 0
+    private var terminalFollowing = true
     private var terminalHistoryLines = 500
     private var loadingOlderTerminal = false
     private var terminalReadPending = false
@@ -103,11 +111,11 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
     private var uploading = false
     private var uploadId = ""
     private var uiDraft = ""
-    private val textInk = Color.rgb(232, 240, 242)
-    private val muted = Color.rgb(151, 173, 182)
-    private val surface = Color.rgb(27, 42, 50)
-    private val accent = Color.rgb(112, 225, 197)
-    private val renderMarkdown = Markwon.builder(context)
+    private val textInk = AgentStyle.ink
+    private val muted = AgentStyle.muted
+    private val surface = AgentStyle.panel
+    private val accent = AgentStyle.accent
+    private val renderMarkdown = Markwon.builder(context).usePlugin(PocketMarkdown(context))
         .usePlugin(CodexFileCitations.plugin())
         .usePlugin(TablePlugin.create(context))
         .usePlugin(StrikethroughPlugin.create())
@@ -120,7 +128,7 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
     fun fileAccessChanged(id: String) { if (relay == id) { reviewer?.close(); reviewer = null; conversationImages.clear(); if (active) render() } }
     fun destroy() { pause(); transientToast?.cancel(); speech?.stop(); speech?.shutdown(); conversationImages.close(); conversationCache.clear(); io.shutdown() }
     fun back(): Boolean { if (selected == null) return false; rememberConversation(); saveDraft(); stopStreams(); selected = null; render(); return true }
-    fun open(relayId: String, agent: JSONObject) { rememberConversation(); saveDraft(); stopStreams(); composer = null; relay = relayId; selected = JSONObject(agent.toString()); runPresentation.clear(); terminalHistoryLines = 500; loadingOlderTerminal = false; terminalReadPending = false; expandedToolGroups.clear(); expandedToolItems.clear(); conversationImages.clear(); mode = "conversation"; conversation = conversationCache.get(WorkspaceBinding.fromAgent(relayId, agent)) ?: ConversationState(); resumeOlderAfterReconnect = false; historyMessage = ""; attachments = JSONArray(); content = ""; fingerprint = ""; frame = JSONObject(); uploading = false; uiDraft = vault.read(draftKey()).orEmpty(); if (active) render() }
+    fun open(relayId: String, agent: JSONObject) { rememberConversation(); saveDraft(); stopStreams(); composer = null; relay = relayId; selected = JSONObject(agent.toString()); runPresentation.clear(); terminalHistoryLines = 500; terminalHasMore = true; terminalHistoryMessage = ""; terminalSavedY = 0; terminalFollowing = true; terminalScroll = null; loadingOlderTerminal = false; terminalReadPending = false; expandedToolGroups.clear(); expandedToolItems.clear(); conversationImages.clear(); mode = "conversation"; conversation = conversationCache.get(WorkspaceBinding.fromAgent(relayId, agent)) ?: ConversationState(); resumeOlderAfterReconnect = false; historyMessage = ""; attachments = JSONArray(); content = ""; fingerprint = ""; frame = JSONObject(); uploading = false; uiDraft = vault.read(draftKey()).orEmpty(); if (active) render() }
     private fun name(agent: JSONObject) = AgentPresentation.title(agent)
     private fun current(): JSONObject? { val captured = selected ?: return null; val rows = inventory()[relay] ?: return null; return (0 until rows.length()).map { rows.getJSONObject(it) }.find { WorkspaceBinding.fromAgent(relay, it) == WorkspaceBinding.fromAgent(relay, captured) } }
     private fun role(id: String = relay) = engine.snapshot().optJSONObject("auth")?.optJSONObject("relays")?.optJSONObject(id)?.optString("role") ?: "reader"
@@ -129,9 +137,11 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
     private fun deliveryKey() = "delivery:" + selected?.let { WorkspaceBinding.fromAgent(relay, it).toString() }.orEmpty()
     private fun saveDraft() { if (selected != null) { uiDraft = composer?.text?.toString() ?: uiDraft; if (!frame.optBoolean("no_echo")) vault.write(draftKey(), uiDraft) } }
     private fun stopStreams() {
+        terminalScroll?.let { terminalSavedY = it.scrollY; terminalFollowing = it.followsOutput }
+        terminalRequest++; terminalKeys?.setAvailable(false)
         reviewer?.close(); reviewer = null
         main.removeCallbacks(runTicker); runRequest++; runPending = false; runPresentation.invalidate(); updateRunStatus()
-        epoch++; historyRequest++; historyPending = false; historyProgress = null; updateHistoryControl(); terminalReadPending = false; loadingOlderTerminal = false
+        epoch++; historyRequest++; historyPending = false; historyProgress = null; updateHistoryControl(); terminalReadPending = false; loadingOlderTerminal = false; updateTerminalControls()
         selected?.let { engine.send(relay, AgentProtocol.command(relay, it, "unwatch_pane")); if (conversation.subscription.isNotBlank()) engine.send(relay, AgentProtocol.command(relay, it, "unwatch_conversation").put("subscription_id", conversation.subscription)); engine.send(relay, AgentProtocol.command(relay, it, "release_pane_size").put("immediate", true)) }
     }
     fun onEvent(event: JSONObject) {
@@ -174,14 +184,16 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
             }
             "pane_content", "pane_delta", "pane_resync", "pane_unchanged" -> {
                 val agent = selected ?: return
-                if (id != relay || !AgentProtocol.targetMatches(id, agent, value)) return
+                if (!active || mode != "terminal" || id != relay || !AgentProtocol.targetMatches(id, agent, value)) return
+                // Requested snapshots are applied by their generation-checked callback.
+                if (value.optString("request_id").isNotBlank() || terminalReadPending) return
                 acceptFrame(value)
             }
         }
     }
     private fun render() {
         if (!active) return
-        saveDraft(); main.removeCallbacks(runTicker); runStatusView = null; host?.removeAllViews(); agentListRows = null; composer = null; composerPanel = null; identityTitle = null; identitySubtitle = null; terminal = null; terminalScroll = null; conversationScroll = null; conversationBody = null; historyControl = null
+        saveDraft(); terminalKeys?.setAvailable(false); terminalScroll?.let { terminalSavedY = it.scrollY; terminalFollowing = it.followsOutput }; main.removeCallbacks(runTicker); runStatusView = null; host?.removeAllViews(); agentListRows = null; composer = null; composerPanel = null; identityTitle = null; identitySubtitle = null; terminal = null; terminalScroll = null; terminalKeys = null; terminalOlderButton = null; terminalHistorySpinner = null; conversationScroll = null; conversationBody = null; historyControl = null
         updateImageAvailability(); detailVisibility(selected != null)
         if (selected == null) renderList() else renderAgent()
     }
@@ -190,16 +202,19 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
         val target = host ?: return
         agentListRows?.takeIf { it.isAttachedToWindow }?.let { fillAgentRows(it); return }
         target.removeAllViews()
-        val layout = column(16); target.addView(layout)
+        val layout = column(16); target.addView(layout, FrameLayout.LayoutParams(AgentStyle.contentWidth(context, 720), -1, Gravity.CENTER_HORIZONTAL))
         val controls = row()
-        controls.addView(button("刷新") { inventory().keys.forEach { engine.send(it, JSONObject().put("type", "refresh_agents")) } }, weight())
-        controls.addView(button("新建 Agent") { launchAgent() }, weight())
-        controls.addView(button("电脑管理") { chooseRelay(::manageRelay) }, weight()); layout.addView(controls)
-        monitorButton = button("常驻监控 / 完成提醒", monitoring).also { layout.addView(it, LinearLayout.LayoutParams(-1, dp(44))) }; updateMonitorControls()
-        val filter = EditText(context).apply { hint = "搜索工作空间、Tab、Agent 或电脑"; setTextColor(textInk); setHintTextColor(muted); setSingleLine(); setText(search) }
+        val expanded = context.resources.configuration.screenWidthDp >= 600
+        controls.addView(AgentStyle.button(context, "新建 Agent", primary = true) { launchAgent() }, LinearLayout.LayoutParams(if (expanded) dp(160) else 0, dp(48), if (expanded) 0f else 1f).apply { marginEnd = dp(8) })
+        if (expanded) controls.addView(View(context), LinearLayout.LayoutParams(0, 1, 1f))
+        controls.addView(AgentStyle.button(context, "电脑管理", subtle = true) { chooseRelay(::manageRelay) }, LinearLayout.LayoutParams(-2, dp(48)))
+        controls.addView(AgentStyle.iconButton(context, "refresh", "刷新") { inventory().keys.forEach { engine.send(it, JSONObject().put("type", "refresh_agents")) } }, LinearLayout.LayoutParams(dp(48), dp(48)))
+        layout.addView(controls)
+        monitorButton = AgentStyle.button(context, "常驻监控 / 完成提醒", subtle = true, action = monitoring).also { layout.addView(it, LinearLayout.LayoutParams(-1, dp(48))) }; updateMonitorControls()
+        val filter = EditText(context).apply { hint = "搜索工作空间或 Agent"; contentDescription = "搜索工作空间、Tab、Agent 或电脑"; setTextColor(textInk); setHintTextColor(muted); setSingleLine(); setText(search) }
         val rows = column(0).also { agentListRows = it }
-        filter.addTextChangedListener(simpleWatcher { search = it; fillAgentRows(rows) }); layout.addView(filter)
-        layout.addView(ScrollView(context).apply { addView(rows) }, LinearLayout.LayoutParams(-1, 0, 1f)); fillAgentRows(rows)
+        filter.addTextChangedListener(simpleWatcher { search = it; fillAgentRows(rows) }); layout.addView(AgentStyle.search(context, filter), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4); bottomMargin = dp(20) })
+        layout.addView(ScrollView(context).apply { isVerticalScrollBarEnabled = false; addView(rows) }, LinearLayout.LayoutParams(-1, 0, 1f)); fillAgentRows(rows)
     }
     private fun workspaceTitle(id: String, agent: JSONObject): String =
         AgentPresentation.workspaceTitle(id, agent, workspaces)
@@ -213,21 +228,21 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
             visible += maxOf(1, members.size)
             val section = column(0)
             val workspaceHeader = row()
-            workspaceHeader.addView(label((group.number.takeIf { it in 1 until Int.MAX_VALUE }?.let { "$it · " }.orEmpty()) + group.title, 19, textInk).apply { setTypeface(typeface, Typeface.BOLD) }, weight())
-            workspaceHeader.addView(button("＋ Agent") { launchInWorkspace(group.relay, group.id, group.server) }.apply { contentDescription = "在 ${group.title} 新建 Agent"; isEnabled = group.server == "primary" && !group.id.startsWith("cwd:") && managementReady(group.relay) })
+            workspaceHeader.addView(label(group.title, 18, textInk).apply { typeface = AgentStyle.medium }, weight())
+            workspaceHeader.addView(AgentStyle.button(context, "＋ Agent", subtle = true) { launchInWorkspace(group.relay, group.id, group.server) }.apply { contentDescription = "在 ${group.title} 新建 Agent"; isEnabled = group.server == "primary" && !group.id.startsWith("cwd:") && managementReady(group.relay) })
             section.addView(workspaceHeader)
             val serverLabel = if (group.server == "primary") "" else " · ${group.server}"
             section.addView(label("${relayName(group.relay)}$serverLabel · ${members.size} 个 Agent", 12, muted))
-            section.addView(label(group.path, 11, muted).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.MIDDLE })
+            section.addView(label(group.path, 12, muted).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.MIDDLE })
             if (members.isEmpty()) section.addView(label("这个工作空间还没有 Agent，可点击上方 ＋ Agent 新建。", 13, muted))
             for ((_, agents) in members.groupBy { it.optString("tab_id").ifBlank { it.optString("pane_id") } }) {
                 val first = agents.first()
-                section.addView(label("${first.optInt("tab_number").takeIf { it > 0 }?.let { "$it  " }.orEmpty()}${name(first)}", 15, accent)
+                if (agents.size > 1) section.addView(label("${first.optInt("tab_number").takeIf { it > 0 }?.let { "$it  " }.orEmpty()}${name(first)}", 14, muted)
                     .apply { setPadding(dp(4), dp(14), 0, dp(8)); contentDescription = "Tab：${name(first)}" })
                 for (agent in agents) {
-                    val card = column(12).apply { background = AgentStyle.shape(context, surface, 14) }
+                    val card = column(0).apply { setPadding(dp(2), dp(12), dp(2), dp(4)) }
                     val cardHeader = row()
-                    cardHeader.addView(label(name(agent), 16, textInk), weight())
+                    cardHeader.addView(label(name(agent), 17, textInk).apply { typeface = AgentStyle.medium; maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END; contentDescription = "Tab：${name(agent)}"; setOnClickListener { open(group.relay, agent) }; isFocusable = true; minimumHeight = dp(48); gravity = Gravity.CENTER_VERTICAL }, weight())
                     cardHeader.addView(AgentStyle.iconButton(context, "more", "管理 ${name(agent)}") {
                         val captured = JSONObject(agent.toString())
                         AlertDialog.Builder(context).setTitle(name(captured)).setItems(arrayOf("重命名 Agent", "模型 / 思考强度", "打开管理详情", MonitorSettingsUi.muteLabel(context, group.relay, captured))) { _, choice -> when (choice) {
@@ -236,19 +251,21 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
                             2 -> { open(group.relay, captured); manageAgent() }
                             3 -> { MonitorSettingsUi.toggle(context, group.relay, captured); if (active && selected == null) renderList() }
                         } }.show()
-                    }, LinearLayout.LayoutParams(dp(44), dp(44)))
+                    }, LinearLayout.LayoutParams(dp(48), dp(48)))
                     card.addView(cardHeader)
                     val status = when (agent.optString("status")) { "blocked" -> "需要处理"; "working" -> "运行中"; "done" -> "已完成"; else -> "空闲" }
-                    card.addView(label("${agent.optString("agent")} · $status" + if (agents.size > 1) " · ${agent.optString("pane_id")}" else "", 12, accent))
+                    val statusColor = when (agent.optString("status")) { "working", "done" -> accent; "blocked" -> AgentStyle.warning; else -> muted }
+                    card.addView(label("${agent.optString("agent")} · $status" + if (agents.size > 1) " · ${agent.optString("pane_id")}" else "", 12, statusColor).apply { setPadding(0, 0, 0, dp(6)) })
                     if (runCatching { MonitorPreferences(context).muted(MonitorIdentity.key(group.relay, agent)) }.getOrDefault(false)) card.addView(label("完成提醒已关闭", 11, muted))
                     if (agent.optString("cwd") != group.path) card.addView(label(agent.optString("cwd"), 11, muted))
                     if (agent.optString("status") == "blocked") card.addView(label(agent.optString("prompt").take(220), 13, textInk))
                     val actions = row()
-                    actions.addView(button("打开对话") { open(group.relay, agent) }, weight())
-                    actions.addView(button("终端") { open(group.relay, agent); mode = "terminal"; render() }, weight())
-                    actions.addView(button("工作区") { workspace(group.relay, agent) }, weight())
+                    actions.addView(AgentStyle.button(context, "打开对话", subtle = true) { open(group.relay, agent) }, weight())
+                    actions.addView(AgentStyle.button(context, "终端", subtle = true) { open(group.relay, agent); mode = "terminal"; render() }, weight())
+                    actions.addView(AgentStyle.button(context, "工作区", subtle = true) { workspace(group.relay, agent) }, weight())
                     card.addView(actions)
-                    section.addView(card, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
+                    section.addView(card, LinearLayout.LayoutParams(-1, -2))
+                    section.addView(View(context).apply { setBackgroundColor(AgentStyle.border); importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO }, LinearLayout.LayoutParams(-1, dp(1)))
                 }
             }
             rows.addView(section, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(20) })
@@ -262,57 +279,57 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
     }
     private fun renderAgent() {
         val agent = selected ?: return
-        val layout = column(0).apply { setPadding(dp(16), 0, dp(16), dp(12)) }; body = layout; host?.addView(layout)
+        val layout = object : LinearLayout(context) {
+            override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+                terminalKeys?.setCompact(View.MeasureSpec.getSize(heightMeasureSpec)<dp(580))
+                super.onMeasure(widthMeasureSpec,heightMeasureSpec)
+            }
+        }.apply { orientation=LinearLayout.VERTICAL; setPadding(dp(16), 0, dp(16), dp(8)) }; body = layout; host?.addView(layout, FrameLayout.LayoutParams(AgentStyle.contentWidth(context), -1, Gravity.CENTER_HORIZONTAL))
         val header = row()
         header.addView(AgentStyle.iconButton(context, "back", "返回 Agents") { back() }, LinearLayout.LayoutParams(dp(48), dp(56)))
         val identity = column(0)
-        identity.addView(label(name(agent), 18, textInk).apply { identityTitle = this; setTypeface(typeface, Typeface.BOLD); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; setPadding(0, 0, 0, dp(2)) })
+        identity.addView(label(name(agent), 18, textInk).apply { identityTitle = this; typeface = AgentStyle.medium; maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; setPadding(0, 0, 0, dp(2)) })
         identity.addView(label("${relayName(relay)} · ${workspaceTitle(relay, agent)} · ${agent.optString("cwd")}", 11, muted).apply { identitySubtitle = this; maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.MIDDLE; setPadding(0, 0, 0, 0) })
         header.addView(identity, weight())
         header.addView(AgentStyle.iconButton(context, "more", "对话选项") { conversationOptions() }, LinearLayout.LayoutParams(dp(48), dp(56)))
         layout.addView(header, LinearLayout.LayoutParams(-1, dp(64)))
-        val tabs = row().apply { background = AgentStyle.shape(context, 0xff15232b.toInt(), 16); setPadding(dp(4), dp(4), dp(4), dp(4)) }
+        val tabs = row().apply { setPadding(0, dp(2), 0, dp(2)) }
         for ((id, title) in listOf("conversation" to "对话", "terminal" to "终端", "workspace" to "工作区")) {
             tabs.addView(TextView(context).apply {
                 text = title; textSize = 13f; gravity = Gravity.CENTER; isFocusable = true
                 setTextColor(if (id == mode) accent else muted); setTypeface(typeface, if (id == mode) Typeface.BOLD else Typeface.NORMAL)
-                background = AgentStyle.ripple(context, if (id == mode) surface else Color.TRANSPARENT, 12)
-                contentDescription = title; isSelected = id == mode
+                background = AgentStyle.ripple(context, if (id == mode) AgentStyle.selected else Color.TRANSPARENT, 8)
+                contentDescription = title; isSelected = id == mode; AgentStyle.actionSemantics(this)
                 setOnClickListener { if (id == "workspace") current()?.let { workspace(relay, it) } else if (mode != id) { saveDraft(); stopStreams(); mode = id; render() } }
-            }, LinearLayout.LayoutParams(0, dp(44), 1f))
+            }, LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginStart = dp(3); marginEnd = dp(3) })
         }; layout.addView(tabs)
         runStatusView = AgentRunStatusView(context) {
             if (SystemClock.elapsedRealtime() >= runRefreshAt && !runPending) { readRunStatus(); updateRunStatus() }
-        }.also { layout.addView(it, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) }) }
+        }.also { layout.addView(it, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) }) }
         updateRunStatus()
-        stateLabel = label(if (mode == "conversation" && conversation.entries.isNotEmpty()) "已恢复 ${conversation.entries.size} 条内存缓存，正在同步…" else "正在同步…", 11, muted).apply { setPadding(dp(4), dp(10), dp(4), dp(6)) }; layout.addView(stateLabel)
+        stateLabel = label(if (mode == "conversation" && conversation.entries.isNotEmpty()) "已恢复 ${conversation.entries.size} 条内存缓存，正在同步…" else "正在同步…", 11, muted).apply { setPadding(dp(2), dp(4), dp(2), dp(4)) }; layout.addView(stateLabel)
         if (mode == "conversation") {
-            conversationBody = column(0).apply { setPadding(0, dp(8), 0, dp(16)) }
+            conversationBody = column(0).apply { setPadding(0, dp(8), 0, dp(20)) }
             conversationScroll = ScrollView(context).apply { addView(conversationBody); isFillViewport = true; isVerticalScrollBarEnabled = false }
             layout.addView(conversationScroll, LinearLayout.LayoutParams(-1, 0, 1f)); renderConversation()
         } else {
             val output = NativeTerminalView(context); terminal = output
             val controls = row()
-            controls.addView(button("更早输出") { readPane(true) }, weight())
-            controls.addView(button(if (output.wrapToPhone) "手机换行" else "原始列宽") {
-                output.toggleWrap(); renderTerminalWrapLabel(controls, output)
-            }, weight())
-            controls.addView(button("回到底部") { terminalScroll?.post { terminalScroll?.fullScroll(View.FOCUS_DOWN) } }, weight())
+            terminalHistorySpinner = ProgressBar(context, null, android.R.attr.progressBarStyleSmall).apply { contentDescription="正在加载终端历史"; visibility=View.GONE; indeterminateTintList=android.content.res.ColorStateList.valueOf(accent) }
+            controls.addView(terminalHistorySpinner,LinearLayout.LayoutParams(dp(18),dp(18)))
+            terminalOlderButton = button("更早输出") { if(terminalHasMore) readPane(true) else noMoreTerminalHistory() }.also { controls.addView(it,weight()) }
+            controls.addView(button(if (output.wrapToPhone) "手机换行" else "原始列宽") { output.toggleWrap(); renderTerminalWrapLabel(controls, output) }, weight())
+            controls.addView(button("回到底部") { terminalScroll?.jumpToBottom() }, weight())
             layout.addView(controls)
-            terminalScroll = ScrollView(context).apply {
-                isFillViewport = true; isVerticalScrollBarEnabled = true
-                addView(HorizontalScrollView(context).apply { isFillViewport = true; addView(output) })
-                addOnLayoutChangeListener { _, left, _, right, _, _, _, _, _ -> output.setViewportWidth(right - left) }
+            terminalScroll = TerminalViewport(context,output).apply {
+                onReadingHistory = { terminalFollowing = !it; updateTerminalStatus() }
+                onReachHistoryTop = { if (terminalHasMore && !terminalReadPending && active && mode=="terminal") readPane(true, true) }
             }
-            layout.addView(terminalScroll, LinearLayout.LayoutParams(-1, 0, 1f)); output.show(content)
-            terminalScroll?.post { terminalScroll?.fullScroll(View.FOCUS_DOWN) }
-            val keys = row()
-            for ((title, key) in listOf("Esc" to "Escape", "Tab" to "Tab", "Ctrl-C" to "C-c", "Enter" to "Enter", "↑" to "Up", "↓" to "Down", "←" to "Left", "→" to "Right")) {
-                keys.addView(button(title) { sendKeys(key) }, LinearLayout.LayoutParams(dp(54), dp(44)).apply { marginEnd = dp(4) })
+            layout.addView(terminalScroll, LinearLayout.LayoutParams(-1,0,1f))
+            output.show(content,frame.optInt("columns",0)); terminalScroll?.restorePosition(terminalSavedY,terminalFollowing)
+            terminalKeys = TerminalExtraKeys(context,::sendKeys).also { keys ->
+                layout.addView(keys,LinearLayout.LayoutParams(-1,-2))
             }
-            layout.addView(HorizontalScrollView(context).apply {
-                isHorizontalScrollBarEnabled = false; contentDescription = "终端快捷键，左右滑动查看更多"; addView(keys)
-            }, LinearLayout.LayoutParams(-1, dp(48)))
         }
         interactionBody = column(0); layout.addView(interactionBody); updateInteraction()
         val panel = NativeComposerView(context, mode == "terminal", uiDraft,
@@ -324,8 +341,9 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
         updateSendState(); startStreams()
     }
     private fun renderTerminalWrapLabel(controls: LinearLayout, output: NativeTerminalView) {
-        (controls.getChildAt(1) as? Button)?.text = if (output.wrapToPhone) "手机换行" else "原始列宽"
+        for(i in 0 until controls.childCount) (controls.getChildAt(i) as? Button)?.takeIf { it.text in listOf("手机换行","原始列宽") }?.text = if(output.wrapToPhone) "手机换行" else "原始列宽"
     }
+
     private fun conversationOptions() {
         val items = if (mode == "conversation") arrayOf("重命名 Agent", "模型 / 思考强度", "在此工作空间新建 Agent", "更早消息", "搜索 / 复制", "刷新", "管理 Agent") else arrayOf("重命名 Agent", "模型 / 思考强度", "在此工作空间新建 Agent", "字号 ＋", "字号 −", "搜索 / 复制", "刷新", "管理 Agent")
         val choices = items + arrayOf(selected?.let { MonitorSettingsUi.muteLabel(context, relay, it) }.orEmpty(), "常驻监控设置")
@@ -340,7 +358,9 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
         } }.show()
     }
     private fun updateSendState() {
-        val available = writable() && !inputPending && !uploading && !uncertain
+        updateTerminalControls()
+        val available = writable() && !inputPending && !uploading && !uncertain && !loadingOlderTerminal
+        terminalKeys?.setAvailable(active && mode == "terminal" && available)
         composerPanel?.setAvailability(available && (uiDraft.isNotBlank() || attachments.length() > 0), available && !frame.optBoolean("no_echo") && selected?.optString("agent") !in listOf("pi", "omp"))
         if (uncertain) stateLabel?.text = "上次操作结果未确认。刷新终端并核对后，在输入方式中解除。"
     }
@@ -517,17 +537,16 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
                 is ConversationTimeline.Message -> {
                     val entry = block.entry
                     val isUser = entry.optString("role") == "user"
-                    val box = column(if (isUser) 16 else 4).apply {
-                        if (isUser) background = AgentStyle.shape(context, 0xff233a42.toInt(), 20)
+                    val box = column(if (isUser) 12 else 2).apply {
+                        if (isUser) background = AgentStyle.shape(context, AgentStyle.panel, 12)
                     }
                     if (!isUser && entry.optString("text").isNotBlank()) {
                         val author = row()
-                        author.addView(label("H", 12, accent).apply { gravity = Gravity.CENTER; setTypeface(typeface, Typeface.BOLD); background = AgentStyle.shape(context, 0xff223d3b.toInt(), 10); setPadding(0, 0, 0, 0) }, LinearLayout.LayoutParams(dp(28), dp(28)).apply { marginEnd = dp(8) })
-                        author.addView(label(selected?.let(::name).orEmpty(), 12, muted).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }, weight())
+                        author.addView(label(selected?.let(::name).orEmpty(), 12, muted).apply { typeface = AgentStyle.medium; maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }, weight())
                         box.addView(author, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
                     }
                     if (entry.optString("text").isNotBlank()) {
-                        val text = label("", 16, textInk).apply { setTextIsSelectable(true); setLineSpacing(dp(3).toFloat(), 1f) }
+                        val text = label("", 16, textInk).apply { setTextIsSelectable(true); setLineSpacing(0f, 1.22f); setLinkTextColor(accent) }
                         renderMarkdown.setMarkdown(text, entry.optString("text")); text.movementMethod = TableAwareMovementMethod.create(); box.addView(text)
                     }
                     if (entry.optBoolean("truncated")) box.addView(label("此条内容已截断", 11, muted))
@@ -557,9 +576,9 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
         }
         for (ref in ReviewReferences.documents(entry, cwd, unrestrictedFiles(relay))) {
             if (!shown.add("document:${ref.path}#${ref.anchor}:${ref.line}")) continue
-            val card = button("${when (ref.kind) { "pdf" -> "PDF"; "markdown" -> "Markdown"; else -> "文件" }}  ·  ${ref.label}  ›") { openReview(ref) }
+            val card = AgentStyle.button(context, "${when (ref.kind) { "pdf" -> "PDF"; "markdown" -> "Markdown"; else -> "文件" }}  ·  ${ref.label}", subtle = true) { openReview(ref) }
             card.contentDescription = "查看文档：${ref.path}"
-            card.isAllCaps = false
+            card.isAllCaps = false; card.gravity = Gravity.START or Gravity.CENTER_VERTICAL; card.setCompoundDrawables(AgentStyle.icon(context, "file"), null, AgentStyle.icon(context, "chevron", size = 16), null); card.compoundDrawablePadding = dp(10)
             container.addView(card, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4); bottomMargin = dp(8) })
         }
     }
@@ -593,47 +612,91 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
         }
         reviewer?.open(ref)
     }
-    private fun readPane(older: Boolean = false) {
-        if (terminalReadPending) return
-        if (older && terminalHistoryLines >= 10000) { toast("已请求最多 10,000 行；更早历史取决于电脑端保留量"); return }
-        if (older) {
-            terminalHistoryLines = (terminalHistoryLines + 1000).coerceAtMost(10000)
-            loadingOlderTerminal = true
-            selected?.let { engine.send(relay, AgentProtocol.command(relay, it, "unwatch_pane")) }
-        }
-        terminalReadPending = true
-        val owner = epoch
-        request("read_pane", JSONObject().put("lines", terminalHistoryLines).put("format", "ansi"), 15000) { _, error ->
-            if (owner != epoch) return@request
-            terminalReadPending = false
-            if (error != null) { loadingOlderTerminal = false; stateLabel?.text = error }
+    private fun updateTerminalControls() {
+        terminalOlderButton?.text = if (loadingOlderTerminal) "读取中…" else "更早输出"
+        terminalOlderButton?.isEnabled = active && !terminalReadPending && !inputPending && !uncertain && !uploading && relay in online && current()!=null
+        terminalHistorySpinner?.visibility = if (loadingOlderTerminal) View.VISIBLE else View.GONE
+    }
+    private fun updateTerminalStatus() {
+        if(mode!="terminal" || frame.optBoolean("no_echo") || uncertain) return
+        stateLabel?.text = when {
+            terminalHistoryMessage.isNotBlank() -> terminalHistoryMessage
+            terminalScroll?.followsOutput == false -> "正在查看已加载历史 · 新输出不会拉回底部"
+            else -> "终端 ${content.count { it=='\n' }+1} 行 · 向下拖动看更早内容" + if(frame.optBoolean("truncated")) "（电脑端有截断）" else ""
         }
     }
+    private fun noMoreTerminalHistory() {
+        val binding = current()?.let { WorkspaceBinding.fromAgent(relay,it) } ?: return
+        val options = arrayOf("远端 PgUp 翻页（会改变电脑视图）", "切到对话看历史", "重新请求更早输出", "保持当前画面")
+        AlertDialog.Builder(context).setTitle("电脑没有返回更多终端历史")
+            .setItems(options) { _,i -> if (!active || mode!="terminal" || current()?.let { WorkspaceBinding.fromAgent(relay,it) } != binding) return@setItems
+                when(i) {
+                0 -> sendKeys("PPage")
+                1 -> { saveDraft(); stopStreams(); mode="conversation"; render() }
+                2 -> readPane(terminalHistoryLines<10000)
+            } }.show()
+    }
+    private fun readPane(older: Boolean = false, automatic: Boolean = false) {
+        if (terminalReadPending || !active || mode!="terminal" || current()==null || relay !in online) return
+        if (older && (inputPending || uncertain || uploading)) return
+        if (older && terminalHistoryLines>=10000) { terminalHistoryMessage="已请求最多 10,000 行；程序内部历史可用 PgUp/PgDn 或对话页查看"; updateTerminalStatus(); if(!automatic) noMoreTerminalHistory(); return }
+        val requested = if(older) (terminalHistoryLines+1000).coerceAtMost(10000) else terminalHistoryLines
+        val previousRows = content.count { it=='\n' } + if(content.isEmpty()) 0 else 1
+        if (older) {
+            loadingOlderTerminal=true; terminalHistoryMessage="正在请求更早输出…已加载 $previousRows 行"
+            selected?.let { engine.send(relay, AgentProtocol.command(relay,it,"unwatch_pane")) }
+        }
+        terminalReadPending=true; updateTerminalControls(); updateTerminalStatus(); updateSendState()
+        val owner=epoch; val requestOwner=++terminalRequest
+        request("read_pane",JSONObject().put("lines",requested).put("format","ansi"),30000) { data,error ->
+            if(owner!=epoch || requestOwner!=terminalRequest) return@request
+            terminalReadPending=false
+            val frameError = data?.optString("error")?.takeIf { it.isNotBlank() && it!="null" }
+            if(error!=null || data==null || frameError!=null) {
+                loadingOlderTerminal=false; terminalHistoryMessage=(error ?: frameError ?: "终端未返回画面")+"；已读历史保留"
+                updateTerminalControls(); updateTerminalStatus(); updateSendState(); watchTerminal(); return@request
+            }
+            if (!AgentProtocol.targetMatches(relay, current() ?: return@request, data) || data.optString("type") !in listOf("pane_content", "pane_unchanged")) {
+                loadingOlderTerminal=false; terminalHistoryMessage="终端响应身份或类型不匹配；已读内容保留"; updateTerminalControls(); updateTerminalStatus(); updateSendState(); watchTerminal(); return@request
+            }
+            if(older) {
+                terminalHistoryLines=requested
+                val returned = if(data.optString("type")=="pane_unchanged") content else data.optString("content"); val count = returned.count { it=='\n' } + if(returned.isEmpty()) 0 else 1
+                terminalHasMore=count>previousRows && requested<10000
+                terminalHistoryMessage=if(count<=previousRows) "电脑只返回 $count 行；PgUp/PgDn 可翻程序内部历史（影响电脑视图）" else "已加载 $count 行 · 可继续向下拖动查看更早内容"
+            } else if(!terminalHistoryMessage.contains("只返回") && !terminalHistoryMessage.contains("远端翻页")) terminalHistoryMessage=""
+            updateTerminalControls()
+            acceptFrame(data)
+        }
+    }
+    private fun watchTerminal() {
+        val agent = current() ?: return
+        if (!active || mode!="terminal" || relay !in online || !capability("pane_realtime_delta")) return
+        engine.send(relay,AgentProtocol.command(relay,agent,"watch_pane").put("lines",terminalHistoryLines).put("format","ansi").put("interval_ms",500).put("content_fingerprint",fingerprint))
+    }
     private fun acceptFrame(value: JSONObject) {
-        val type = value.optString("type")
-        if (type == "pane_resync") { readPane(); return }
-        if (type == "pane_delta") {
-            content = AgentProtocol.applyDelta(content, value, fingerprint) ?: run { readPane(); return }
-        } else if (type == "pane_content") content = value.optString("content")
-        fingerprint = value.optString("content_fingerprint", fingerprint); frame = value; frameObservedAt = System.currentTimeMillis()
-        val output = terminal; val scroll = terminalScroll
-        if (output != null && scroll != null) {
-            val previousY = scroll.scrollY; val previousHeight = output.height
-            val older = loadingOlderTerminal && type == "pane_content"
-            val follow = !older && (previousHeight <= scroll.height || previousHeight - previousY - scroll.height <= output.lineHeight * 2)
-            output.show(content, value.optInt("columns", 0))
-            scroll.post { if (terminal === output) scroll.scrollTo(scroll.scrollX,
-                TerminalLayout.scrollY(previousY, previousHeight, output.height, scroll.height, follow, older)) }
-            if (older) loadingOlderTerminal = false
+        val type=value.optString("type")
+        if(type=="pane_resync") { readPane(); return }
+        if(value.optString("error").let { it.isNotBlank() && it!="null" }) {
+            loadingOlderTerminal=false; terminalHistoryMessage=value.optString("error")+"；已读终端保留"; updateTerminalControls(); updateTerminalStatus(); updateSendState(); return
         }
-        stateLabel?.text = "终端已更新 · ${content.count { it == '\n' } + 1} 行 · 上滑查看历史" + if (value.optBoolean("truncated")) "（电脑端有截断）" else ""
-        val agent = selected ?: return
-        if (value.has("interaction")) { selected!!.put("interaction", value.opt("interaction")); current()?.put("interaction", value.opt("interaction")); updateInteraction() }
-        if (fingerprint.isNotBlank()) {
-            engine.send(relay, AgentProtocol.command(relay, agent, "pane_applied").put("content_fingerprint", fingerprint))
-            if (type == "pane_content" && mode == "terminal" && active && capability("pane_realtime_delta")) engine.send(relay, AgentProtocol.command(relay, agent, "watch_pane").put("lines", terminalHistoryLines).put("format", "ansi").put("interval_ms", 500).put("content_fingerprint", fingerprint))
+        if(type=="pane_unchanged") { loadingOlderTerminal=false; updateTerminalControls(); updateTerminalStatus(); updateSendState(); watchTerminal(); return }
+        if(type=="pane_delta") content=AgentProtocol.applyDelta(content,value,fingerprint) ?: run {readPane();return}
+        else if(type=="pane_content") content=value.optString("content")
+        fingerprint=value.optString("content_fingerprint",fingerprint)
+        // Deltas do not necessarily repeat privacy and width metadata.
+        frame=JSONObject(frame.toString()).apply { value.keys().forEach { put(it,value.get(it)) } }; frameObservedAt=System.currentTimeMillis()
+        val older=loadingOlderTerminal && type=="pane_content"
+        terminalScroll?.update(content,frame.optInt("columns",0),older)
+        loadingOlderTerminal=false; updateTerminalControls(); updateTerminalStatus()
+        val agent=selected ?: return
+        if(value.has("interaction")) { selected!!.put("interaction",value.opt("interaction"));current()?.put("interaction",value.opt("interaction"));updateInteraction() }
+        if(fingerprint.isNotBlank()) {
+            engine.send(relay,AgentProtocol.command(relay,agent,"pane_applied").put("content_fingerprint",fingerprint))
+            if(type=="pane_content") watchTerminal()
         }
-        if (value.optBoolean("no_echo")) { composer?.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD; stateLabel?.text = "终端要求隐私输入，内容不会保存为草稿" } else composer?.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+        if(frame.optBoolean("no_echo")) { composer?.inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD;stateLabel?.text="终端要求隐私输入，内容不会保存为草稿" }
+        else composer?.inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
         updateSendState()
     }
     private fun updateInteraction() {
@@ -702,7 +765,13 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
                 .setPositiveButton("发送") { _, _ -> mutate("send_pi_prompt_unconfirmed", JSONObject().put("text", text).put("pi_prompt_lease", lease), true) }.setNegativeButton("取消", null).show()
         }
     }
-    private fun sendKeys(key: String) = mutate("send_keys", JSONObject().put("keys", JSONArray().put(key)))
+    private fun sendKeys(key: String) {
+        if (!active || mode!="terminal") return
+        if(loadingOlderTerminal) { toast("正在读取终端历史，请稍候"); return }
+        if(key in listOf("PPage","NPage")) terminalHistoryMessage="远端翻页：会改变电脑端程序视图；不会发送手机输入框草稿"
+        val command = TerminalKeyCommand.from(key) ?: run { toast("不支持的终端按键"); return }
+        mutate(command.type, command.payload)
+    }
     private fun mutate(type: String, payload: JSONObject = JSONObject(), clear: Boolean = false) {
         if (!writable() || inputPending || uncertain) { toast("当前不可发送：检查连接、权限和上次操作结果"); return }
         val delivery = deliveryKey(); val owner = selected?.let { WorkspaceBinding.fromAgent(relay, it) }; val sent = composer?.text?.toString()
@@ -724,14 +793,19 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
         }
     }
     private fun inputMenu() {
-        AlertDialog.Builder(context).setTitle("终端输入").setItems(arrayOf("发送 Ctrl-D", "发送 Ctrl-L", "发送 Backspace", "发送 Home", "发送 End", "Page Up", "Page Down", "核对后解除未确认状态", "调整电脑终端尺寸", "问题改为聊天", "功能键 F1–F12", "Ctrl / Alt / Shift 组合键")) { _, index ->
-            when (index) {
-                in 0..6 -> sendKeys(arrayOf("C-d", "C-l", "BSpace", "Home", "End", "PPage", "NPage")[index])
-                7 -> { val delivery = deliveryKey(); AlertDialog.Builder(context).setMessage("请先刷新并确认上次输入是否已经执行。解除后不会自动重发。 ").setPositiveButton("我已核对") { _, _ -> if (delivery in pendingMutations) toast("请求仍在等待响应，请稍后核对") else { vault.remove(delivery); updateSendState(); updateInteraction() } }.setNegativeButton("取消", null).show() }
-                8 -> form("终端尺寸", listOf("列数（40–240）" to "100", "行数（10–120）" to "32")) { values -> val cols = values[0].toIntOrNull(); val rows = values[1].toIntOrNull(); if (cols !in 40..240 || rows !in 10..120) toast("尺寸超出范围") else mutate("lease_pane_size", JSONObject().put("columns", cols).put("rows", rows).put("opt_in", true)) }
-                9 -> current()?.optJSONObject("interaction")?.takeIf { it.optBoolean("can_chat") }?.let { questionAction("clarify_question", it, JSONObject()) }
-                10 -> AlertDialog.Builder(context).setTitle("功能键").setItems((1..12).map { "F$it" }.toTypedArray()) { _, n -> sendKeys("f${n + 1}") }.show()
-                11 -> form("组合键", listOf("例如 C-a、M-x、S-Tab" to "C-a")) { values -> if (values[0].matches(Regex("(?:(?:C|M|S)-){1,3}(?:[A-Za-z0-9]|Tab|Enter|Left|Right|Up|Down|Home|End)"))) sendKeys(values[0]) else toast("组合键格式无效") }
+        val binding = current()?.let { WorkspaceBinding.fromAgent(relay,it) } ?: return
+        fun selectedCurrent() = active && mode=="terminal" && current()?.let { WorkspaceBinding.fromAgent(relay,it) } == binding
+        val keys = listOf("退格 · 删除远端光标前字符" to "BSpace", "Delete · 删除远端光标后字符" to "DC", "Home · 远端行首" to "Home", "End · 远端行尾" to "End", "Page Up · 翻远端历史" to "PPage", "Page Down · 翻远端历史" to "NPage", "← · 光标向左" to "Left", "↑ · 上方向键" to "Up", "↓ · 下方向键" to "Down", "→ · 光标向右" to "Right", "Ctrl-C · 中断" to "C-c", "Ctrl-D · EOF / 退出" to "C-d", "Ctrl-L · 清屏" to "C-l", "Ctrl-U · 删除到行首" to "C-u", "Ctrl-W · 删除前一个词" to "C-w")
+        val actions = listOf("核对后解除未确认状态", "调整电脑终端尺寸", "问题改为聊天", "功能键 F1–F12", "Ctrl / Alt / Shift 组合键")
+        AlertDialog.Builder(context).setTitle("远端终端按键（不修改手机草稿）").setItems((keys.map { it.first } + actions).toTypedArray()) { _, index ->
+            if(!selectedCurrent()) return@setItems
+            if(index < keys.size) { sendKeys(keys[index].second); return@setItems }
+            when(index-keys.size) {
+                0 -> { val delivery = deliveryKey(); AlertDialog.Builder(context).setMessage("请先刷新并确认上次输入是否已经执行。解除后不会自动重发。 ").setPositiveButton("我已核对") { _, _ -> if (!selectedCurrent()) return@setPositiveButton; if (delivery in pendingMutations) toast("请求仍在等待响应，请稍后核对") else { vault.remove(delivery); updateSendState(); updateInteraction() } }.setNegativeButton("取消", null).show() }
+                1 -> form("终端尺寸", listOf("列数（40–240）" to "100", "行数（10–120）" to "32")) { values -> if (!selectedCurrent()) return@form; val cols = values[0].toIntOrNull(); val rows = values[1].toIntOrNull(); if (cols !in 40..240 || rows !in 10..120) toast("尺寸超出范围") else mutate("lease_pane_size", JSONObject().put("columns", cols).put("rows", rows).put("opt_in", true)) }
+                2 -> current()?.optJSONObject("interaction")?.takeIf { it.optBoolean("can_chat") }?.let { questionAction("clarify_question", it, JSONObject()) }
+                3 -> AlertDialog.Builder(context).setTitle("功能键").setItems((1..12).map { "F$it" }.toTypedArray()) { _, n -> if(selectedCurrent()) sendKeys("f${n + 1}") }.show()
+                4 -> form("组合键", listOf("例如 C-a、M-x、S-Tab" to "C-a")) { values -> if (selectedCurrent() && values[0].matches(Regex("(?:(?:C|M|S)-){1,3}(?:[A-Za-z0-9]|Tab|Enter|Left|Right|Up|Down|Home|End)"))) sendKeys(values[0]) else toast("组合键格式无效") }
             }
         }.show()
     }
@@ -965,8 +1039,8 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
     private fun column(padding: Int) = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(padding), dp(padding), dp(padding), dp(padding)) }
     private fun row() = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL }
     private fun weight() = LinearLayout.LayoutParams(0, -2, 1f)
-    private fun label(value: String, size: Int, color: Int) = TextView(context).apply { text = value; textSize = size.toFloat(); setTextColor(color); setPadding(0, dp(4), 0, dp(4)) }
-    private fun button(value: String, action: () -> Unit) = Button(context).apply { text = value; isAllCaps = false; textSize = 12f; minHeight = dp(44); setTextColor(textInk); background = AgentStyle.ripple(context, surface, 12); stateListAnimator = null; setOnClickListener { action() } }
+    private fun label(value: String, size: Int, color: Int) = TextView(context).apply { text = value; textSize = size.toFloat(); setTextColor(color); setPadding(0, dp(2), 0, dp(2)) }
+    private fun button(value: String, action: () -> Unit) = AgentStyle.button(context, value, action = action)
     private fun toast(value: String) { transientToast?.cancel(); transientToast = Toast.makeText(context, value, Toast.LENGTH_LONG).also { it.show() } }
     private fun simpleWatcher(change: (String) -> Unit) = object : android.text.TextWatcher { override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}; override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}; override fun afterTextChanged(s: android.text.Editable?) { change(s.toString()) } }
 }

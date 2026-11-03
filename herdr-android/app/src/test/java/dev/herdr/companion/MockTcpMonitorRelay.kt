@@ -16,6 +16,7 @@ import java.util.concurrent.atomic.AtomicInteger
 /** Real TCP + gateway framing + E2EE, containing only generated metadata fixtures. */
 class MockTcpMonitorRelay : AutoCloseable {
     // Only foreground tests opt in; monitor tests still reject every non-metadata request.
+    @Volatile var foregroundEnvelope: ((JSONObject) -> JSONObject?)? = null
     @Volatile var foregroundCommand: ((JSONObject) -> JSONObject?)? = null
     private val server = ServerSocket(0)
     @Volatile var role = "reader"
@@ -97,6 +98,9 @@ class MockTcpMonitorRelay : AutoCloseable {
         send(JSONObject().put("type", "workspaces").put("workspaces", JSONArray().put(JSONObject().put("workspace_id", "project").put("cwd", "/fixture/project").put("label", "模拟工作空间"))))
         while (!stopped.get()) {
             val request = receive()
+            if (request.getString("type") != "get_agent_run_state" && foregroundEnvelope != null) {
+                foregroundEnvelope!!.invoke(request)?.let { send(it) }; continue
+            }
             if (request.getString("type") != "get_agent_run_state" && foregroundCommand != null) {
                 foregroundCommand!!.invoke(request)?.let { data ->
                     send(JSONObject().put("type", "command_result").put("request_id", request.getString("request_id")).put("ok", true).put("data", data))

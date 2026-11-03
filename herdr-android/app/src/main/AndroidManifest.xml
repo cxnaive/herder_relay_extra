@@ -7,7 +7,7 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
-    <application android:label="Herdr Pocket" android:theme="@android:style/Theme.Material.NoActionBar"
+    <application android:label="Herdr Pocket" android:theme="@style/Theme.HerdrPocket"
         android:allowBackup="false" android:dataExtractionRules="@xml/data_extraction_rules" android:usesCleartextTraffic="false" android:supportsRtl="true"
         android:icon="@drawable/app_icon">
         <activity android:name=".MainActivity" android:exported="true" android:windowSoftInputMode="adjustResize">

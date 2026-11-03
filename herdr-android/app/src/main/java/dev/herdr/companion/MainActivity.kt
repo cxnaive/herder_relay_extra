@@ -32,11 +32,11 @@ import java.io.File
 import java.util.UUID
 
 class MainActivity : ComponentActivity() {
-    private val background = Color.rgb(16, 27, 34)
-    private val surface = Color.rgb(27, 42, 50)
-    private val accent = Color.rgb(112, 225, 197)
-    private val ink = Color.rgb(232, 240, 242)
-    private val muted = Color.rgb(151, 173, 182)
+    private val background = AgentStyle.background
+    private val surface = AgentStyle.panel
+    private val accent = AgentStyle.accent
+    private val ink = AgentStyle.ink
+    private val muted = AgentStyle.muted
     private lateinit var vault: Vault
     private lateinit var engine: RelayEngine
     private lateinit var sharedRelay: SharedRelay
@@ -155,18 +155,20 @@ class MainActivity : ComponentActivity() {
         relayId = state?.getString("relay") ?: relays.optJSONObject(0)?.optString("id").orEmpty()
         tab = state?.getString("tab") ?: if (relays.length() == 0) "devices" else "agents"
         root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(this@MainActivity.background) }
-        header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(22), dp(20), dp(22), dp(16)) }
+        header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(20), dp(12), dp(20), dp(12)) }
         val titles = column()
-        titles.addView(label("HERDR  /  POCKET", 11, accent).apply { letterSpacing = .17f })
-        heading = label("工作文件", 27, ink, true)
+        heading = label("工作文件", 24, ink, true)
         subtitle = label("把工作现场，装进口袋。", 12, muted)
         titles.addView(heading); titles.addView(subtitle)
         header.addView(titles, LinearLayout.LayoutParams(0, -2, 1f))
-        stateDot = label("●", 19, muted); header.addView(stateDot)
+        stateDot = label("", 12, muted); header.addView(stateDot, LinearLayout.LayoutParams(dp(24), dp(24)))
         root.addView(header)
-        content = FrameLayout(this); root.addView(content, LinearLayout.LayoutParams(-1, 0, 1f))
-        nav = LinearLayout(this).apply { setPadding(dp(12), dp(8), dp(12), dp(8)); setBackgroundColor(surface) }
-        root.addView(nav)
+        content = FrameLayout(this)
+        val expanded = resources.configuration.screenWidthDp >= 600
+        nav = LinearLayout(this).apply { orientation = if (expanded) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL; setPadding(dp(8), dp(6), dp(8), dp(6)); setBackgroundColor(surface) }
+        if (expanded) {
+            root.addView(LinearLayout(this).apply { addView(nav, LinearLayout.LayoutParams(dp(88), -1)); addView(content, LinearLayout.LayoutParams(0, -1, 1f)) }, LinearLayout.LayoutParams(-1, 0, 1f))
+        } else { root.addView(content, LinearLayout.LayoutParams(-1, 0, 1f)); root.addView(nav) }
         engine = sharedRelay.engine
         nativeAgents = NativeAgents(this, engine, vault, { agents }, ::selectWorkspace,
             { attachmentPicker.launch(arrayOf("*/*")) }, { detail -> agentDetailVisible = detail; updateChrome() }, { monitorDialog() }, documentDownloads, { it in unrestrictedFiles })
@@ -274,7 +276,7 @@ class MainActivity : ComponentActivity() {
         heading.text = when (tab) { "agents" -> "Agent 工作台"; "devices" -> "我的设备"; else -> if (file != null) FileRules.safeName(file!!.optString("path")) else if (relayId in unrestrictedFiles) "电脑文件" else "Agent 工作区" }
         heading.maxLines = 1; heading.ellipsize = android.text.TextUtils.TruncateAt.END
         val connected = statuses[relayId] == "connected"
-        stateDot.setTextColor(if (connected) accent else muted)
+        stateDot.setCompoundDrawables(AgentStyle.icon(this, "dot", if (connected) accent else muted, 24), null, null, null); stateDot.contentDescription = if (connected) "已加密连接" else "等待连接"
         subtitle.text = if (relayId.isEmpty()) "从连接第一台电脑开始" else "${relayLabel()}  ·  ${if (connected) "已加密连接" else "等待连接"}"
     }
     private fun relayLabel(): String = (0 until relays.length()).map { relays.getJSONObject(it) }.find { it.optString("id") == relayId }?.optString("label") ?: "设备"
@@ -285,8 +287,16 @@ class MainActivity : ComponentActivity() {
     }
     private fun render() {
         updateHeader(); nav.removeAllViews()
-        listOf("agents" to "◎  Agents", "files" to "▤  工作区", "devices" to "◉  设备").forEach { (id, title) ->
-            nav.addView(button(title, id == tab) { changeTab(id) }, LinearLayout.LayoutParams(0, dp(48), 1f))
+        val expanded = resources.configuration.screenWidthDp >= 600
+        listOf(Triple("agents", "Agents", "agents"), Triple("files", "工作区", "folder"), Triple("devices", "设备", "computer")).forEach { (id, title, icon) ->
+            val item = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; minimumHeight = dp(64)
+                background = AgentStyle.ripple(this@MainActivity); isFocusable = true; isSelected = id == tab; contentDescription = title; AgentStyle.actionSemantics(this)
+                setOnClickListener { changeTab(id) }
+                addView(ImageView(this@MainActivity).apply { setImageDrawable(AgentIcon(icon, if (id == tab) accent else muted)); setPadding(dp(16), dp(4), dp(16), dp(4)); background = AgentStyle.shape(this@MainActivity, if (id == tab) AgentStyle.selected else Color.TRANSPARENT, 12); importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO }, LinearLayout.LayoutParams(dp(56), dp(30)))
+                addView(label(title, 11, if (id == tab) ink else muted, id == tab).apply { gravity = Gravity.CENTER; importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO })
+            }
+            nav.addView(item, if (expanded) LinearLayout.LayoutParams(-1, dp(76)) else LinearLayout.LayoutParams(0, dp(64), 1f))
         }
         if (tab != "agents") nativeAgents.pause()
         content.removeAllViews()
@@ -294,29 +304,28 @@ class MainActivity : ComponentActivity() {
     }
     private fun renderDevices() {
         val body = scrollColumn()
-        body.addView(label("连接你的工作现场", 21, ink, true))
         body.addView(label("扫描电脑端的设备邀请，或粘贴完整配对链接。每台手机有独立凭据。", 14, muted).space(0, 8, 0, 20))
         val actions = LinearLayout(this)
         actions.addView(button("扫描二维码", true) {
             scanner.launch(Intent(this, QrScannerActivity::class.java))
         }, LinearLayout.LayoutParams(0, dp(52), 1f))
-        actions.addView(button("粘贴链接") { pairDialog() }, LinearLayout.LayoutParams(0, dp(52), 1f))
+        actions.addView(button("粘贴链接") { pairDialog() }, LinearLayout.LayoutParams(0, dp(52), 1f).apply { marginStart = dp(8) })
         body.addView(actions)
-        body.addView(button(if (AgentMonitorService.active) "常驻监控：运行中 · 通知设置" else "开启常驻监控 / 完成提醒") { monitorDialog() }.space(0, 16, 0, 4))
+        body.addView(AgentStyle.button(this, if (AgentMonitorService.active) "常驻监控：运行中 · 通知设置" else "开启常驻监控 / 完成提醒", subtle = true) { monitorDialog() }.space(0, 16, 0, 4))
         body.addView(label("默认关注全部 Agent；单个 Agent 的完成提醒可在其 ⋯ 菜单关闭。", 12, muted))
         body.addView(label("已添加设备  /  ${relays.length()}", 12, muted).space(0, 28, 0, 12))
         for (i in 0 until relays.length()) {
             val relay = relays.getJSONObject(i); val id = relay.getString("id")
             val card = card()
             card.addView(label(relay.optString("label", "我的电脑"), 18, ink, true))
-            card.addView(label(when (statuses[id]) { "connected" -> "● 已连接 · 端到端加密"; "connecting" -> "正在连接…"; else -> "未连接 · 可重新连接或重新配对" }, 12, if (statuses[id] == "connected") accent else muted).space(0, 5, 0, 12))
+            card.addView(label(when (statuses[id]) { "connected" -> "已连接 · 端到端加密"; "connecting" -> "正在连接…"; else -> "未连接 · 可重新连接或重新配对" }, 12, if (statuses[id] == "connected") accent else muted).space(0, 5, 0, 12))
             val row = LinearLayout(this)
-            row.addView(button("查看 Agents", true) { relayId = id; selectedAgent = null; tab = "agents"; render() }, LinearLayout.LayoutParams(0, dp(46), 1f))
-            row.addView(button("重连") { engine.call("reconnect") }, LinearLayout.LayoutParams(0, dp(46), 1f))
-            row.addView(button("移除") {
+            row.addView(AgentStyle.button(this, "查看 Agents", subtle = true) { relayId = id; selectedAgent = null; tab = "agents"; render() }, LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(4); marginStart = dp(4) })
+            row.addView(AgentStyle.button(this, "重连", subtle = true) { engine.call("reconnect") }, LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(4); marginStart = dp(4) })
+            row.addView(AgentStyle.button(this, "移除", subtle = true) {
                 AlertDialog.Builder(this).setTitle("从本机移除设备？").setMessage("这会清除本机的连接凭据。电脑端的设备授权可在 Agent 工作台的设置中撤销。")
                     .setPositiveButton("移除") { _, _ -> engine.call("remove", id) }.setNegativeButton("取消", null).show()
-            }, LinearLayout.LayoutParams(0, dp(46), 1f))
+            }, LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(4); marginStart = dp(4) })
             card.addView(row)
             if (capabilities[id]?.contains("filesystem_read_opt_in_v1") == true) card.addView(button(if (id in unrestrictedFiles) "工作区外文件访问：已开启 ⚠" else "工作区外文件访问：关闭") { fileAccessDialog(id) })
             body.addView(card.space(0, 0, 0, 12))
@@ -392,10 +401,17 @@ class MainActivity : ComponentActivity() {
 
     private fun renderFiles() {
         if (relays.length() == 0) { emptyState("工作文件，随身可用", "浏览电脑项目、修改文本、阅读 Markdown 和 PDF，再通过安卓分享给其他应用。", "连接第一台电脑") { changeTab("devices") }; return }
-        val body = column().apply { setPadding(dp(20), 0, dp(20), 0) }; content.addView(body)
+        val body = column().apply { setPadding(dp(20), 0, dp(20), 0) }; content.addView(body, FrameLayout.LayoutParams(AgentStyle.contentWidth(this, 760), -1, Gravity.CENTER_HORIZONTAL))
         val top = LinearLayout(this)
-        top.addView(button("${relayLabel()}  ▾") { chooseRelay() }, LinearLayout.LayoutParams(0, dp(46), 1f))
-        top.addView(button("刷新") { if (selectedAgent == null) engine.call("reconnect") else loadTree() })
+        if (selectedAgent == null) {
+            top.addView(AgentStyle.button(this, relayLabel(), subtle = true) { chooseRelay() }.apply { setCompoundDrawables(null, null, AgentStyle.icon(this@MainActivity, "down", size = 16), null) }, LinearLayout.LayoutParams(0, dp(48), 1f))
+        } else {
+            top.addView(AgentStyle.button(this, if (directory.isEmpty()) "返回 Agent" else "上一级", subtle = true) {
+                if (directory.isEmpty()) returnToSelectedAgent() else navigateDirectory(FileRules.parent(directory))
+            }.apply { gravity = Gravity.CENTER_VERTICAL or Gravity.START; setCompoundDrawables(AgentStyle.icon(this@MainActivity, "back", size = 16), null, null, null); compoundDrawablePadding = dp(8) }, LinearLayout.LayoutParams(0, dp(48), 1f))
+            top.addView(AgentStyle.iconButton(this, "computer", "选择电脑：${relayLabel()}") { chooseRelay() }, LinearLayout.LayoutParams(dp(48), dp(48)))
+        }
+        top.addView(AgentStyle.iconButton(this, "refresh", "刷新") { if (selectedAgent == null) engine.call("reconnect") else loadTree() }, LinearLayout.LayoutParams(dp(48), dp(48)))
         body.addView(top)
         if (selectedAgent == null) {
             body.addView(label("选择 Agent 的工作区", 20, ink, true).space(0, 24, 0, 8))
@@ -419,16 +435,11 @@ class MainActivity : ComponentActivity() {
             if (drafts.isNotEmpty()) body.addView(button("恢复本机草稿（${drafts.size}）", true) { chooseDraft() }.space(0, 12, 0, 12))
             return
         }
-        val crumb = LinearLayout(this)
-        crumb.addView(button("‹  ${if (directory.isEmpty()) "返回 Agent" else "上一级"}") {
-            if (directory.isEmpty()) returnToSelectedAgent() else navigateDirectory(FileRules.parent(directory))
-        })
-        body.addView(crumb)
         body.addView(label(if (relayId in unrestrictedFiles) "电脑文件 · 只读访问已扩展" else "${agentName(selectedAgent!!)} 的工作区", 18, ink, true).space(0, 8, 0, 4))
         if (relayId in unrestrictedFiles) {
             val jumps = LinearLayout(this)
-            jumps.addView(button("/ 根目录") { navigateDirectory("") }, LinearLayout.LayoutParams(0, dp(46), 1f))
-            jumps.addView(button("Agent 工作目录") { navigateDirectory(selectedAgent!!.optString("cwd").trim('/')) }, LinearLayout.LayoutParams(0, dp(46), 1f))
+            jumps.addView(button("/ 根目录") { navigateDirectory("") }, LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(4); marginStart = dp(4) })
+            jumps.addView(button("Agent 工作目录") { navigateDirectory(selectedAgent!!.optString("cwd").trim('/')) }, LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(4); marginStart = dp(4) })
             jumps.addView(button("输入路径") {
                 val input = EditText(this).apply { setSingleLine(); hint = "/home/…"; setText("/$directory") }
                 AlertDialog.Builder(this).setTitle("跳转到电脑目录").setView(input).setNegativeButton("取消", null).setPositiveButton("打开") { _, _ ->
@@ -436,7 +447,7 @@ class MainActivity : ComponentActivity() {
                     val path = runCatching { java.nio.file.Paths.get(raw).normalize() }.getOrNull()
                     if (path == null || !path.isAbsolute) toast("请输入绝对目录路径") else navigateDirectory(path.toString().trim('/'))
                 }.show()
-            }, LinearLayout.LayoutParams(0, dp(46), 1f))
+            }, LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(4); marginStart = dp(4) })
             body.addView(jumps)
         }
         val absoluteDirectory = (treeRoot.ifBlank { if (relayId in unrestrictedFiles) "/" else selectedAgent!!.optString("cwd") }.trimEnd('/') + if (directory.isEmpty()) "" else "/$directory").ifBlank { "/" }
@@ -446,9 +457,9 @@ class MainActivity : ComponentActivity() {
             background = rounded(surface); setPadding(dp(14), dp(8), dp(14), dp(8))
             addTextChangedListener(watcher { query = it; renderEntries() })
         }
-        body.addView(searchField, LinearLayout.LayoutParams(-1, dp(48)))
+        body.addView(AgentStyle.search(this, searchField!!), LinearLayout.LayoutParams(-1, -2))
         body.addView(CheckBox(this).apply {
-            text = "显示隐藏文件/目录"; textSize = 12f; setTextColor(muted)
+            text = "显示隐藏文件/目录"; textSize = 12f; setTextColor(muted); minimumHeight = dp(48)
             isChecked = showHiddenFiles()
             setOnCheckedChangeListener { _, checked ->
                 getSharedPreferences("file-browser", MODE_PRIVATE).edit().putBoolean("show-hidden", checked).apply(); renderEntries()
@@ -495,13 +506,13 @@ class MainActivity : ComponentActivity() {
             override fun getView(position: Int, convertView: View?, parent: ViewGroup?): View {
             val entry = shown[position]
             val path = entry.getString("path"); val folder = entry.optString("kind") == "directory"
-            val row = LinearLayout(this@MainActivity).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(16), 0, dp(16)); minimumHeight = dp(66) }
+            val row = LinearLayout(this@MainActivity).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(dp(2), dp(10), dp(2), dp(10)); minimumHeight = dp(64) }
             val type = if (folder) "DIR" else path.substringAfterLast('.', "TXT").uppercase().take(4)
-            row.addView(label(type, 10, if (folder) accent else muted, true).apply { gravity = Gravity.CENTER; background = rounded(surface) }, LinearLayout.LayoutParams(dp(45), dp(42)))
+            row.addView(ImageView(this@MainActivity).apply { setImageDrawable(AgentIcon(if (folder) "folder" else "file", if (folder) accent else muted)); setPadding(dp(4), dp(4), dp(4), dp(4)); contentDescription = if (folder) "文件夹" else type }, LinearLayout.LayoutParams(dp(32), dp(32)))
             val texts = column().apply { setPadding(dp(14), 0, dp(8), 0) }
             texts.addView(label(entry.optString("name", FileRules.safeName(path)), 15, ink).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
             texts.addView(label(if (query.isNotBlank()) path else if (folder) "文件夹" else FileRules.size(entry.optLong("size")), 11, muted).space(0, 3, 0, 0))
-            row.addView(texts, LinearLayout.LayoutParams(0, -2, 1f)); row.addView(label("›", 22, muted))
+            row.addView(texts, LinearLayout.LayoutParams(0, -2, 1f)); row.addView(ImageView(this@MainActivity).apply { setImageDrawable(AgentIcon("chevron", muted)); importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO }, LinearLayout.LayoutParams(dp(16), dp(16)))
             row.setOnClickListener { if (folder) navigateDirectory(path) else openFile(path) }
             return row
             }
@@ -601,7 +612,7 @@ class MainActivity : ComponentActivity() {
     }
     private fun renderFile() {
         val doc = file ?: return
-        val body = column().apply { setPadding(dp(18), 0, dp(18), dp(8)) }; content.addView(body)
+        val body = column().apply { setPadding(dp(18), 0, dp(18), dp(8)) }; content.addView(body, FrameLayout.LayoutParams(AgentStyle.contentWidth(this), -1, Gravity.CENTER_HORIZONTAL))
         body.addView(button("‹  返回文件列表") { leaveFile { render() } })
         selectedAgent?.let { body.addView(label("${agentName(it)} · ${it.optString("cwd")}", 12, accent).apply { maxLines = 2 }) }
         body.addView(label("${doc.optString("path")}  ·  ${FileRules.size(doc.optLong("size"))}", 12, muted).space(0, 5, 0, 12))
@@ -609,15 +620,15 @@ class MainActivity : ComponentActivity() {
         if (doc.optString("kind") == "text" && doc.optBoolean("preview_available", true)) {
             editToggle = button(if (editing) "预览" else "编辑", true) { editing = !editing; showFileBody(); updateEditorState() }
             editToggle!!.isEnabled = canEdit()
-            actions.addView(editToggle, LinearLayout.LayoutParams(0, dp(46), 1f))
+            actions.addView(editToggle, LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(4); marginStart = dp(4) })
             saveButton = button("保存") { saveFile() }
-            actions.addView(saveButton, LinearLayout.LayoutParams(0, dp(46), 1f))
+            actions.addView(saveButton, LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(4); marginStart = dp(4) })
         }
         if (doc.optBoolean("preview_available", true) && (doc.optString("kind") in listOf("pdf", "image") || FileRules.isMarkdown(doc.optString("path")))) {
             body.addView(button("全屏查看 · 缩放 / 阅读") { openFileReviewer(doc.optString("path")) })
         }
-        actions.addView(button("下载") { val docNow = file ?: return@button; if (capabilities[relayId]?.contains("workspace_file_download_v1") == true && draft == originalText) { selectedBinding()?.let { downloadOriginal(docNow.optString("path"), false, it) }; return@button }; pendingExport = FileRules.safeName(docNow.optString("path")) to currentBytes(); picker.launch(pendingExport!!.first) }, LinearLayout.LayoutParams(0, dp(46), 1f))
-        actions.addView(button("分享") { shareFile() }, LinearLayout.LayoutParams(0, dp(46), 1f))
+        actions.addView(button("下载") { val docNow = file ?: return@button; if (capabilities[relayId]?.contains("workspace_file_download_v1") == true && draft == originalText) { selectedBinding()?.let { downloadOriginal(docNow.optString("path"), false, it) }; return@button }; pendingExport = FileRules.safeName(docNow.optString("path")) to currentBytes(); picker.launch(pendingExport!!.first) }, LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(4); marginStart = dp(4) })
+        actions.addView(button("分享") { shareFile() }, LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(4); marginStart = dp(4) })
         body.addView(actions)
         editStatus = label("", 12, muted); body.addView(editStatus!!.space(0, 8, 0, 8))
         fileBody = FrameLayout(this); body.addView(fileBody, LinearLayout.LayoutParams(-1, 0, 1f))
@@ -640,7 +651,7 @@ class MainActivity : ComponentActivity() {
                 }; holder.addView(editor, FrameLayout.LayoutParams(-1, -1))
             } else {
                 val text = label(draft, 15, ink).apply { setLineSpacing(0f, 1f); setTextIsSelectable(true); setPadding(dp(12), dp(12), dp(12), dp(24)) }
-                if (FileRules.isMarkdown(doc.optString("path"))) Markwon.builder(this).usePlugin(CodexFileCitations.plugin()).usePlugin(TablePlugin.create(this)).usePlugin(StrikethroughPlugin.create())
+                if (FileRules.isMarkdown(doc.optString("path"))) Markwon.builder(this).usePlugin(PocketMarkdown(this)).usePlugin(CodexFileCitations.plugin()).usePlugin(TablePlugin.create(this)).usePlugin(StrikethroughPlugin.create())
                     .usePlugin(object : io.noties.markwon.AbstractMarkwonPlugin() {
                         override fun configureConfiguration(builder: io.noties.markwon.MarkwonConfiguration.Builder) { builder.linkResolver { _, link ->
                             val ref = ReviewReferences.local(link, selectedBinding()?.cwd.orEmpty(), doc.optString("path"), unrestricted = relayId in unrestrictedFiles)
@@ -749,24 +760,20 @@ class MainActivity : ComponentActivity() {
         }.onFailure { toast("暂时无法分享，请检查存储空间或先下载文件") }
     }
     private fun emptyState(title: String, detail: String, action: String, run: () -> Unit) {
-        val body = scrollColumn(); body.addView(label("▤", 64, accent).space(0, 52, 0, 26)); body.addView(label(title, 23, ink, true))
+        val body = scrollColumn(); body.addView(ImageView(this).apply { setImageDrawable(AgentIcon("folder", muted)); contentDescription = null }, LinearLayout.LayoutParams(dp(48), dp(48)).apply { topMargin = dp(48); bottomMargin = dp(24) }); body.addView(label(title, 23, ink, true))
         body.addView(label(detail, 15, muted).space(0, 14, 0, 28)); body.addView(button(action, true, run))
     }
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
-    private fun label(value: String, size: Int, color: Int, bold: Boolean = false) = TextView(this).apply { text = value; textSize = size.toFloat(); setTextColor(color); if (bold) setTypeface(typeface, Typeface.BOLD); setLineSpacing(dp(3).toFloat(), 1f) }
+    private fun label(value: String, size: Int, color: Int, bold: Boolean = false) = TextView(this).apply { text = value; textSize = size.toFloat(); setTextColor(color); if (bold) typeface = AgentStyle.medium; setLineSpacing(0f, 1.15f) }
     private fun column() = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
     private fun scrollColumn(): LinearLayout {
         val body = column().apply { setPadding(dp(22), dp(10), dp(22), dp(28)) }
-        content.addView(ScrollView(this).apply { isFillViewport = true; addView(body) })
+        content.addView(ScrollView(this).apply { isFillViewport = true; addView(body) }, FrameLayout.LayoutParams(AgentStyle.contentWidth(this, 680), -1, Gravity.CENTER_HORIZONTAL))
         return body
     }
     private fun card() = column().apply { setPadding(dp(17), dp(17), dp(17), dp(17)); background = rounded(surface) }
     private fun rounded(color: Int) = GradientDrawable().apply { setColor(color); cornerRadius = dp(12).toFloat() }
-    private fun button(title: String, primary: Boolean = false, action: () -> Unit) = Button(this).apply {
-        text = title; isAllCaps = false; textSize = 13f; setTextColor(if (primary) this@MainActivity.background else ink)
-        backgroundTintList = android.content.res.ColorStateList.valueOf(if (primary) accent else surface)
-        minimumHeight = dp(46); setPadding(dp(10), 0, dp(10), 0); setOnClickListener { action() }
-    }
+    private fun button(title: String, primary: Boolean = false, action: () -> Unit) = AgentStyle.button(this, title, primary, action = action)
     private fun <T : View> T.space(left: Int, top: Int, right: Int, bottom: Int): T = apply { layoutParams = LinearLayout.LayoutParams(-1, -2).apply { setMargins(dp(left), dp(top), dp(right), dp(bottom)) } }
     private fun watcher(action: (String) -> Unit) = object : TextWatcher { override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}; override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}; override fun afterTextChanged(s: Editable?) { action(s.toString()) } }
     private fun toast(value: String) { transientToast?.cancel(); transientToast = Toast.makeText(this, value, Toast.LENGTH_LONG).also { it.show() } }

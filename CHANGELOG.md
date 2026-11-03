@@ -17,6 +17,19 @@ project follows [Semantic Versioning](https://semver.org/).
 - Allow an operator-selected local Codex session to be bound to an exact terminal and live process when Herdr omits its session ID; reject stale, renamed, replaced or ambiguous bindings instead of guessing by directory.
 - Locate resumed Codex threads through the read-only state database and validate the rollout's session metadata. Rotated `<thread-id>_<segment-id>.jsonl` files no longer appear to have no conversation.
 
+## [Android 0.2.22] - 2026-11-04
+
+Includes the previously local-only Android 0.2.21 UI polish. Relay and Gateway are unchanged.
+
+### Added
+- Android 0.2.22 terminal extra keys for Backspace, Enter, Ctrl/Alt, arrows and remote paging; compact layouts retain editing keys while keeping the rest in the input menu.
+
+### Changed
+- Refine native Android hierarchy, shared dark theme, agent directory, conversation/composer and file reviewers; retain existing actions while using compact status rows, consistent vector icons and expanded-width navigation.
+
+### Fixed
+- Preserve the terminal reader’s position during history loads and asynchronous refreshes, show progress and upstream history limits, retain output after read errors, and encode remote keys for the actual Herdr parser.
+
 ## [Android 0.2.20] - 2026-11-03
 
 ### Fixed

@@ -81,13 +81,13 @@ class ConversationImages(private val context: Context) {
         val card = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(10), dp(8), dp(10), dp(8))
-            background = AgentStyle.shape(context, 0xff192b32.toInt(), 12)
+            background = AgentStyle.shape(context, AgentStyle.panel, 12)
         }
         val picture = ImageView(context).apply {
             adjustViewBounds = true; maxHeight = dp(280); scaleType = ImageView.ScaleType.FIT_CENTER
             contentDescription = "图像预览：${image.label}"
         }
-        val status = TextView(context).apply { text = "图像 · ${image.label}"; textSize = 12f; setTextColor(0xff98b0b9.toInt()); setPadding(0, dp(6), 0, 0) }
+        val status = TextView(context).apply { text = "图像 · ${image.label}"; textSize = 12f; setTextColor(AgentStyle.muted); setPadding(0, dp(6), 0, 0) }
         card.addView(picture, LinearLayout.LayoutParams(-1, dp(200))); card.addView(status)
         fun status(value: String) { if (status.text.toString() != value) status.text = value }
         var shown: Bitmap? = null

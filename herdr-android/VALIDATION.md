@@ -1,4 +1,29 @@
-# 验证记录 · Android 0.2.20 / Relay codexfix.11
+# 验证记录 · Android 0.2.22 / Relay codexfix.11
+
+## 0.2.22 · 终端历史与附加按键
+
+验证完成于 2026-11-04（Asia/Shanghai），包含此前未单独发布的 0.2.21 UI 改进；发布标签为 `android-v0.2.22`。
+
+- **248 个 JVM/Robolectric 测试通过，0 failures / 0 errors / 0 skipped**；`testDebugUnitTest assembleDebug assembleDebugAndroidTest lintDebug` 成功，lint **0 errors / 62 warnings**。versionCode **25** / versionName **0.2.22**；与此前 APK 相同的调试签名。
+- 真实本地 TCP + E2EE fixture 返回 `pane_content` 原始帧（不是模拟 `command_result` 替代），覆盖 500→1,500 行加载、等待动画及输入禁用、prepend 位置、刷新后不拉回底部、失败保留旧画面和恢复实时订阅、重复/迟到响应丢弃。
+- 远端 Backspace/Enter 不动手机草稿；PgUp 发送固定 VT 控制序列，Ctrl-W 发送 Herdr 接受的组合键名。fixture 核对完整 Agent/session/terminal/cwd，测试旧菜单、重建页面与未确认投递禁用，不向真实 Agent 发测试按键。
+- API 28/35 验证嵌套横纵滚动的触摸读取、先排队刷新后拖动的顺序、补载位置及顶部只读加载。Ctrl/Alt 是显式组合菜单，非锁定修饰键；紧凑布局保留退格并在测量前释放第二排空间，菜单仍提供方向/翻页。
+- 对实际部署只读检查了两个 Codex 终端，请求 500 和 1,500 行均返回同一屏 **47 行**，不能靠增加 App 行数还原。没有启用会滚动电脑真实窗格的 text/recent 历史采集；无更多行时提示并提供明确的远端翻页/结构化对话入口。远端 PgUp/PgDn 是否翻历史取决于目标程序，不宣称可以恢复所有历史。
+- 合成终端截图 `app/build/reports/terminal-ui/` 已目视检查：400dp、360dp/1.3 倍字体、360dp/短视口，真实启用的按键和历史加载状态。没有连接 Android 真机或完整模拟器；本次不宣称所有输入法/远端程序键位已验收。
+- 全套已有配对、下载、恢复原名、图片/文档、通知和对话历史回归保留。**仅更新 App，不更改或重启 Relay/Gateway/Herdr/Agent，不改用户的配对和文件权限**。用法见 `TERMINAL.md`。
+
+## 0.2.21 · Impeccable 原生 UI 打磨（本地构建）
+
+- **235 个 JVM/Robolectric 测试通过**，Debug/AndroidTest APK 构建与 lint 成功；lint **0 errors / 63 warnings**。versionCode **24** / versionName **0.2.21**，保持原调试签名，尚未提交/发布。
+- 依据用户提供的 `pbakaus/impeccable` 固定 revision 的 Android、Operate/Read、quieter/typeset/layout/polish 指南进行本地评审和打磨，详见 `DESIGN.md`。未安装/运行其 launcher，也未用网页 detector 的空结果冒充 Android 验收；无新增运行时依赖。
+- 新原生场景覆盖 Agent 列表、对话、两层工具、终端、设备页、文件目录与文档查看；400×850dp、360×800dp/1.3 倍字体、800×600dp，另有 400×500dp 键盘高度模拟。图像均为 Views/Canvas 渲染，使用虚构 Agent、路径和内容；对照基线取自上次发布 commit 的隔离源码副本。
+- 检查文字/次要文字/链接颜色组合 ≥4.5:1；共享操作与输入动作至少 48dp；运行中的真实计时保持可见并减少固定状态区高度。测试约束消息区仍有可用高度、输入草稿/发送回调不变、侧栏/底栏适配及当前 Agent 身份不变。
+- 全套现有回归覆盖 TCP/E2EE、通知/监控、历史恢复、图片/PDF/Markdown、下载/保存后恢复原名；本次没有改变这些协议或权限逻辑。
+- **没有连接真机或安装模拟器**：截图证据为 Robolectric 原生绘制，不是浏览器，也不宣称硬件触摸/帧率/TalkBack 已验收。现有原生 Back、system bar/IME insets 保留。仅设计深色方案，本次不宣称浅色/动态取色支持。
+- 新合成图放在 `app/build/reports/ui-polish/after/`；本地交付的 UI 预览和对比图由这些截图拼接。旧版本已提交截图保持原样。
+- 仅更新 Android；Relay、Gateway、Herdr/Agent 和已配对设备权限不变。
+
+## 先前验证记录
 
 ## 0.2.20 · 保存后恢复原名
 

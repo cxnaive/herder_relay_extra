@@ -6,11 +6,13 @@
 | --- | --- | --- |
 | 电脑 Relay | `0.23.5+codexfix.11` | 仓库根目录，`cmd/herdr-mobile-relay` |
 | 原生 TCP Gateway | `0.23.5+codexfix.6` | `cmd/herdr-gateway`，`deploy/native-tcp/` |
-| Herdr Pocket Android | `0.2.20` / versionCode `23` | `herdr-android/` |
+| Herdr Pocket Android | `0.2.22` / versionCode `25` | `herdr-android/` |
 
 本次按当前可用源码快照替换此前根目录的 0.24.0 文件扩展实现，不把两条不同基线混为同一版本。组件对应关系及源码来源见 [VERSION.json](VERSION.json)。旧内容仍可从 Git 历史查看。
 
 ## 下载 Android APK
+
+0.2.22 发布于 **`android-v0.2.22`**（2026-11-04），包含终端改进：补载历史的进度/阅读位置、明确上游没有更多行的提示、参考 Termux 的退格/回车/方向/翻页/Ctrl/Alt 附加键；[终端使用说明与限制](herdr-android/TERMINAL.md)。包含此前 0.2.21 UI 打磨：按 Impeccable 的原生指南统一深色配色、排版与交互层级，简化 Agent 分组、对话状态/输入区，改善文件页和大屏导航。既有功能、Relay/Gateway 与配对保留；[设计说明](herdr-android/DESIGN.md)。APK 为 `Herdr-Pocket-0.2.22-debug.apk`，附 `SHA256SUMS.txt`；源码通过该 tag 的 Source code 下载项获取。
 
 0.2.20 发布于 **`android-v0.2.20`**：保存后核对实际文件名，尝试恢复原名并重新验证；不支持改名、命名冲突或无法确认时明确提示。包含此前未单独发布的 0.2.18/0.2.19 修复：正确匹配保存/分享 MIME，不把发布标签或仓库名当作工作区文件，文件不存在时显示实际读取路径。只需更新 App，**Relay/Gateway 无需更新或重启**。详见[文件访问与保存说明](docs/file-access.md)。
 
@@ -22,13 +24,13 @@
 
 0.2.13 包含完成提醒声音检查/测试入口及此前 0.2.12 本地构建的工作空间标题修复。
 
-进入仓库 **Releases → Herdr Pocket 0.2.20**，下载 `Herdr-Pocket-0.2.20-debug.apk`。
+进入仓库 **Releases → Herdr Pocket 0.2.22**，下载 `Herdr-Pocket-0.2.22-debug.apk`。
 
 - Android 9 / API 28 及以上。
 - 与此前同签名的 Pocket APK 可直接覆盖安装，**不需要重新配对**。
 - 发布包使用调试签名，不是 Play 商店版本；签名私钥不随源码发布。自己构建的 debug APK 通常使用不同签名，不要为了覆盖安装而直接卸载含配对/草稿的旧 App。
 - Release 同时提供 SHA-256 校验文件，源码由对应 Git tag 的 Source code 下载项提供。
-- 用旧版 App 下载本次 APK 若仍显示 `.bin`，这一次先将完整名称改为 `Herdr-Pocket-0.2.20-debug.apk` 再安装。
+- 用旧版 App 下载本次 APK 若仍显示 `.bin`，这一次先将完整名称改为 `Herdr-Pocket-0.2.22-debug.apk` 再安装。
 
 ## 下载 Relay / Gateway 与部署指南
 
@@ -42,7 +44,7 @@
 - 包含二进制、配置/systemd 模板、初始化工具、部署说明和构建来源；无需在目标机器安装 Go。
 - 公网业务只需 **8377/TCP**，原生 App 不要求域名/HTTPS；应用数据使用现有 E2EE。健康端口仅 loopback。
 - 只更新二进制时保留原密钥和设备库，**不重启 Herdr/Agent**。已有安装先读指南的升级章节，不重复初始化。
-- 此服务端 Release 独立于 Android `android-v0.2.20`；Android 保持 Latest。本次未提供 ARM64/macOS/Windows 二进制。
+- 此服务端 Release 独立于 Android `android-v0.2.22`；Android 保持 Latest。本次未提供 ARM64/macOS/Windows 二进制。
 
 ## 已实现
 

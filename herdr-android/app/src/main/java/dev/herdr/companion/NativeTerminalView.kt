@@ -2,7 +2,6 @@ package dev.herdr.companion
 
 import android.content.Context
 import android.graphics.Canvas
-import android.graphics.Color
 import android.view.View
 import android.util.TypedValue
 import androidx.core.content.res.ResourcesCompat
@@ -47,7 +46,7 @@ class NativeTerminalView(context: Context) : View(context) {
         return TerminalEmulator(sink, columns, rows, ceil(cellWidth).toInt(), lineHeight, (rows + 16).coerceAtLeast(100), silent)
     }
     init {
-        setBackgroundColor(Color.rgb(13, 20, 26))
+        setBackgroundColor(AgentStyle.background)
         contentDescription = "原生终端输出，可横向和纵向滚动"
     }
     private fun px() = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, size, resources.displayMetrics).roundToInt().coerceAtLeast(1)
