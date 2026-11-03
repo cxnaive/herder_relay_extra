@@ -6,13 +6,15 @@
 | --- | --- | --- |
 | 电脑 Relay | `0.23.5+codexfix.8` | 仓库根目录，`cmd/herdr-mobile-relay` |
 | 原生 TCP Gateway | `0.23.5+codexfix.6` | `cmd/herdr-gateway`，`deploy/native-tcp/` |
-| Herdr Pocket Android | `0.2.11` / versionCode `14` | `herdr-android/` |
+| Herdr Pocket Android | `0.2.13` / versionCode `16` | `herdr-android/` |
 
 本次按当前可用源码快照替换此前根目录的 0.24.0 文件扩展实现，不把两条不同基线混为同一版本。组件对应关系及源码来源见 [VERSION.json](VERSION.json)。旧内容仍可从 Git 历史查看。
 
 ## 下载 Android APK
 
-进入仓库 **Releases → Herdr Pocket 0.2.11 + Relay codexfix.8**，下载 `Herdr-Pocket-0.2.11-debug.apk`。
+0.2.13 包含完成提醒声音检查/测试入口及此前 0.2.12 本地构建的工作空间标题修复。
+
+进入仓库 **Releases → Herdr Pocket 0.2.13 + Relay codexfix.8**，下载 `Herdr-Pocket-0.2.13-debug.apk`。
 
 - Android 9 / API 28 及以上。
 - 与此前同签名的 Pocket APK 可直接覆盖安装，**不需要重新配对**。
@@ -27,7 +29,7 @@
 - 图片缩放、PDF/Markdown 全屏查看与 Codex 文件引用。
 - 指定工作空间新建 Agent、重命名；Codex 模型/思考强度按会话切换，下一轮生效。
 - 对话顶部运行状态及真实本轮计时，不以打开页面或最后输出时间代替开始时间。
-- **App 内常驻监控**：开启后默认关注全部 Agent，新 Agent 自动纳入，可单独关闭完成提醒。原生通知、按轮次去重、点击回到确切会话。
+- **App 内常驻监控**：开启后默认关注全部 Agent，新 Agent 自动纳入，可单独关闭完成提醒。原生通知、按轮次去重、点击回到确切会话；可测试完成提醒并直接进入声音设置。
 - **纯 IP + TCP** 或既有 HTTPS/WSS：应用消息沿用设备鉴权和 E2EE，原生模式不需要域名/证书。
 
 ## 构建电脑 Relay / Gateway
@@ -74,7 +76,7 @@ APK 输出：`herdr-android/app/build/outputs/apk/debug/app-debug.apk`。
 
 TCP 本身不加密，应用数据由现有 ECDH/HMAC/AES-GCM E2EE 保护；路由/握手元数据、地址、大小和时序仍可见。未关闭原 HTTPS/WSS 证书校验，也未做独立安全审计。
 
-验证记录：129 个 Android JVM/Robolectric 测试通过，真实本地 TCP+E2EE fixture 覆盖后台监控/静音/重连，Go 全套 tests/vet 和相关 race 验证通过。详细范围与未验证项见 [Android VALIDATION.md](herdr-android/VALIDATION.md)。
+验证记录：162 个 Android JVM/Robolectric 测试通过，真实本地 TCP+E2EE fixture 覆盖后台监控/静音/重连；未改动的 Relay 沿用前次 Go 全套 tests/vet 和相关 race 验证结果。详细范围与未验证项见 [Android VALIDATION.md](herdr-android/VALIDATION.md)。
 
 ## 许可证与历史代码
 

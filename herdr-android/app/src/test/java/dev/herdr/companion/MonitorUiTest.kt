@@ -8,9 +8,11 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.os.Looper
+import android.provider.Settings
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
+import android.widget.Button
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After
@@ -43,7 +45,7 @@ class MonitorUiTest {
     private fun draw(name: String, view: View) {
         view.measure(View.MeasureSpec.makeMeasureSpec(800, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(1500, View.MeasureSpec.AT_MOST)); view.layout(0, 0, view.measuredWidth, view.measuredHeight)
         val bitmap = Bitmap.createBitmap(view.measuredWidth, view.measuredHeight, Bitmap.Config.ARGB_8888); bitmap.eraseColor(0xff0b1218.toInt()); view.draw(Canvas(bitmap))
-        val out = File("../screenshots/qa-0.2.11"); out.mkdirs(); File(out, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }; bitmap.recycle()
+        val out = File("../screenshots/qa-0.2.13"); out.mkdirs(); File(out, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }; bitmap.recycle()
     }
     private fun prepare(): Pair<SharedRelay, JSONObject> {
         val shared = SharedRelay.get(context)
@@ -105,5 +107,33 @@ class MonitorUiTest {
         assertTrue(views(activity.window.decorView).any { it.contentDescription?.toString() == "管理 writer-1" })
         assertFalse(views(activity.window.decorView).any { it.contentDescription?.toString() == "对话选项" })
         controller.pause().stop().destroy()
+    }
+    @Test fun monitoringSettingsCanTestSoundAndOpenOnlyCompletionChannelWithoutStartingService() {
+        val controller = Robolectric.buildActivity(Activity::class.java).setup(); val activity = controller.get()
+        val dialog = MonitorSettingsUi.show(activity, { fail("Test must not start monitoring") }, {})
+        try {
+            val buttons = views(dialog.window!!.decorView).filterIsInstance<Button>()
+            buttons.single { it.text == "测试完成提醒" }.performClick()
+            val notification = shadowOf(context.getSystemService(NotificationManager::class.java)).allNotifications.single()
+            assertEquals(MonitorNotifications.COMPLETION_CHANNEL, notification.channelId)
+            assertFalse(MonitorPreferences(context).enabled); assertFalse(AgentMonitorService.active)
+            assertTrue(views(dialog.window!!.decorView).filterIsInstance<TextView>().any { it.text.contains("常驻监控状态保持静音") })
+            buttons.single { it.text == "完成提醒声音与弹出设置" }.performClick()
+            val intent = shadowOf(activity).nextStartedActivity
+            assertEquals(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS, intent.action)
+            assertEquals(activity.packageName, intent.getStringExtra(Settings.EXTRA_APP_PACKAGE))
+            assertEquals(MonitorNotifications.COMPLETION_CHANNEL, intent.getStringExtra(Settings.EXTRA_CHANNEL_ID))
+        } finally { dialog.dismiss(); controller.pause().stop().destroy() }
+    }
+    @Test fun blockedTestNotificationExplainsPermissionWithoutStartingService() {
+        val controller = Robolectric.buildActivity(Activity::class.java).setup()
+        shadowOf(context.getSystemService(NotificationManager::class.java)).setNotificationsEnabled(false)
+        val dialog = MonitorSettingsUi.show(controller.get(), { fail("Test must not start monitoring") }, {})
+        try {
+            views(dialog.window!!.decorView).filterIsInstance<Button>().single { it.text == "测试完成提醒" }.performClick()
+            assertTrue(shadowOf(context.getSystemService(NotificationManager::class.java)).allNotifications.isEmpty())
+            assertTrue(org.robolectric.shadows.ShadowToast.getTextOfLatestToast().contains("测试通知未发送"))
+            assertFalse(MonitorPreferences(context).enabled)
+        } finally { dialog.dismiss(); controller.pause().stop().destroy() }
     }
 }

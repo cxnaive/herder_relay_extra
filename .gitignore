@@ -53,3 +53,11 @@ herdr-android/local.properties
 /herdr-android/screenshots/qa-0.2.11/*
 !/herdr-android/screenshots/qa-0.2.11/agent-notification-menu.png
 !/herdr-android/screenshots/qa-0.2.11/monitor-settings.png
+
+!/herdr-android/screenshots/qa-0.2.12/
+/herdr-android/screenshots/qa-0.2.12/*
+!/herdr-android/screenshots/qa-0.2.12/workspace-header.png
+!/herdr-android/screenshots/qa-0.2.13/
+/herdr-android/screenshots/qa-0.2.13/*
+!/herdr-android/screenshots/qa-0.2.13/monitor-settings.png
+!/herdr-android/screenshots/qa-0.2.13/agent-notification-menu.png

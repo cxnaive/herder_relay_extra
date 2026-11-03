@@ -59,4 +59,10 @@ class MonitorModernAndroidTest {
             assertFalse(AgentMonitorService.active)
         } finally { controller.destroy() }
     }
+    @Test fun soundTestDoesNotBypassAndroidNotificationPermission() {
+        shadowOf(application).denyPermissions(Manifest.permission.POST_NOTIFICATIONS)
+        assertFalse(MonitorNotifications.testCompletion(application))
+        assertTrue(shadowOf(application.getSystemService(android.app.NotificationManager::class.java)).allNotifications.isEmpty())
+        assertFalse(MonitorPreferences(application).enabled)
+    }
 }

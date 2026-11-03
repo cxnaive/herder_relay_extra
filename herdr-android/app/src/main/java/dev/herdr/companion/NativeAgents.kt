@@ -200,7 +200,7 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
         layout.addView(ScrollView(context).apply { addView(rows) }, LinearLayout.LayoutParams(-1, 0, 1f)); fillAgentRows(rows)
     }
     private fun workspaceTitle(id: String, agent: JSONObject): String =
-        AgentPresentation.groups(mapOf(id to JSONArray().put(agent)), workspaces).firstOrNull()?.title.orEmpty()
+        AgentPresentation.workspaceTitle(id, agent, workspaces)
     private fun fillAgentRows(rows: LinearLayout) {
         rows.removeAllViews()
         var visible = 0

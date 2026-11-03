@@ -8,16 +8,32 @@ object AgentPresentation {
     fun title(agent: JSONObject): String = agent.optString("tab_label").ifBlank { agent.optString("tab_name") }
         .ifBlank { agent.optString("name") }.ifBlank { agent.optString("agent", "Agent") }
     fun server(agent: JSONObject) = agent.optString("server_session_id").ifBlank { "primary" }
+    fun workspaceTitle(relay: String, agent: JSONObject, workspaces: Map<String, JSONArray>): String =
+        workspaceTitle(agent, workspaceMetadata(relay, agent, workspaces))
+    private fun workspaceMetadata(relay: String, agent: JSONObject, workspaces: Map<String, JSONArray>): JSONObject? {
+        val id = agent.optString("workspace_id")
+        if (id.isBlank()) return null
+        val rows = workspaces[relay] ?: return null
+        val server = server(agent)
+        for (i in 0 until rows.length()) {
+            val ws = rows.optJSONObject(i) ?: continue
+            if (server(ws) == server && ws.optString("workspace_id") == id) return ws
+        }
+        return null
+    }
+    private fun workspacePath(agent: JSONObject, metadata: JSONObject?): String =
+        metadata?.optString("cwd").orEmpty().ifBlank { agent.optString("cwd") }
+    private fun workspaceTitle(agent: JSONObject, metadata: JSONObject?): String =
+        metadata?.optString("label").orEmpty().ifBlank { agent.optString("workspace_name") }
+            .ifBlank { workspacePath(agent, metadata).trimEnd('/').substringAfterLast('/').ifBlank { "未命名工作空间" } }
     fun groups(inventory: Map<String, JSONArray>, workspaces: Map<String, JSONArray>): List<Group> {
         val result = mutableListOf<Group>()
         for ((relay, entries) in inventory) {
             val agents = (0 until entries.length()).mapNotNull { entries.optJSONObject(it) }
             for ((key, members) in agents.groupBy { server(it) to it.optString("workspace_id").ifBlank { "cwd:" + it.optString("cwd") } }) {
-                val metadata = workspaces[relay]?.let { rows -> (0 until rows.length()).mapNotNull { rows.optJSONObject(it) }
-                    .find { server(it) == key.first && it.optString("workspace_id") == key.second } }
-                val path = metadata?.optString("cwd").orEmpty().ifBlank { members.first().optString("cwd") }
-                val title = metadata?.optString("label").orEmpty().ifBlank { members.first().optString("workspace_name") }
-                    .ifBlank { path.trimEnd('/').substringAfterLast('/').ifBlank { "未命名工作空间" } }
+                val metadata = workspaceMetadata(relay, members.first(), workspaces)
+                val path = workspacePath(members.first(), metadata)
+                val title = workspaceTitle(members.first(), metadata)
                 val sorted = members.sortedWith(compareBy<JSONObject> { it.optInt("tab_order", it.optInt("tab_number", Int.MAX_VALUE)) }
                     .thenBy { it.optString("tab_id") }.thenBy { it.optString("pane_id") })
                 result += Group(relay, key.first, key.second, title, path, metadata?.optInt("number", Int.MAX_VALUE) ?: Int.MAX_VALUE, sorted)

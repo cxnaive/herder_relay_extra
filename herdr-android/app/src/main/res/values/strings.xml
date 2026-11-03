@@ -1,0 +1,3 @@
+<resources>
+    <string name="monitor_sound_status">完成提醒声音：%1$s\n常驻监控状态保持静音，只有任务完成提醒会请求响铃。</string>
+</resources>

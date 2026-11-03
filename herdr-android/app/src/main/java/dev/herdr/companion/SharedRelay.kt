@@ -28,7 +28,7 @@ class SharedRelay private constructor(context: Context) {
         val rows = engine.snapshot().optJSONArray("relays") ?: JSONArray()
         return (0 until rows.length()).map { rows.getJSONObject(it) }.find { it.optString("id") == id }?.optString("label").orEmpty().ifBlank { "电脑" }
     }
-    fun workspaceName(id: String, agent: JSONObject): String = AgentPresentation.groups(mapOf(id to JSONArray().put(agent)), workspaces).firstOrNull()?.title.orEmpty()
+    fun workspaceName(id: String, agent: JSONObject): String = AgentPresentation.workspaceTitle(id, agent, workspaces)
     private fun mainThread() { check(Looper.myLooper() == Looper.getMainLooper()) }
     fun attachUI(owner: Any, listener: (JSONObject) -> Unit) {
         mainThread(); uiOwners.add(owner); listeners[owner] = listener; replay(listener); engine.resume()
