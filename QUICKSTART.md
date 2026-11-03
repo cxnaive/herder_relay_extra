@@ -1,6 +1,6 @@
 # Herdr Mobile Relay Quick Start
 
-For the local Android **IP + native TCP** mode, use [native TCP setup](docs/native-tcp.md) and `herdr-phone-tcp`; the web/WSS walkthrough below remains separate.
+For the local Android **IP + native TCP** mode, use the [complete Relay/Gateway deployment guide](docs/native-deployment.md) and the bundle's `run.sh tcp-pair` command; the web/WSS walkthrough below remains separate.
 
 
 Connect one Linux or macOS computer to your phone through a temporary Cloudflare

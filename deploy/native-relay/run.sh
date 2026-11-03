@@ -1,0 +1,15 @@
+#!/bin/sh
+# Uses the owner's private config for both serve and tcp-pair; never starts Herdr.
+set -eu
+HERE=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+HERDR_RELAY_ENV=${HERDR_RELAY_ENV:-${XDG_CONFIG_HOME:-"$HOME/.config"}/herdr-mobile-relay/relay.env}
+[ -f "$HERDR_RELAY_ENV" ] || { echo "Missing private config: $HERDR_RELAY_ENV" >&2; exit 1; }
+set -a
+. "$HERDR_RELAY_ENV"
+set +a
+[ "${HERDR_GATEWAY_REGISTRATION_TOKEN:-}" != REPLACE_WITH_GATEWAY_REGISTRATION_SECRET ] || {
+    echo 'Fill the Gateway registration secret in relay.env before starting.' >&2; exit 1;
+}
+export HERDR_RELAY_ENV
+export HERDR_WEB_ROOT="$HERE/web"
+exec "$HERE/herdr-mobile-relay" "$@"

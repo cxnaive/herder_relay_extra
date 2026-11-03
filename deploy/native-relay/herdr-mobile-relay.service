@@ -1,0 +1,17 @@
+[Unit]
+Description=Herdr Pocket computer relay (native TCP)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=HERDR_RELAY_ENV=%h/.config/herdr-mobile-relay/relay.env
+Environment="PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
+ExecStart=%h/.local/share/herdr-pocket-relay/current/run.sh serve
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+UMask=0077
+
+[Install]
+WantedBy=default.target

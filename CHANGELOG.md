@@ -17,6 +17,11 @@ project follows [Semantic Versioning](https://semver.org/).
 - Allow an operator-selected local Codex session to be bound to an exact terminal and live process when Herdr omits its session ID; reject stale, renamed, replaced or ambiguous bindings instead of guessing by directory.
 - Locate resumed Codex threads through the read-only state database and validate the rollout's session metadata. Rotated `<thread-id>_<segment-id>.jsonl` files no longer appear to have no conversation.
 
+## [Native TCP bundle 0.23.5-codexfix.8] - 2026-11-03
+
+### Added
+- Linux amd64 native Relay/Gateway release bundles with private first-run Relay configuration, systemd templates, source/build checksums and a complete deployment, pairing, upgrade and rollback guide.
+
 ## [Android 0.2.13] - 2026-11-03
 
 ### Added

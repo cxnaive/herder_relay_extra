@@ -1,6 +1,6 @@
 # Herdr Relay Extra + Herdr Pocket
 
-当前可配套使用的 **Relay 源码 + 原生 Android App 源码**。APK 通过本仓库的 **GitHub Releases** 发布，不存放在 Git 仓库目录中。
+当前可配套使用的 **Relay 源码 + 原生 Android App 源码**。APK 及编译好的 Linux Relay/Gateway 通过本仓库的 **GitHub Releases** 发布，不存放在 Git 仓库目录中。
 
 | 组件 | 版本 | 位置 |
 | --- | --- | --- |
@@ -21,6 +21,20 @@
 - 发布包使用调试签名，不是 Play 商店版本；签名私钥不随源码发布。自己构建的 debug APK 通常使用不同签名，不要为了覆盖安装而直接卸载含配对/草稿的旧 App。
 - Release 同时提供 SHA-256 校验文件，源码由对应 Git tag 的 Source code 下载项提供。
 
+## 下载 Relay / Gateway 与部署指南
+
+**[完整部署指南：从零安装 → systemd → 配对 → 升级/回滚](docs/native-deployment.md)**
+
+- 公网服务器装 **Gateway**；运行 Herdr/Agent 的电脑以同一用户装 **Relay**；手机装 APK。
+- 服务端 Release **`native-v0.23.5-codexfix.8`** 提供 Linux x86_64 / amd64：
+  - `herdr-mobile-relay_0.23.5-codexfix.8_linux_amd64.tar.gz`
+  - `herdr-gateway_0.23.5-codexfix.6_linux_amd64.tar.gz`
+  - `SHA256SUMS.txt`
+- 包含二进制、配置/systemd 模板、初始化工具、部署说明和构建来源；无需在目标机器安装 Go。
+- 公网业务只需 **8377/TCP**，原生 App 不要求域名/HTTPS；应用数据使用现有 E2EE。健康端口仅 loopback。
+- 只更新二进制时保留原密钥和设备库，**不重启 Herdr/Agent**。已有安装先读指南的升级章节，不重复初始化。
+- 此服务端 Release 独立于 Android `android-v0.2.13`；Android 保持 Latest。本次未提供 ARM64/macOS/Windows 二进制。
+
 ## 已实现
 
 - 工作空间 / Tab 分组与可靠会话定位，修复恢复后的 Codex 历史读取。
@@ -35,6 +49,7 @@
 ## 构建电脑 Relay / Gateway
 
 需要 `go.mod` 指定的 **Go 1.27.3**。首次构建需要下载依赖。
+完整 Linux 归档使用 `scripts/package-native-release.sh 新输出目录`，然后 `python3 scripts/check-native-release.py 输出目录`；以下命令只构建单个可执行文件。
 
 ```bash
 mkdir -p bin

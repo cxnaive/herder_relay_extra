@@ -1,7 +1,12 @@
 # Native IP + TCP gateway (local extension)
 
-This extension ships in local Relay/Gateway `0.23.5+codexfix.6` and Android
-Herdr Pocket `0.2.8` (versionCode 11). It is not an upstream release feature.
+For complete install/download/systemd/pairing/upgrade steps, see
+[native-deployment.md](native-deployment.md). Release bundles include that guide
+as `DEPLOYMENT.md`.
+
+This extension is included in Relay `0.23.5+codexfix.8`, Gateway
+`0.23.5+codexfix.6`, and Android Herdr Pocket `0.2.13` (versionCode 16).
+It is not an upstream release feature.
 It uses the existing E2EE v2 protocol with a native TCP record carrier instead
 of WebSocket. Existing HTTPS/WSS support and certificate validation are unchanged.
 
@@ -20,7 +25,7 @@ Example computer configuration, in its private `relay.env` (203.0.113.10 is a do
 
 ```sh
 HERDR_GATEWAY_URL=tcp://203.0.113.10:8377
-HERDR_GATEWAY_REGISTRATION_TOKEN=<the gateway's random registration secret>
+HERDR_GATEWAY_REGISTRATION_TOKEN=REPLACE_WITH_GATEWAY_REGISTRATION_SECRET
 HERDR_TRANSPORT_FORCE_RELAY=1
 HERDR_REACHABILITY_PORT_MAPPING=0
 ```
@@ -36,15 +41,16 @@ registration to the computer's derived relay ID.
 Install the new APK over the same-signed existing app. On the computer:
 
 ```sh
-herdr-phone
-# Equivalent local helper:
-herdr-phone-tcp
+"$HOME/.local/share/herdr-pocket-relay/current/run.sh" tcp-pair "My phone"
 ```
 
 Open the app's own device scanner (or paste the link). Native pairing links use
 `herdr-tcp://IP:8377/#...`, not a browser page. The upstream plugin's WSS setup
 screen is not this native pairing helper. Do not put invitations in chat,
 public logs, screenshots, or source control.
+
+The bundle wrapper loads the same private `relay.env` for `serve` and `tcp-pair`.
+`herdr-phone` and `herdr-phone-tcp` are optional local aliases, not installed by this bundle.
 
 The CLI asks the running Relay to generate a 10-minute device invitation using
 its private `0700` directory / `0600` Unix admin socket. It does not open or write
@@ -105,7 +111,7 @@ journalctl -u herdr-tcp-gateway.service -n 30 --no-pager
 ```
 
 Keep the old WSS Gateway untouched. To roll back the computer, restore the backed
-up `relay.env`, service override and `herdr-phone` wrapper; daemon-reload and restart
+up `relay.env`, service override and binary/current link; daemon-reload and restart
 **only `herdr-mobile-relay.service`**. Do not restore an old devices.json over newly
 paired devices unless deliberately reverting enrollment, and do not restart Herdr
 or agent processes. Reuse the old phone entry or create a fresh WSS invitation.

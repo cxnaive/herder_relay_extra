@@ -22,5 +22,14 @@
     "source_path": "cmd/herdr-gateway",
     "public_port_example": "8377/tcp"
   },
-  "prior_repository_head": "d07403b246a2220c3447dcd84084d7d717140361"
+  "prior_repository_head": "d07403b246a2220c3447dcd84084d7d717140361",
+  "native_release": {
+    "tag": "native-v0.23.5-codexfix.8",
+    "targets": [
+      "linux/amd64"
+    ],
+    "relay_artifact": "herdr-mobile-relay_0.23.5-codexfix.8_linux_amd64.tar.gz",
+    "gateway_artifact": "herdr-gateway_0.23.5-codexfix.6_linux_amd64.tar.gz",
+    "checksums": "SHA256SUMS.txt"
+  }
 }
