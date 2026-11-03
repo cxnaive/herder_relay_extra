@@ -99,4 +99,39 @@ class DocumentDownloadsUiTest {
             } finally { downloads.close(); controller.pause().stop().destroy(); shadowOf(Looper.getMainLooper()).idle() }
         }
     }
+    @Test fun systemPickerReceivesOriginalApkMimeRatherThanGenericBin() {
+        val controller = Robolectric.buildActivity(ComponentActivity::class.java); val activity = controller.get(); val downloads = DocumentDownloads(activity); controller.setup()
+        try {
+            downloads.start("Pocket-debug.apk", false, { true }) { request, done ->
+                val result = if (request.optBoolean("metadata_only")) metadata().put("media_type", "application/zip") else part(request.optString("cursor").toIntOrNull() ?: 0)
+                done(result.put("path", "Pocket-debug.apk"), null)
+            }
+            waitUntil { shadowOf(activity).peekNextStartedActivity() != null }
+            val intent = shadowOf(activity).nextStartedActivity
+            assertEquals("Pocket-debug.apk", intent.getStringExtra(Intent.EXTRA_TITLE))
+            assertEquals("application/vnd.android.package-archive", intent.type)
+            shadowOf(activity).receiveResult(intent, Activity.RESULT_CANCELED, null)
+        } finally { downloads.close(); controller.pause().stop().destroy(); shadowOf(Looper.getMainLooper()).idle() }
+    }
+
+    @Test fun saveRestoresCustomSuffixAfterThePickerAppendsBin() {
+        val controller = Robolectric.buildActivity(ComponentActivity::class.java); val activity = controller.get(); val downloads = DocumentDownloads(activity); controller.setup()
+        val provider = RenameDocumentsFixture(activity, "weights.custom-vla.bin")
+        try {
+            downloads.start("weights.custom-vla", false, { true }) { request, done ->
+                val result = if (request.optBoolean("metadata_only")) metadata() else part(request.optString("cursor").toIntOrNull() ?: 0)
+                done(result.put("path", "weights.custom-vla"), null)
+            }
+            waitUntil { shadowOf(activity).peekNextStartedActivity() != null }
+            val intent = shadowOf(activity).nextStartedActivity
+            controller.pause().stop()
+            shadowOf(activity).receiveResult(intent, Activity.RESULT_OK, Intent().setData(provider.uri))
+            controller.restart().start().resume()
+            waitUntil { provider.file.length() == bytes.size.toLong() && File(activity.cacheDir, "shared").walkTopDown().none { it.isFile } }
+            assertEquals("weights.custom-vla", provider.file.name)
+            assertEquals(1, provider.renameCalls)
+            assertArrayEquals(bytes, provider.file.readBytes())
+        } finally { downloads.close(); controller.pause().stop().destroy(); shadowOf(Looper.getMainLooper()).idle(); provider.directory.deleteRecursively() }
+    }
+
 }

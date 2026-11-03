@@ -17,6 +17,13 @@ project follows [Semantic Versioning](https://semver.org/).
 - Allow an operator-selected local Codex session to be bound to an exact terminal and live process when Herdr omits its session ID; reject stale, renamed, replaced or ambiguous bindings instead of guessing by directory.
 - Locate resumed Codex threads through the read-only state database and validate the rollout's session metadata. Rotated `<thread-id>_<segment-id>.jsonl` files no longer appear to have no conversation.
 
+## [Android 0.2.20] - 2026-11-03
+
+### Fixed
+- Verify the saved Android document name, attempt to restore the original through its document provider, and verify the returned URI; report partial success with the actual name when renaming is unsupported, conflicting or cannot be confirmed.
+- Match Android save/share MIME types to the original filename instead of generic binary, preserving APK/PDF/ZIP suffixes; let already-verified local downloads finish saving after the system picker backgrounds the conversation.
+- Do not turn release tags, repository slugs or bare asset mentions into speculative local-file cards in Android; keep explicit file links actionable and show the attempted absolute path when a referenced file is missing.
+
 ## [Android 0.2.17 / Relay 0.23.5+codexfix.11] - 2026-11-03
 
 ### Added

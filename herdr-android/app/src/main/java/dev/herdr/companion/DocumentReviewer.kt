@@ -197,7 +197,14 @@ class DocumentReviewer(private val context: Context, private val cwd: String,
         body.removeAllViews()
         body.addView(LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setPadding(dp(24), dp(24), dp(24), dp(24))
-            addView(label(message, 15f)); addView(button("重新读取", "重试读取文档") { navigate(ref, false) })
+            val missing = message.equals("Workspace file was not found", ignoreCase = true)
+            addView(label(if (missing) "找不到引用的文件" else message, 15f))
+            if (missing) {
+                val absolute = if (unrestricted) "/${ref.path}" else "${cwd.trimEnd('/')}/${ref.path}"
+                addView(label("实际读取路径：\n$absolute", 13f).apply { setTextColor(muted); setTextIsSelectable(true) })
+                addView(label("名称或发布标签不一定是本地文件；也可能文件已移动。请使用完整文件路径或有效下载链接。不会自动寻找其他目录中的同名文件。", 13f).apply { setTextColor(muted) })
+            }
+            addView(button("重新读取", "重试读取文档") { navigate(ref, false) })
         }, FrameLayout.LayoutParams(-1, -1))
     }
     private fun dp(n: Int) = (n * context.resources.displayMetrics.density).toInt()

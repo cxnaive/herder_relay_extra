@@ -11,7 +11,6 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.FileProvider
 import org.json.JSONObject
 import java.io.File
@@ -28,18 +27,25 @@ class DocumentDownloads(private val activity: ComponentActivity) {
     private var sink: DownloadSink? = null
     private var folder: File? = null
     private var pendingSave: File? = null
-    private var pendingValid: (() -> Boolean)? = null
     private var monitor: Runnable? = null
-    private val picker = activity.registerForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
-        val file = pendingSave; val valid = pendingValid; pendingSave = null; pendingValid = null
+    private val picker = activity.registerForActivityResult(SaveDocument()) { uri ->
+        val file = pendingSave; pendingSave = null
         if (file != null) {
-            val allowed = !closed && valid?.invoke() == true
+            // All remote bytes are already verified. Opening the system picker stops
+            // the conversation/reviewer; its foreground guard no longer owns this local copy.
+            val allowed = !closed
             worker.execute {
                 val result = runCatching {
-                    if (uri != null && allowed) activity.contentResolver.openOutputStream(uri, "wt")!!.use { out -> file.inputStream().use { it.copyTo(out, 64 * 1024) } }
+                    if (uri != null && allowed) SavedDocument.write(activity, uri, file.name) { out -> file.inputStream().use { it.copyTo(out, 64 * 1024) } } else null
                 }
                 file.parentFile?.deleteRecursively()
-                main.post { if (uri != null) toast(if (!allowed) "Agent 已变化，已取消保存" else if (result.isSuccess) "已保存到所选位置" else "保存失败，请检查存储空间；所选位置可能留有不完整文件") }
+                main.post {
+                    if (uri != null && !closed) {
+                        val saved = result.getOrNull()
+                        if (saved != null) SavedDocument.report(activity, saved)
+                        else toast(if (!allowed) "页面已关闭，已取消保存" else "保存失败，请检查存储空间；所选位置可能留有不完整文件")
+                    }
+                }
             }
         }
     }
@@ -70,7 +76,7 @@ class DocumentDownloads(private val activity: ComponentActivity) {
             val size = data.getLong("size"); val revision = data.getString("download_revision")
             val dir = File(activity.cacheDir, "shared/${UUID.randomUUID()}"); folder = dir
             val output = File(dir, FileRules.safeName(path).takeUnless { it == "." || it == ".." } ?: "download")
-            val mime = data.optString("media_type").ifBlank { "application/octet-stream" }
+            val mime = DocumentMime.forName(output.name, data.optString("media_type").ifBlank { "application/octet-stream" })
             fun next(current: DownloadSink) {
                 if (!alive()) { if (owner == generation) fail("Agent 已变化，下载已取消"); return }
                 label.text = "${output.name}\n${FileRules.size(current.received)} / ${FileRules.size(size)}"
@@ -88,8 +94,8 @@ class DocumentDownloads(private val activity: ComponentActivity) {
                             if (result.getOrThrow()) {
                                 monitor?.let(main::removeCallbacks); monitor = null; dialog?.dismiss(); dialog = null; sink = null; folder = null
                                 if (share) share(output, mime) else {
-                                    pendingSave = output; pendingValid = valid
-                                    runCatching { picker.launch(output.name) }.onFailure { pendingSave = null; pendingValid = null; worker.execute { dir.deleteRecursively() }; toast("无法打开保存位置选择器") }
+                                    pendingSave = output
+                                    runCatching { picker.launch(output.name) }.onFailure { pendingSave = null; worker.execute { dir.deleteRecursively() }; toast("无法打开保存位置选择器") }
                                 }
                             } else next(current)
                         }
@@ -126,7 +132,7 @@ class DocumentDownloads(private val activity: ComponentActivity) {
     fun close() {
         if (closed) return
         closed = true; cancel()
-        val file = pendingSave; pendingSave = null; pendingValid = null
+        val file = pendingSave; pendingSave = null
         if (file != null) worker.execute { file.parentFile?.deleteRecursively() }
         // Drain worker results and their main-thread cleanup before shutting down.
         worker.execute { main.post { worker.shutdown() } }

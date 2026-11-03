@@ -1,8 +1,12 @@
-# Herdr Pocket · Android 0.2.17
+# Herdr Pocket · Android 0.2.20
 
 与本仓库根目录的 **Relay 0.23.5+codexfix.11** 配套的原生 Android 客户端，不使用 WebView 运行 Agent 界面。
 
 ## 安装
+
+0.2.20 发布于 **`android-v0.2.20`**，附件为 `Herdr-Pocket-0.2.20-debug.apk` 与 SHA-256 校验文件。保存后查询实际名称，若被改后缀则通过系统文档接口尝试恢复原名并再次核对；拒绝改名、同名冲突或无法确认时显示原名/实际名称并可复制原名，不删除或强制覆盖同名文件。
+
+包含此前 0.2.18/0.2.19 本地修复：正确匹配保存/分享的 MIME；发布标签、仓库 slug 和未带路径的附件名不再生成假文件卡片。可覆盖旧同签名 App，**无需重新配对、升级或重启 Relay/Gateway**。若旧 App 下载此 APK 仍为 `.bin`，这一次先改回 `Herdr-Pocket-0.2.20-debug.apk` 再安装。
 
 0.2.17 发布于 `android-v0.2.17`，包含文件访问/下载改进及此前 0.2.16 的对话漏补修复。配套 Relay 安装包见 `native-v0.23.5-codexfix.11`，Gateway codexfix.6 无需更新。
 

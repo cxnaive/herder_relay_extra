@@ -26,6 +26,8 @@ data class ReviewReference(val path: String, val label: String = FileRules.safeN
 
 object ReviewReferences {
     private val lineSuffix = Regex(":([1-9][0-9]*)(?::[1-9][0-9]*)?$")
+    private val commonFile = Regex("(?i)^(?:readme|licen[cs]e|copying|changelog|contributing|authors|notice)(?:\\.(?:md|markdown|txt|rst))?$|^(?:Dockerfile|Makefile|\\.env(?:\\.[A-Za-z0-9_-]+)?|\\.gitignore|\\.gitattributes|\\.editorconfig)$")
+    private val relativeFileSuffix = Regex("\\.[A-Za-z][A-Za-z0-9_-]{0,15}$")
     private val parser = Parser.builder().also(CodexFileCitations::configure).build()
     fun local(raw: String, cwd: String, relativeTo: String = "", label: String = "", unrestricted: Boolean = false): ReviewReference? = runCatching {
         if (raw.isBlank() || raw.length > 8192 || raw.any { it.code < 32 } || raw.startsWith("//")) return null
@@ -50,6 +52,18 @@ object ReviewReferences {
         ReviewReference(path, label.ifBlank { FileRules.safeName(path) }, page.coerceAtMost(100000), line.coerceAtMost(1000000), anchor)
     }.getOrNull()
 
+    // A code span is not a link: release tags, repo slugs and asset names are
+    // often formatted as code too. Only promote recognizable path references.
+    private fun inlineFilePath(value: String): Boolean {
+        if (value.isBlank() || value.any { it.code < 32 } || value.contains(":codex-file-citation{")) return false
+        val path = value.substringBefore('#').replace(lineSuffix, "")
+        if (path.startsWith('/') || path.startsWith("./") || path.startsWith("../") || path.startsWith("file:///")) return true
+        if (commonFile.matches(path)) return true
+        if (!path.contains('/') || path.substringBefore('/').any { it.isWhitespace() }) return false
+        val name = path.substringAfterLast('/')
+        return commonFile.matches(name) || relativeFileSuffix.containsMatchIn(name)
+    }
+
     fun documents(entry: JSONObject, cwd: String, unrestricted: Boolean = false): List<ReviewReference> {
         val found = linkedMapOf<String, ReviewReference>()
         fun add(source: String, label: String = "") {
@@ -61,9 +75,7 @@ object ReviewReferences {
             parser.parse(text.take(256 * 1024)).accept(object : AbstractVisitor() {
                 override fun visit(link: Link) { add(link.destination); super.visit(link) }
                 override fun visit(code: Code) {
-                    val value = code.literal
-                    if (value.contains(":codex-file-citation{")) return
-                    if (!value.contains('\n') && (value.contains('/') || Regex("\\.[A-Za-z0-9]{1,12}(?:[:#].*)?$").containsMatchIn(value) || value in listOf("README", "LICENSE", "Dockerfile", "Makefile"))) add(value)
+                    if (inlineFilePath(code.literal)) add(code.literal)
                 }
                 override fun visit(text: Text) {
                     if (text.parent is Link) return

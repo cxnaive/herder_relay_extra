@@ -127,12 +127,14 @@ class MainActivity : ComponentActivity() {
     private val main = Handler(Looper.getMainLooper())
     private var transientToast: Toast? = null
     private val persistDraft = Runnable { keepDraft() }
-    private val picker = registerForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+    private val picker = registerForActivityResult(SaveDocument()) { uri ->
         val export = pendingExport; pendingExport = null
         if (uri != null && export != null) {
             Thread {
-                val result = runCatching { contentResolver.openOutputStream(uri, "wt")!!.use { it.write(export.second) } }
-                runOnUiThread { toast(if (result.isSuccess) "已保存到所选位置" else "保存失败，请检查存储空间") }
+                val result = runCatching { SavedDocument.write(this, uri, export.first) { it.write(export.second) } }
+                runOnUiThread {
+                    result.fold({ SavedDocument.report(this, it) }, { toast("保存失败，请检查存储空间；所选位置可能留有不完整文件") })
+                }
             }.start()
         }
     }
@@ -742,7 +744,7 @@ class MainActivity : ComponentActivity() {
             val folder = File(cacheDir, "shared/${UUID.randomUUID()}").apply { mkdirs() }
             val output = File(folder, FileRules.safeName(doc.optString("path"))).apply { writeBytes(currentBytes()) }
             val uri = FileProvider.getUriForFile(this, "$packageName.files", output)
-            val send = Intent(Intent.ACTION_SEND).apply { type = doc.optString("media_type").ifBlank { "application/octet-stream" }; putExtra(Intent.EXTRA_STREAM, uri); clipData = ClipData.newRawUri(output.name, uri); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            val send = Intent(Intent.ACTION_SEND).apply { type = DocumentMime.forName(output.name, doc.optString("media_type").ifBlank { "application/octet-stream" }); putExtra(Intent.EXTRA_STREAM, uri); clipData = ClipData.newRawUri(output.name, uri); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }
             startActivity(Intent.createChooser(send, "分享 ${output.name}"))
         }.onFailure { toast("暂时无法分享，请检查存储空间或先下载文件") }
     }

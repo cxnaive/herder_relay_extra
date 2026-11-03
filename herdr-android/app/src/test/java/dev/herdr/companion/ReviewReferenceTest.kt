@@ -52,4 +52,32 @@ class ReviewReferenceTest {
         assertEquals(setOf("output/archive.zip", "LICENSE", "src/main.py", "output/result.csv"), refs.map { it.path }.toSet())
     }
 
+    @Test fun releaseNamesAndRepositorySlugAreNotLocalFileCards() {
+        // A release announcement has code spans, but it contains no file links.
+        val text = "已提交并发布到 `cxnaive/herder_relay_extra`：\n" +
+            "- **Commit：`db8a95e`**，已推送。\n" +
+            "- **Android：`android-v0.2.17`**，已设为 Latest。\n" +
+            "- **服务端：`native-v0.23.5-codexfix.11`**，包含安装包。"
+        for (unrestricted in listOf(false, true)) {
+            assertEquals(emptyList<String>(), ReviewReferences.documents(JSONObject().put("text", text), "/work/project", unrestricted).map { it.path })
+        }
+    }
+    @Test fun nakedArtifactNamesWithKnownExtensionStillNeedAnExplicitPathOrLink() {
+        val text = "附件 `Herdr-Pocket-0.2.17-debug.apk`，另附 `SHA256SUMS.txt`。\n" +
+            "[下载](</work/project/dist/Herdr-Pocket-0.2.17-debug.apk>)\n" +
+            "路径 `dist/SHA256SUMS.txt`；配置 `.env`；阅读 `README.md`。"
+        assertEquals(listOf("dist/Herdr-Pocket-0.2.17-debug.apk", "dist/SHA256SUMS.txt", ".env", "README.md"),
+            ReviewReferences.documents(JSONObject().put("text", text), "/work/project").map { it.path })
+    }
+
+    @Test fun automaticPathsStayConservativeButExplicitLinksKeepAllFileTypes() {
+        val text = "`npm run scripts/build.js` `model/vendor` `v1.2.3` `0.23.5+codexfix.11` `WorkspaceBinding.fromAgent`\n" +
+            "`./bin/tool` `/work/project/data/report final.csv` `docs/custom.ext999` `docs/LICENSE` `docs/note.md#L4`\n" +
+            "[实际文件](android-v0.2.17) [无后缀](vendor/tool) [文件名](report.pdf)"
+        assertEquals(listOf("bin/tool", "data/report final.csv", "docs/custom.ext999", "docs/LICENSE", "docs/note.md", "android-v0.2.17", "vendor/tool", "report.pdf"),
+            ReviewReferences.documents(JSONObject().put("text", text), "/work/project").map { it.path })
+        val manyTags = (1..12).joinToString(" ") { "`release-v0.2.$it`" }
+        assertEquals(listOf("output/download.zip"), ReviewReferences.documents(JSONObject().put("text", "$manyTags [下载](output/download.zip)"), "/work/project").map { it.path })
+    }
+
 }

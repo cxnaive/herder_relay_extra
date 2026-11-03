@@ -1,4 +1,37 @@
-# 验证记录 · Android 0.2.17 / Relay codexfix.11
+# 验证记录 · Android 0.2.20 / Relay codexfix.11
+
+## 0.2.20 · 保存后恢复原名
+
+- **226 个 JVM/Robolectric 测试通过**，`testDebugUnitTest assembleDebug assembleDebugAndroidTest lintDebug` 成功；lint **0 errors / 64 warnings**。versionCode **23** / versionName **0.2.20**，保持原调试签名，发布标签 `android-v0.2.20`；包含此前未单独发布的 0.2.18/0.2.19 本地修复。
+- API 28/35 的模拟文档提供程序覆盖：原名已正确、不支持/拒绝改名、返回 null、继续强制后缀、改名改变 URI、原名碰撞、查询失败、仅支持名称投影、跨提供程序 URI 拒绝。未知后缀、多个后缀、中文/大小写、无后缀、隐藏文件和原本为 `.bin` 的名称均按完整原名校验。
+- 实际系统保存回调测试覆盖完整分片下载后的自定义文件名恢复，以及旧 Relay/草稿导出的小文件保存入口；取消不写入或改名。写入失败不会进入改名阶段，已存在的同名测试文件保持原字节。所有测试内容均为合成数据。
+- 改名返回新 URI 时，只用返回位置复核实际名称，旧 URI 不能继续读取也能成功；未确认恢复时显示持续的部分成功说明、原名/实际名和复制原名按钮。`build/reports/restore-name/partial-success.png` 为合成原生界面，已目视核对。
+- **未接入物理 Android 手机或厂商文件管理器验收**。测试验证标准文档接口和回调链路，不保证每种文件提供程序支持改名或接受任意文件名；不删除或强制覆盖冲突文件。
+- 仅改 Android；不更新/重启 Relay、Gateway、Herdr 或 Agent，不修改电脑端原文件和既有读取权限。
+
+## 先前验证记录
+
+## 0.2.19 · 系统保存后缀（本地构建）
+
+- **210 个 JVM/Robolectric 测试通过**，`testDebugUnitTest assembleDebug assembleDebugAndroidTest lintDebug` 成功；lint **0 errors / 64 warnings**。versionCode **22** / versionName **0.2.19**，原调试签名，尚未提交/发布；包含 0.2.18 本地修复。
+- 失败前回归证明 APK 保存 Intent 的类型仍是 `application/octet-stream`；修复后传 `application/vnd.android.package-archive`，保留原 `EXTRA_TITLE`。API 28/35 上覆盖大小写、中文空格、PDF、ZIP、文本、CSV、图片、Office、无后缀及未知后缀，明确保留通用类型回退边界。
+- 保存和分享共用后缀匹配策略；APK 不再采用 ZIP 内容嗅探类型。网络分片、校验和进度逻辑不变，不修改原文件内容。
+- 原生 TCP+E2EE 对话下载用实际 Activity `pause/stop → 系统选择位置 → restart/start/resume` 回调验证保存；完整校验后的本地副本不再依赖已关闭的查看器。字节一致性、取消和仍在进行的读取权限隔离测试保留。
+- 未接入用户手机/厂商系统文件管理器真机验收；验证 Intent 文件名/MIME 和保存流程，不宣称控制任意第三方文件提供程序命名。未知格式仍使用通用二进制回退。
+- 仅改 Android；Relay/Gateway/Herdr/Agent 未更新或重启，已有文件读取授权不变。
+
+## 先前验证记录
+
+## 0.2.18 · 文件链接误识别（本地构建）
+
+- **205 个 JVM/Robolectric 测试通过**，`testDebugUnitTest assembleDebug assembleDebugAndroidTest lintDebug` 成功；lint **0 errors / 64 warnings**。versionCode **21** / versionName **0.2.18**，保持原调试签名，尚未提交/发布。
+- 修复前回归复现：发布说明中的仓库 slug、两个 Release 标签、仅提及的 APK/校验文件名被错误转为当前 cwd 下的文件卡片。修复后这些代码文本不再推断为文件，明确 Markdown/Codex 文件引用仍保持任意文件类型支持；假候选不会耗尽八个文件卡片名额。
+- 新增真实 TCP+E2EE 原生对话 fixture：服务器推送 `filesystem_read:true`，App 从三个对话链接/卡片打开工作区外 APK、源码包和校验文件；校验确切 Agent target、cwd、filesystem scope 和根目录相对路径。通过实际 Android 保存位置选择器保存校验文件，核对原始字节一致。
+- 对话渲染不会为疑似名称发起文件探测。显式引用不存在时只尝试一次原路径，中文错误包含实际绝对路径；不跨目录搜索或降级权限。合成截图 `build/reports/file-links/` 已目视核对。
+- 现有配对权限下，公网 TCP+E2EE 只读核对真实 APK/源码包/校验文件的元数据均成功；把仓库名/发布标签拼在工作目录后的三个伪路径均准确复现 `Workspace file was not found`。未把私有凭据/生产会话日志放入测试或源码。
+- **仅修改 Android，不更新或重启 Relay/Gateway/Herdr/Agent**；已开启的工作区外只读授权保留。没有连接物理 Android 手机验收。
+
+## 先前版本验证记录
 
 ## 0.2.17 / Relay codexfix.11 · 文件下载与可选扩展读取
 
