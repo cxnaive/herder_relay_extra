@@ -1,6 +1,8 @@
 # Relay + Gateway 从零部署（Herdr Pocket / IP + TCP）
 
-适用本仓库发布的 **Relay 0.23.5+codexfix.8、Gateway 0.23.5+codexfix.6、Android 0.2.13**。这不是上游插件的自动更新包。本次预编译服务端包仅提供 **Linux x86_64 / amd64**，不适用于 ARM64、Windows 或 macOS。
+适用本仓库发布的 **Relay 0.23.5+codexfix.9、Gateway 0.23.5+codexfix.6、Android 0.2.15**。这不是上游插件的自动更新包。本次预编译服务端包仅提供 **Linux x86_64 / amd64**，不适用于 ARM64、Windows 或 macOS。
+
+工作区逐层分页需要 Android 0.2.15 和 Relay codexfix.9；已有 Gateway codexfix.6 不必重新安装。详见 `workspace-directory.md`（压缩包中为 `WORKSPACE-DIRECTORY.md`）。
 
 ## 1. 先分清三端
 
@@ -27,13 +29,13 @@
 
 ## 2. 下载、校验、解压
 
-服务端 Release：**`native-v0.23.5-codexfix.8`**，附件：
+服务端 Release：**`native-v0.23.5-codexfix.9`**，附件：
 
-- `herdr-mobile-relay_0.23.5-codexfix.8_linux_amd64.tar.gz`
+- `herdr-mobile-relay_0.23.5-codexfix.9_linux_amd64.tar.gz`
 - `herdr-gateway_0.23.5-codexfix.6_linux_amd64.tar.gz`
 - `SHA256SUMS.txt`
 
-APK 使用另一个 Release **`android-v0.2.13`** 中的 `Herdr-Pocket-0.2.13-debug.apk`。Android Release 保持为 Latest；服务端版本不等于 Android 版本。
+APK 使用另一个 Release **`android-v0.2.15`** 中的 `Herdr-Pocket-0.2.15-debug.apk`。Android Release 保持为 Latest；服务端版本不等于 Android 版本。
 
 在电脑的空目录中下载（也可直接在 GitHub Releases 页面点附件）。先确认两台 Linux 机器的 `uname -m` 都是 `x86_64`：
 
@@ -41,15 +43,15 @@ APK 使用另一个 Release **`android-v0.2.13`** 中的 `Herdr-Pocket-0.2.13-de
 set -eu
 mkdir -p "$HOME/Downloads/herdr-native"
 cd "$HOME/Downloads/herdr-native"
-base=https://github.com/cxnaive/herder_relay_extra/releases/download/native-v0.23.5-codexfix.8
-for name in herdr-mobile-relay_0.23.5-codexfix.8_linux_amd64.tar.gz \
+base=https://github.com/cxnaive/herder_relay_extra/releases/download/native-v0.23.5-codexfix.9
+for name in herdr-mobile-relay_0.23.5-codexfix.9_linux_amd64.tar.gz \
             herdr-gateway_0.23.5-codexfix.6_linux_amd64.tar.gz SHA256SUMS.txt; do
   curl -fL --retry 4 --connect-timeout 15 --max-time 600 --continue-at - \
     "$base/$name" -o "$name"
 done
 sha256sum -c SHA256SUMS.txt
 # 只有两个归档都显示 OK 才继续。
-tar -xzf herdr-mobile-relay_0.23.5-codexfix.8_linux_amd64.tar.gz
+tar -xzf herdr-mobile-relay_0.23.5-codexfix.9_linux_amd64.tar.gz
 tar -xzf herdr-gateway_0.23.5-codexfix.6_linux_amd64.tar.gz
 ```
 
@@ -62,7 +64,7 @@ tar -xzf herdr-gateway_0.23.5-codexfix.6_linux_amd64.tar.gz
 **如果已有 Relay，跳到第 7 节。不要生成新主密钥、删除设备库或再启动一个相同端口的 Relay。** 先检查 `systemctl --user status herdr-mobile-relay.service` 和本机端口占用。
 
 ```sh
-cd "$HOME/Downloads/herdr-native/herdr-mobile-relay_0.23.5-codexfix.8_linux_amd64"
+cd "$HOME/Downloads/herdr-native/herdr-mobile-relay_0.23.5-codexfix.9_linux_amd64"
 command -v herdr
 # 203.0.113.10 只是文档保留地址，必须换成你的公网 IP。
 python3 ./init-config.py --gateway tcp://203.0.113.10:8377
@@ -146,7 +148,7 @@ PY
 ```sh
 set -eu
 base="$HOME/.local/share/herdr-pocket-relay"
-release=herdr-mobile-relay_0.23.5-codexfix.8_linux_amd64
+release=herdr-mobile-relay_0.23.5-codexfix.9_linux_amd64
 mkdir -p "$base/releases" "$HOME/.config/systemd/user"
 # 若目标已存在，先检查，不要嵌套覆盖另一次安装。
 test ! -e "$base/releases/$release"
@@ -161,7 +163,7 @@ systemctl --user status herdr-mobile-relay.service --no-pager
 curl -fsS http://127.0.0.1:8375/healthz
 ```
 
-健康响应应显示 Relay `version=0.23.5+codexfix.8`，`gateway.registered=true`，网关版本 `0.23.5+codexfix.6`。`inventory.state=ready` 才表示成功读取 Herdr；只有 HTTP 200 不代表 Agent 清单可用。原生 App 不依赖网页 bundle 的版本号。
+健康响应应显示 Relay `version=0.23.5+codexfix.9`，`gateway.registered=true`，网关版本 `0.23.5+codexfix.6`。`inventory.state=ready` 才表示成功读取 Herdr；只有 HTTP 200 不代表 Agent 清单可用。原生 App 不依赖网页 bundle 的版本号。
 
 用户服务若需退出 SSH/登录后继续运行，可由管理员执行 `sudo loginctl enable-linger "$USER"`；这只保留用户服务管理器，**不会自动启动 Herdr 或恢复 Agent**。电脑必须保持在线、不休眠，Herdr 本身也必须运行。
 

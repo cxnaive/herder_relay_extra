@@ -99,6 +99,10 @@ class MainActivity : ComponentActivity() {
     private var directory = ""
     private var treeRoot = ""
     private var treeTruncated = false
+    private var directoryPage: WorkspaceDirectoryPage? = null
+    private var treeError = ""
+    private var treeRequest = 0
+    private var treePending = false
     private var query = ""
     private var searchField: EditText? = null
     private var fileList: ListView? = null
@@ -172,7 +176,7 @@ class MainActivity : ComponentActivity() {
             override fun handleOnBackPressed() {
                 when {
                     file != null && tab == "files" -> leaveFile { render() }
-                    tab == "files" && directory.isNotEmpty() -> { directory = FileRules.parent(directory); query = ""; render() }
+                    tab == "files" && directory.isNotEmpty() -> navigateDirectory(FileRules.parent(directory))
                     tab == "agents" && nativeAgents.back() -> Unit
                     tab == "files" && selectedAgent != null -> returnToSelectedAgent()
                     tab != "agents" -> changeTab("agents")
@@ -247,7 +251,7 @@ class MainActivity : ComponentActivity() {
                             val replacement = (0 until current.length()).map { current.getJSONObject(it) }.find { it.optString("pane_id") == selectedAgent?.optString("pane_id") }
                             if (replacement == null || WorkspaceBinding.fromAgent(id, replacement) != selectedBinding()) {
                                 fileReviewer?.close(); fileReviewer = null
-                                selectedAgent = null; entries = JSONArray(); busy = false; fileGeneration++
+                                selectedAgent = null; entries = JSONArray(); directoryPage = null; busy = false; treePending = false; treeRequest++; fileGeneration++
                             }
                             else selectedAgent = replacement
                         }
@@ -333,9 +337,10 @@ class MainActivity : ComponentActivity() {
         if (relays.length() == 0) { emptyState("还没有连接电脑", "先添加设备，即可查看原生对话、终端和审批。", "添加设备") { changeTab("devices") }; return }
         nativeAgents.attach(content)
     }
-    private fun agentName(agent: JSONObject): String = agent.optString("name").ifBlank { agent.optString("agent", "Agent") }
+    private fun agentName(agent: JSONObject): String = AgentPresentation.title(agent)
     private fun selectWorkspace(relay: String, agent: JSONObject) {
         relayId = relay; selectedAgent = JSONObject(agent.toString()); directory = ""; query = ""; treeRoot = ""; entries = JSONArray(); busy = false
+        directoryPage = null; treeError = ""; treeTruncated = false; treePending = false; treeRequest++
         tab = "files"; fileGeneration++; loadTree()
     }
     private fun selectedBinding(): WorkspaceBinding? = selectedAgent?.let { WorkspaceBinding.fromAgent(relayId, it) }
@@ -380,30 +385,59 @@ class MainActivity : ComponentActivity() {
         }
         val crumb = LinearLayout(this)
         crumb.addView(button("‹  ${if (directory.isEmpty()) "返回 Agent" else "上一级"}") {
-            if (directory.isEmpty()) returnToSelectedAgent() else { directory = FileRules.parent(directory); query = ""; render() }
+            if (directory.isEmpty()) returnToSelectedAgent() else navigateDirectory(FileRules.parent(directory))
         })
         body.addView(crumb)
         body.addView(label("${agentName(selectedAgent!!)} 的工作区", 18, ink, true).space(0, 8, 0, 4))
-        body.addView(label(if (directory.isEmpty()) treeRoot.ifBlank { selectedAgent!!.optString("cwd") } else directory, 12, muted).apply { maxLines = 2 }.space(0, 4, 0, 10))
+        val absoluteDirectory = treeRoot.ifBlank { selectedAgent!!.optString("cwd") }.trimEnd('/') + if (directory.isEmpty()) "" else "/$directory"
+        body.addView(label(absoluteDirectory, 12, muted).apply { maxLines = 3; setTextIsSelectable(true) }.space(0, 4, 0, 10))
         searchField = EditText(this).apply {
-            hint = "搜索此 Agent 的工作区…"; setTextColor(ink); setHintTextColor(muted); textSize = 14f; setSingleLine(); setText(query)
+            hint = if (directoryPaging()) "筛选当前目录已加载的条目…" else "搜索已加载的工作区条目…"; setTextColor(ink); setHintTextColor(muted); textSize = 14f; setSingleLine(); setText(query)
             background = rounded(surface); setPadding(dp(14), dp(8), dp(14), dp(8))
             addTextChangedListener(watcher { query = it; renderEntries() })
         }
         body.addView(searchField, LinearLayout.LayoutParams(-1, dp(48)))
-        if (treeTruncated) body.addView(label("目录较大，仅显示前 4,000 项。生成目录与符号链接已过滤。", 12, muted).space(0, 8, 0, 8))
-        if (capabilities[relayId]?.contains("workspace_mobile_files_v1") != true) body.addView(label("当前 relay 支持只读预览；安装随附扩展后可编辑、下载和查看 PDF。", 12, muted).space(0, 8, 0, 8))
+        body.addView(CheckBox(this).apply {
+            text = "显示隐藏文件/目录"; textSize = 12f; setTextColor(muted)
+            isChecked = showHiddenFiles()
+            setOnCheckedChangeListener { _, checked ->
+                getSharedPreferences("file-browser", MODE_PRIVATE).edit().putBoolean("show-hidden", checked).apply(); renderEntries()
+            }
+        })
+        if (directoryPaging()) {
+            val page = directoryPage
+            val summary = when {
+                treePending -> if (page == null) "正在读取当前目录…" else "正在加载更多…已加载 ${page.entries.length()}/${page.total} 项"
+                page != null -> "当前目录已加载 ${page.entries.length()}/${page.total} 项" + if (page.skipped > 0) " · 已跳过 ${page.skipped} 个符号链接或特殊条目" else ""
+                else -> "当前目录尚未加载"
+            }
+            body.addView(label(summary, 12, muted).space(0, 8, 0, 4))
+            if (treePending) body.addView(ProgressBar(this).apply { isIndeterminate = true }, LinearLayout.LayoutParams(dp(24), dp(24)))
+            if (page?.cursor?.isNotBlank() == true) body.addView(button("加载更多目录项（${page.entries.length()}/${page.total}）") { loadTree(true) }.apply { isEnabled = !busy })
+        } else if (treeTruncated) body.addView(label("旧 Relay 返回的工作区树已截断，部分目录尚未列出；请升级 Relay 以逐层浏览。", 12, muted).space(0, 8, 0, 8))
+        if (treeError.isNotBlank()) body.addView(label("读取失败：$treeError · 点顶部刷新重试", 12, accent).space(0, 6, 0, 6))
+        if (capabilities[relayId]?.contains("workspace_mobile_files_v1") != true) body.addView(label(
+            if (capabilities[relayId]?.contains("workspace_file_read_v1") == true) "只读工作区 · 支持图片、PDF、Markdown 查看与下载；暂不支持保存修改。"
+            else "只读工作区 · 此 Relay 仅支持基础图片/文本预览。", 12, muted).space(0, 8, 0, 8))
         fileList = ListView(this).apply { divider = android.graphics.drawable.ColorDrawable(surface); dividerHeight = dp(1) }
         body.addView(fileList, LinearLayout.LayoutParams(-1, 0, 1f))
         renderEntries()
     }
     private fun renderEntries() {
         val list = fileList ?: return
-        if (busy) { list.adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, listOf("正在读取…")); return }
+        if (busy && entries.length() == 0) { list.adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, listOf("正在读取…")); return }
         val shown = (0 until entries.length()).map { entries.getJSONObject(it) }
+            .filter { showHiddenFiles() || !it.optString("name").startsWith('.') }
             .filter { if (query.isBlank()) FileRules.parent(it.getString("path")) == directory else it.getString("path").contains(query, true) }
             .sortedWith(compareBy<JSONObject> { it.optString("kind") != "directory" }.thenBy { it.optString("name").lowercase() })
-        if (shown.isEmpty()) { list.adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, listOf(if (query.isBlank()) "这个目录是空的" else "没有匹配的文件")); return }
+        if (shown.isEmpty()) { list.adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, listOf(when {
+            treeError.isNotBlank() -> "目录读取失败，尚不能判断是否为空"
+            directoryPaging() && directoryPage == null -> "目录尚未加载，请刷新"
+            !directoryPaging() && treeTruncated -> "此目录未完整加载，请升级 Relay"
+            query.isNotBlank() -> "已加载条目中没有匹配项" + if (directoryPage?.cursor?.isNotBlank() == true) "，可继续加载更多" else ""
+            !showHiddenFiles() && (0 until entries.length()).any { FileRules.parent(entries.getJSONObject(it).getString("path")) == directory } -> "已加载条目均为隐藏项，可开启“显示隐藏文件/目录”"
+            else -> "这个目录是空的"
+        })); return }
         list.adapter = object : BaseAdapter() {
             override fun getCount() = shown.size
             override fun getItem(position: Int) = shown[position]
@@ -418,7 +452,7 @@ class MainActivity : ComponentActivity() {
             texts.addView(label(entry.optString("name", FileRules.safeName(path)), 15, ink).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
             texts.addView(label(if (query.isNotBlank()) path else if (folder) "文件夹" else FileRules.size(entry.optLong("size")), 11, muted).space(0, 3, 0, 0))
             row.addView(texts, LinearLayout.LayoutParams(0, -2, 1f)); row.addView(label("›", 22, muted))
-            row.setOnClickListener { if (folder) { directory = path; query = ""; render() } else openFile(path) }
+            row.setOnClickListener { if (folder) navigateDirectory(path) else openFile(path) }
             return row
             }
         }
@@ -436,13 +470,36 @@ class MainActivity : ComponentActivity() {
                 .put("generation", a.optLong("generation")).put("agent_session_id", a.optString("agent_session_id").ifBlank { a.optString("session_id") }))
         }
     }
-    private fun loadTree() {
-        if (!selectedAgentIsCurrent()) { toast("Agent 会话已变化，请重新选择它的工作区"); render(); return }
-        busy = true; val binding = selectedBinding(); val generation = fileGeneration; render()
-        engine.request(relayId, command("workspace_tree")) { data, error ->
-            if (selectedBinding() != binding || fileGeneration != generation) return@request
-            busy = false
-            if (error != null) toast(error) else { entries = data?.optJSONArray("entries") ?: JSONArray(); treeRoot = data?.optString("root").orEmpty(); treeTruncated = data?.optBoolean("truncated") == true }
+    private fun showHiddenFiles() = getSharedPreferences("file-browser", MODE_PRIVATE).getBoolean("show-hidden", false)
+    private fun directoryPaging() = capabilities[relayId]?.contains("workspace_directory_v1") == true
+    private fun navigateDirectory(path: String) {
+        treeRequest++; fileGeneration++; treePending = false; busy = false
+        directory = path; query = ""; treeError = ""
+        if (directoryPaging()) { entries = JSONArray(); directoryPage = null; loadTree() } else render()
+    }
+    private fun loadTree(more: Boolean = false) {
+        if (treePending) return
+        if (!selectedAgentIsCurrent()) { treeError = "Agent 会话已变化，请重新选择它的工作区"; render(); return }
+        val paged = directoryPaging(); val previous = directoryPage.takeIf { more }
+        if (more && (!paged || previous?.cursor.isNullOrBlank())) return
+        busy = true; treePending = true; treeError = ""
+        val binding = selectedBinding(); val generation = fileGeneration; val path = directory; val owner = ++treeRequest
+        render()
+        val request = command(if (paged) "workspace_list" else "workspace_tree")
+        if (paged) request.put("path", path).put("cursor", previous?.cursor.orEmpty()).put("limit", 128)
+        engine.request(relayId, request, 30000) { data, error ->
+            if (selectedBinding() != binding || fileGeneration != generation || treeRequest != owner || directory != path) return@request
+            busy = false; treePending = false
+            if (!selectedAgentIsCurrent()) treeError = "Agent 会话已变化，请重新打开工作区"
+            else if (error != null || data == null) treeError = error ?: "目录响应为空"
+            else if (paged) {
+                try {
+                    val page = WorkspaceDirectoryPage.accept(data, path, previous)
+                    directoryPage = page; entries = page.entries; treeRoot = page.root; treeTruncated = false
+                } catch (_: Exception) { treeError = "目录已变化或分页无效，请刷新当前目录" }
+            } else {
+                entries = data.optJSONArray("entries") ?: JSONArray(); treeRoot = data.optString("root"); treeTruncated = data.optBoolean("truncated")
+            }
             if (tab == "files" && file == null) render()
         }
     }

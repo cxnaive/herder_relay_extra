@@ -1,6 +1,6 @@
 # 电脑 Relay 部署模板
 
-Relay `0.23.5+codexfix.8` 应与 Herdr/Agent 使用同一个普通 Linux 用户。
+Relay `0.23.5+codexfix.9` 应与 Herdr/Agent 使用同一个普通 Linux 用户。
 
 完整下载、Gateway 安装、配置、用户 systemd 服务、配对及升级流程见 [部署指南](../../docs/native-deployment.md)。Release 归档包含已编译的 Relay、这些模板及 `DEPLOYMENT.md`，源码此目录不包含二进制。
 

@@ -4,19 +4,21 @@
 
 | 组件 | 版本 | 位置 |
 | --- | --- | --- |
-| 电脑 Relay | `0.23.5+codexfix.8` | 仓库根目录，`cmd/herdr-mobile-relay` |
+| 电脑 Relay | `0.23.5+codexfix.9` | 仓库根目录，`cmd/herdr-mobile-relay` |
 | 原生 TCP Gateway | `0.23.5+codexfix.6` | `cmd/herdr-gateway`，`deploy/native-tcp/` |
-| Herdr Pocket Android | `0.2.14` / versionCode `17` | `herdr-android/` |
+| Herdr Pocket Android | `0.2.15` / versionCode `18` | `herdr-android/` |
 
 本次按当前可用源码快照替换此前根目录的 0.24.0 文件扩展实现，不把两条不同基线混为同一版本。组件对应关系及源码来源见 [VERSION.json](VERSION.json)。旧内容仍可从 Git 历史查看。
 
 ## 下载 Android APK
 
+0.2.15 与 Relay codexfix.9 配套修复工作区目录缺失，改为逐层分页读取，支持隐藏文件开关。[修复详情及接口边界](docs/workspace-directory.md)。已有 Gateway codexfix.6 无需更新。
+
 0.2.14 修复图片读取中断后不补载的问题：重连或回到前台后自动恢复可见预览，合并重复请求，保留已读历史和图片缓存。
 
 0.2.13 包含完成提醒声音检查/测试入口及此前 0.2.12 本地构建的工作空间标题修复。
 
-进入仓库 **Releases → Herdr Pocket 0.2.14 + Relay codexfix.8**，下载 `Herdr-Pocket-0.2.14-debug.apk`。
+进入仓库 **Releases → Herdr Pocket 0.2.15 + Relay codexfix.9**，下载 `Herdr-Pocket-0.2.15-debug.apk`。
 
 - Android 9 / API 28 及以上。
 - 与此前同签名的 Pocket APK 可直接覆盖安装，**不需要重新配对**。
@@ -28,14 +30,14 @@
 **[完整部署指南：从零安装 → systemd → 配对 → 升级/回滚](docs/native-deployment.md)**
 
 - 公网服务器装 **Gateway**；运行 Herdr/Agent 的电脑以同一用户装 **Relay**；手机装 APK。
-- 服务端 Release **`native-v0.23.5-codexfix.8`** 提供 Linux x86_64 / amd64：
-  - `herdr-mobile-relay_0.23.5-codexfix.8_linux_amd64.tar.gz`
+- 服务端 Release **`native-v0.23.5-codexfix.9`** 提供 Linux x86_64 / amd64：
+  - `herdr-mobile-relay_0.23.5-codexfix.9_linux_amd64.tar.gz`
   - `herdr-gateway_0.23.5-codexfix.6_linux_amd64.tar.gz`
   - `SHA256SUMS.txt`
 - 包含二进制、配置/systemd 模板、初始化工具、部署说明和构建来源；无需在目标机器安装 Go。
 - 公网业务只需 **8377/TCP**，原生 App 不要求域名/HTTPS；应用数据使用现有 E2EE。健康端口仅 loopback。
 - 只更新二进制时保留原密钥和设备库，**不重启 Herdr/Agent**。已有安装先读指南的升级章节，不重复初始化。
-- 此服务端 Release 独立于 Android `android-v0.2.14`；Android 保持 Latest。本次未提供 ARM64/macOS/Windows 二进制。
+- 此服务端 Release 独立于 Android `android-v0.2.15`；Android 保持 Latest。本次未提供 ARM64/macOS/Windows 二进制。
 
 ## 已实现
 
@@ -56,7 +58,7 @@
 ```bash
 mkdir -p bin
 CGO_ENABLED=0 go build -trimpath \
-  -ldflags '-s -w -X main.version=0.23.5+codexfix.8 -X main.revision=source-build' \
+  -ldflags '-s -w -X main.version=0.23.5+codexfix.9 -X main.revision=source-build' \
   -o bin/herdr-mobile-relay ./cmd/herdr-mobile-relay
 CGO_ENABLED=0 go build -trimpath \
   -ldflags '-s -w -X main.version=0.23.5+codexfix.6 -X main.revision=source-build' \
@@ -93,7 +95,7 @@ APK 输出：`herdr-android/app/build/outputs/apk/debug/app-debug.apk`。
 
 TCP 本身不加密，应用数据由现有 ECDH/HMAC/AES-GCM E2EE 保护；路由/握手元数据、地址、大小和时序仍可见。未关闭原 HTTPS/WSS 证书校验，也未做独立安全审计。
 
-验证记录：178 个 Android JVM/Robolectric 测试通过，真实本地 TCP+E2EE fixture 覆盖后台监控/静音/重连；未改动的 Relay 沿用前次 Go 全套 tests/vet 和相关 race 验证结果。详细范围与未验证项见 [Android VALIDATION.md](herdr-android/VALIDATION.md)。
+验证记录：183 个 Android JVM/Robolectric 测试通过，真实本地 TCP+E2EE fixture 覆盖后台监控/静音/重连；Relay codexfix.9 的 Go 全套 tests/vet 和相关目录/身份/传输 race 检查通过。详细范围与未验证项见 [Android VALIDATION.md](herdr-android/VALIDATION.md)。
 
 ## 许可证与历史代码
 

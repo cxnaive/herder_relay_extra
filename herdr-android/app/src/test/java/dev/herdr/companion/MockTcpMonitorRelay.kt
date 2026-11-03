@@ -23,6 +23,7 @@ class MockTcpMonitorRelay : AutoCloseable {
     private val relayId = RelayCrypto.encode(ByteArray(16) { 19 })
     private val stopped = AtomicBoolean()
     val connected = AtomicInteger()
+    val extraCapabilities = CopyOnWriteArrayList<String>()
     val requests = CopyOnWriteArrayList<String>()
     val failures = CopyOnWriteArrayList<Throwable>()
     val states = ConcurrentHashMap<String, String>().apply { put("a", "working"); put("b", "working") }
@@ -89,7 +90,7 @@ class MockTcpMonitorRelay : AutoCloseable {
         }
         require(receive().getString("type") == "e2ee_client_finish")
         send(JSONObject().put("type", "e2ee_server_finish").put("version", 2).put("device_id", "device-a").put("credential_id", "credential-a").put("credential_version", 1).put("role", "reader").put("locale", "zh"))
-        send(JSONObject().put("type", "push_config").put("protocol", 3).put("inventory", JSONObject().put("state", "ready")).put("capabilities", JSONArray().put("agent_run_state_v1")))
+        send(JSONObject().put("type", "push_config").put("protocol", 3).put("inventory", JSONObject().put("state", "ready")).put("capabilities", JSONArray(listOf("agent_run_state_v1") + extraCapabilities)))
         send(JSONObject().put("type", "agents").put("agents", agents))
         send(JSONObject().put("type", "workspaces").put("workspaces", JSONArray().put(JSONObject().put("workspace_id", "project").put("cwd", "/fixture/project").put("label", "模拟工作空间"))))
         while (!stopped.get()) {

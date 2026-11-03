@@ -1,6 +1,6 @@
 # 公网 Gateway 部署模板
 
-Gateway `0.23.5+codexfix.6`，配套电脑 Relay `0.23.5+codexfix.8` 和 Android `0.2.13`。
+Gateway `0.23.5+codexfix.6`，配套电脑 Relay `0.23.5+codexfix.9` 和 Android `0.2.15`。
 
 - 从零安装、下载校验、电脑 Relay 配置、systemd、配对、升级/回滚：见 [完整部署指南](../../docs/native-deployment.md)。
 - 原生 TCP 协议及 E2EE 边界：见 [native-tcp.md](../../docs/native-tcp.md)。

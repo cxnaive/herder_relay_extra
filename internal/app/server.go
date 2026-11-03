@@ -309,7 +309,7 @@ func (s *Server) authorizeDeviceAction(client *transport.ClientConn, action prot
 }
 
 func authorizeAuthenticatedIdentity(identity transport.AuthenticatedIdentity, authenticated bool, action protocol.ActionMetadata, deviceID string) *protocol.ApiError {
-	if (action.Operation == "get_pi_integration" || action.Operation == "get_agent_run_state" || action.Operation == "get_agent_settings" || action.Operation == "set_agent_settings") && !authenticated {
+	if (action.Operation == "workspace_list" || action.Operation == "get_pi_integration" || action.Operation == "get_agent_run_state" || action.Operation == "get_agent_settings" || action.Operation == "set_agent_settings") && !authenticated {
 		apiErr := protocol.NewApiError(protocol.ErrorReaderDenied, map[string]any{"operation": action.Operation})
 		return &apiErr
 	}
@@ -1072,6 +1072,8 @@ func (s *Server) Run(ctx context.Context) error {
 			s.sendCommandResult(client, requestID, "list_slash_commands", true, "completed", "", paneID, catalog)
 		case "workspace_file_read":
 			s.handleWorkspaceDocument(commandCtx, client, inbound)
+		case "workspace_list":
+			s.handleWorkspaceDirectory(commandCtx, client, inbound)
 		case "workspace_tree", "workspace_file", "workspace_git_status", "workspace_git_diff":
 			requestID := inbound.RequestID
 			paneID := inbound.PaneID

@@ -4,8 +4,8 @@ For complete install/download/systemd/pairing/upgrade steps, see
 [native-deployment.md](native-deployment.md). Release bundles include that guide
 as `DEPLOYMENT.md`.
 
-This extension is included in Relay `0.23.5+codexfix.8`, Gateway
-`0.23.5+codexfix.6`, and Android Herdr Pocket `0.2.13` (versionCode 16).
+This extension is included in Relay `0.23.5+codexfix.9`, Gateway
+`0.23.5+codexfix.6`, and Android Herdr Pocket `0.2.15` (versionCode 18).
 It is not an upstream release feature.
 It uses the existing E2EE v2 protocol with a native TCP record carrier instead
 of WebSocket. Existing HTTPS/WSS support and certificate validation are unchanged.

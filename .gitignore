@@ -65,3 +65,7 @@ herdr-android/local.properties
 !/herdr-android/screenshots/qa-0.2.14/
 /herdr-android/screenshots/qa-0.2.14/*
 !/herdr-android/screenshots/qa-0.2.14/reconnected-image.png
+
+!/herdr-android/screenshots/qa-0.2.15/
+/herdr-android/screenshots/qa-0.2.15/*
+!/herdr-android/screenshots/qa-0.2.15/workspace-directory.png

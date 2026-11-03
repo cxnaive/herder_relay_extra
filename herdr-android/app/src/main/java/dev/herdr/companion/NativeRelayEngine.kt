@@ -100,7 +100,7 @@ class RelayEngine(private val context: Context, private val vault: Vault, privat
         if (destroyed) { callback(null, "客户端已关闭"); return }
         val id = (if (payload.optString("type") == "send_pi_prompt_unconfirmed") payload.optJSONObject("pi_prompt_lease")?.optString("incarnation").orEmpty() + "_" else "") + UUID.randomUUID().toString()
         payload.put("request_id", id).put("protocol", 3).put("client_id", "android-pocket")
-        val readOnly = payload.optString("type") in setOf("get_conversation_history", "get_conversation_updates", "read_pane", "workspace_file", "workspace_file_read", "workspace_tree", "get_agent_settings", "get_agent_run_state")
+        val readOnly = payload.optString("type") in setOf("get_conversation_history", "get_conversation_updates", "read_pane", "workspace_file", "workspace_file_read", "workspace_tree", "workspace_list", "get_agent_settings", "get_agent_run_state")
         val timeout = Runnable { pending.remove(id)?.callback?.invoke(null, if (readOnly) "读取超时，可重试；已读内容保留" else "请求超时，执行结果未确认；请核对后再操作") }
         pending[id] = Pending(relay, readOnly, callback, timeout, monitor); main.postDelayed(timeout, timeoutMs); send(relay, payload)
     }
