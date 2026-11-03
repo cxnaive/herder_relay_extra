@@ -116,7 +116,7 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
         }).build()
 
     fun attach(container: FrameLayout) { host = container; active = true; render() }
-    fun pause() { rememberConversation(); saveDraft(); active = false; stopStreams(); detailVisibility(false) }
+    fun pause() { rememberConversation(); saveDraft(); active = false; updateImageAvailability(); stopStreams(); detailVisibility(false) }
     fun destroy() { pause(); transientToast?.cancel(); speech?.stop(); speech?.shutdown(); conversationImages.close(); conversationCache.clear(); io.shutdown() }
     fun back(): Boolean { if (selected == null) return false; rememberConversation(); saveDraft(); stopStreams(); selected = null; render(); return true }
     fun open(relayId: String, agent: JSONObject) { rememberConversation(); saveDraft(); stopStreams(); composer = null; relay = relayId; selected = JSONObject(agent.toString()); runPresentation.clear(); terminalHistoryLines = 500; loadingOlderTerminal = false; terminalReadPending = false; expandedToolGroups.clear(); expandedToolItems.clear(); conversationImages.clear(); autoContextPages = 0; mode = "conversation"; conversation = conversationCache.get(WorkspaceBinding.fromAgent(relayId, agent)) ?: ConversationState(); resumeOlderAfterReconnect = false; historyMessage = ""; attachments = JSONArray(); content = ""; fingerprint = ""; frame = JSONObject(); uploading = false; uiDraft = vault.read(draftKey()).orEmpty(); if (active) render() }
@@ -139,6 +139,7 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
         if (event.optString("type") == "status") {
             if (event.optString("status") == "connected") online += id else online -= id
             if (id == relay && selected != null) {
+                updateImageAvailability()
                 if (id !in online) {
                     resumeOlderAfterReconnect = resumeOlderAfterReconnect || (historyOlder && historyPending)
                     rememberConversation(); stopStreams(); historyMessage = "连接中断，已读历史保留；重连后继续"; updateHistoryControl(); stateLabel?.text = "连接中断 · 草稿和已读历史保留"
@@ -154,7 +155,7 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
         when (value.optString("type")) {
             "push_config" -> { configs[id] = value; if (active && selected == null) renderList() else if (id == relay && active) startStreams() }
             "workspaces" -> { workspaces[id] = value.optJSONArray("workspaces") ?: JSONArray(); if (active && selected == null) renderList() else if (id == relay) updateIdentity() }
-            "inventory_status" -> { configs[id]?.put("inventory", value); if (active && selected == null) renderList() else if (id == relay) { updateSendState(); updateRunStatus() } }
+            "inventory_status" -> { configs[id]?.put("inventory", value); if (active && selected == null) renderList() else if (id == relay) { updateImageAvailability(); updateSendState(); updateRunStatus() } }
             "activity_history" -> if (pendingActivityRelay == id) { pendingActivityRelay = null; showText("活动记录", value.optJSONArray("activities")?.toString(2).orEmpty()) }
             "agents", "blocked", "agent_update", "agent_removed" -> {
                 if (!active) return
@@ -167,7 +168,7 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
                         }
                         selected = JSONObject(updated.toString()); updateIdentity(); updateInteraction(); updateSendState()
                     }
-                    updateRunStatus()
+                    updateImageAvailability(); updateRunStatus()
                 }
             }
             "pane_content", "pane_delta", "pane_resync", "pane_unchanged" -> {
@@ -180,7 +181,7 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
     private fun render() {
         if (!active) return
         saveDraft(); main.removeCallbacks(runTicker); runStatusView = null; host?.removeAllViews(); agentListRows = null; composer = null; composerPanel = null; identityTitle = null; identitySubtitle = null; terminal = null; terminalScroll = null; conversationScroll = null; conversationBody = null; historyControl = null
-        detailVisibility(selected != null)
+        updateImageAvailability(); detailVisibility(selected != null)
         if (selected == null) renderList() else renderAgent()
     }
     private fun renderList() {
@@ -343,6 +344,7 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
         if (uncertain) stateLabel?.text = "上次操作结果未确认。刷新终端并核对后，在输入方式中解除。"
     }
     private fun startStreams() {
+        updateImageAvailability()
         if (!active || selected == null || relay !in online) return
         stopStreams(); startRunStatus(); val owner = epoch
         if (mode == "conversation") loadHistory() else {
@@ -350,6 +352,9 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
             fun fallback() { if (active && epoch == owner && mode == "terminal") { if (!capability("pane_realtime_delta")) readPane(); main.postDelayed({ fallback() }, 1200) } }
             main.postDelayed({ fallback() }, 1200)
         }
+    }
+    private fun updateImageAvailability() {
+        conversationImages.setAvailability(active && selected != null && mode == "conversation", relay in online && current() != null && inventoryReady())
     }
     private fun inventoryReady(): Boolean = configs[relay]?.optJSONObject("inventory")?.optString("state") == "ready"
     private fun updateRunStatus() {
@@ -514,7 +519,8 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
         scroll.post { if (conversationBody === container) { if (follow) scroll.scrollTo(0, (container.height - scroll.height).coerceAtLeast(0)) else if (prepended) scroll.scrollTo(0, previousY + container.height - previousHeight) else scroll.scrollTo(0, previousY) } }
     }
     private fun renderConversationImages(container: LinearLayout, entry: JSONObject, shown: MutableSet<String>) {
-        val cwd = selected?.optString("cwd").orEmpty()
+        val binding = selected?.let { WorkspaceBinding.fromAgent(relay, it) } ?: return
+        val cwd = binding.cwd
         for (image in ConversationPresentation.images(entry, cwd)) {
             val fingerprint = sha(image.source.toByteArray(Charsets.UTF_8))
             if (!shown.add(image.workspacePath ?: fingerprint)) continue
@@ -522,7 +528,8 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
             container.addView(conversationImages.view(image, key, {
                 openReview(ReviewReference(image.workspacePath.orEmpty(), image.label, inlineImage = image.source.takeIf { it.startsWith("data:image/") }))
             }) { path, done ->
-                request("workspace_file", JSONObject().put("path", path), 15000) { data, error ->
+                if (!active || current()?.let { WorkspaceBinding.fromAgent(relay, it) } != binding) done(null, "Agent 会话已变化或读取暂停")
+                else request("workspace_file", JSONObject().put("path", path), 15000) { data, error ->
                     if (error != null || data?.optString("kind") != "image") done(null, error ?: "未返回图像")
                     else done(data.optString("data_url"), null)
                 }

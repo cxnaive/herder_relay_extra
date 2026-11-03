@@ -15,6 +15,8 @@ import java.util.concurrent.atomic.AtomicInteger
 
 /** Real TCP + gateway framing + E2EE, containing only generated metadata fixtures. */
 class MockTcpMonitorRelay : AutoCloseable {
+    // Only foreground tests opt in; monitor tests still reject every non-metadata request.
+    @Volatile var foregroundCommand: ((JSONObject) -> JSONObject?)? = null
     private val server = ServerSocket(0)
     val secret = ByteArray(32) { 17 }
     private val rendezvous = ByteArray(32) { 18 }
@@ -38,7 +40,7 @@ class MockTcpMonitorRelay : AutoCloseable {
             val peer = try { server.accept() } catch (_: Exception) { break }
             peers += peer; connected.incrementAndGet()
             val worker = Thread({
-                try { session(peer) } catch (e: Throwable) { if (!stopped.get() && !peer.isClosed) failures += e }
+                try { session(peer) } catch (e: Throwable) { if (!stopped.get() && !peer.isClosed && e !is java.io.EOFException && e !is java.net.SocketException) failures += e }
                 finally { runCatching { peer.close() }; peers.remove(peer) }
             }, "mock-monitor-relay").apply { isDaemon = true; start() }
             workers += worker
@@ -91,7 +93,14 @@ class MockTcpMonitorRelay : AutoCloseable {
         send(JSONObject().put("type", "agents").put("agents", agents))
         send(JSONObject().put("type", "workspaces").put("workspaces", JSONArray().put(JSONObject().put("workspace_id", "project").put("cwd", "/fixture/project").put("label", "模拟工作空间"))))
         while (!stopped.get()) {
-            val request = receive(); require(request.getString("type") == "get_agent_run_state") { "background monitor must not fetch history, terminal or mutate agents" }
+            val request = receive()
+            if (request.getString("type") != "get_agent_run_state" && foregroundCommand != null) {
+                foregroundCommand!!.invoke(request)?.let { data ->
+                    send(JSONObject().put("type", "command_result").put("request_id", request.getString("request_id")).put("ok", true).put("data", data))
+                }
+                continue
+            }
+            require(request.getString("type") == "get_agent_run_state") { "background monitor must not fetch history, terminal or mutate agents" }
             val pane = request.getString("pane_id"); require(pane in states.keys)
             val target = request.getJSONObject("target"); require(target.getString("agent_session_id") == "session-$pane" && target.getString("terminal_id") == "terminal-$pane")
             requests += pane
