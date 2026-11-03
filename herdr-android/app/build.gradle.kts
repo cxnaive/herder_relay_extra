@@ -8,6 +8,14 @@ android {
     testOptions { unitTests.isIncludeAndroidResources = true }
     compileSdk = 35
     buildToolsVersion = "35.0.0"
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("armeabi-v7a", "arm64-v8a", "x86_64")
+            isUniversalApk = false
+        }
+    }
     defaultConfig {
         applicationId = "dev.herdr.companion"
         minSdk = 28

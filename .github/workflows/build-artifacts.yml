@@ -24,23 +24,12 @@ jobs:
           - target: linux_amd64
             goos: linux
             goarch: amd64
-            suffix: ""
           - target: linux_arm64
             goos: linux
             goarch: arm64
-            suffix: ""
-          - target: windows_amd64
-            goos: windows
-            goarch: amd64
-            suffix: ".exe"
-          - target: windows_arm64
-            goos: windows
-            goarch: arm64
-            suffix: ".exe"
           - target: darwin_arm64
             goos: darwin
             goarch: arm64
-            suffix: ""
     steps:
       - uses: actions/checkout@v7
         with:
@@ -55,7 +44,6 @@ jobs:
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-          BINARY_SUFFIX: ${{ matrix.suffix }}
           TARGET: ${{ matrix.target }}
           REVISION: ${{ github.sha }}
         run: |
@@ -67,8 +55,8 @@ jobs:
 
           output="dist/$TARGET"
           mkdir -p "$output"
-          relay_binary="$output/herdr-mobile-relay$BINARY_SUFFIX"
-          gateway_binary="$output/herdr-gateway$BINARY_SUFFIX"
+          relay_binary="$output/herdr-mobile-relay"
+          gateway_binary="$output/herdr-gateway"
 
           CGO_ENABLED=0 go build -mod=readonly -trimpath \
             -ldflags "-s -w -X main.version=$relay_version -X main.revision=$REVISION" \
@@ -87,19 +75,19 @@ jobs:
             --arg relay_sha256 "$(sha256sum "$relay_binary" | awk '{print $1}')" \
             --arg gateway_sha256 "$(sha256sum "$gateway_binary" | awk '{print $1}')" \
             '{schema: 1, target: $target, goos: $goos, goarch: $goarch, revision: $revision, components: {
-              relay: {version: $relay_version, file: ($target | if startswith("windows_") then "herdr-mobile-relay.exe" else "herdr-mobile-relay" end), sha256: $relay_sha256},
-              gateway: {version: $gateway_version, file: ($target | if startswith("windows_") then "herdr-gateway.exe" else "herdr-gateway" end), sha256: $gateway_sha256}
+              relay: {version: $relay_version, file: "herdr-mobile-relay", sha256: $relay_sha256},
+              gateway: {version: $gateway_version, file: "herdr-gateway", sha256: $gateway_sha256}
             }}' > "$output/BUILD-INFO.json"
 
           (
             cd "$output"
             printf '%s  %s\n' \
-              "$(sha256sum "herdr-mobile-relay$BINARY_SUFFIX" | awk '{print $1}')" "herdr-mobile-relay$BINARY_SUFFIX" \
-              "$(sha256sum "herdr-gateway$BINARY_SUFFIX" | awk '{print $1}')" "herdr-gateway$BINARY_SUFFIX" \
+              "$(sha256sum herdr-mobile-relay | awk '{print $1}')" "herdr-mobile-relay" \
+              "$(sha256sum herdr-gateway | awk '{print $1}')" "herdr-gateway" \
               > SHA256SUMS.txt
             zip -X -9 "../herdr-native-binaries_${TARGET}.zip" \
-              "herdr-mobile-relay$BINARY_SUFFIX" \
-              "herdr-gateway$BINARY_SUFFIX" \
+              herdr-mobile-relay \
+              herdr-gateway \
               BUILD-INFO.json SHA256SUMS.txt
           )
 
@@ -111,7 +99,7 @@ jobs:
           retention-days: 14
 
   android-apk:
-    name: Android Debug APK
+    name: Android Debug and Release APKs
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -135,14 +123,28 @@ jobs:
 
       - name: Build and test Android app
         working-directory: herdr-android
-        run: ./gradlew --no-daemon testDebugUnitTest assembleDebug assembleDebugAndroidTest lintDebug
+        run: ./gradlew --no-daemon testDebugUnitTest assembleDebug assembleRelease assembleDebugAndroidTest lintDebug
 
-      - name: Name APK
-        run: mkdir -p dist && cp herdr-android/app/build/outputs/apk/debug/app-debug.apk "dist/Herdr-Pocket-$(jq -r '.android.version' VERSION.json)-debug.apk"
+      - name: Collect APKs
+        run: |
+          set -euo pipefail
+          version="$(jq -r '.android.version' VERSION.json)"
+          mkdir -p dist
+          for kind in debug release; do
+            for abi in armeabi-v7a arm64-v8a x86_64; do
+              source="herdr-android/app/build/outputs/apk/$kind/app-$kind-$abi.apk"
+              if [ ! -f "$source" ]; then
+                source="herdr-android/app/build/outputs/apk/$kind/app-$kind-$abi-unsigned.apk"
+              fi
+              test -f "$source"
+              cp "$source" "dist/Herdr-Pocket-$version-$kind-$abi.apk"
+            done
+          done
+          ls -l dist/*.apk
 
       - uses: actions/upload-artifact@v7
         with:
-          name: android-apk
-          path: dist/Herdr-Pocket-*-debug.apk
+          name: android-apks
+          path: dist/*.apk
           if-no-files-found: error
           retention-days: 14
