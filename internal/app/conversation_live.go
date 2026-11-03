@@ -62,7 +62,7 @@ func conversationScope(agent *coordinator.AgentState) conversation.BrowseScope {
 }
 func (s *Server) conversationCurrent(feed *conversationFeed) bool {
 	current, ok := s.state.Agent(feed.target.PaneID)
-	return ok && s.kimiSelectionCurrent(feed.ctx, feed.agent) && validateExactPaneTarget(s.state, protocol.Inbound{PaneID: feed.target.PaneID, Target: &feed.target}, true) == nil && sameConversationTuple(feed.agent, current)
+	return ok && s.conversationSelectionCurrent(feed.ctx, feed.agent) && validateExactPaneTarget(s.state, protocol.Inbound{PaneID: feed.target.PaneID, Target: &feed.target}, true) == nil && sameConversationTuple(feed.agent, current)
 }
 func (s *Server) activityIdentity(ctx context.Context, target protocol.TargetRef) (pibridge.Identity, error) {
 	instance, err := pibridge.Instance(s.cfg.SocketPath)

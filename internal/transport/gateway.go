@@ -22,6 +22,7 @@ import (
 	"github.com/0cv/herdr-mobile-relay/internal/config"
 	"github.com/0cv/herdr-mobile-relay/internal/framing"
 	"github.com/0cv/herdr-mobile-relay/internal/gatewaywire"
+	"github.com/0cv/herdr-mobile-relay/internal/nativeconn"
 )
 
 const (
@@ -31,13 +32,15 @@ const (
 
 	gatewayDialTimeout  = 15 * time.Second
 	gatewayHelloTimeout = 10 * time.Second
+	// Bound a stalled fragment, but allow slow WAN uploads beyond the local 5s budget.
+	gatewayFragmentWriteTimeout = 20 * time.Second
 	// A registered WebSocket can survive while the gateway's public proxy stops
 	// routing new phone connections. Probe the public path independently and
 	// fail over after two consecutive misses. At 15 seconds this catches the
 	// split failure within 30 seconds without turning health checks into traffic.
 	gatewayHealthInterval     = 15 * time.Second
 	gatewayHealthFailureLimit = 2
-	gatewayProbeTimeout       = 2 * time.Second
+	gatewayProbeTimeout       = 5 * time.Second
 	gatewayProbeTieWindow     = 20 * time.Millisecond
 	gatewayReadLimit          = int64(gatewaywire.HeaderSize + gatewaywire.MaxFramePayload)
 	gatewayWriteQueue         = 64
@@ -236,6 +239,12 @@ func gatewayURLs(opts GatewayOptions) ([]string, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid gateway url %q: %w", entry, err)
 		}
+		if parsed.Scheme == "tcp" {
+			if _, err := nativeconn.Endpoint(entry); err != nil {
+				return nil, fmt.Errorf("invalid native TCP gateway endpoint")
+			}
+			continue
+		}
 		if parsed.Host == "" || (parsed.Scheme != "ws" && parsed.Scheme != "wss") {
 			return nil, fmt.Errorf("invalid gateway url %q: want ws:// or wss:// base url", entry)
 		}
@@ -409,6 +418,29 @@ func (c *GatewayClient) applyConfiguredOrder(results []gatewayProbeResult) bool 
 // endpoint. This needs no ICMP privilege and includes DNS, TCP, TLS and HTTP in
 // the number used for cold selection.
 func measureGatewayRTT(ctx context.Context, base string) (time.Duration, error) {
+	if strings.HasPrefix(base, "tcp://") {
+		start := time.Now()
+		conn, err := nativeconn.Dial(ctx, base, nativeconn.RoleProbe)
+		if err != nil {
+			return 0, err
+		}
+		defer conn.CloseNow()
+		conn.SetReadLimit(4096)
+		kind, data, err := conn.Read(ctx)
+		if err != nil {
+			return 0, err
+		}
+		var hello struct {
+			Type   string `json:"type"`
+			Proto  int    `json:"proto"`
+			Status string `json:"status"`
+		}
+		if kind != websocket.MessageText || json.Unmarshal(data, &hello) != nil || hello.Type != "tcp_health" || hello.Proto != 1 || hello.Status != "ok" {
+			return 0, errors.New("invalid TCP gateway probe")
+		}
+		return time.Since(start), nil
+	}
+
 	target, err := url.Parse(base)
 	if err != nil {
 		return 0, err
@@ -553,9 +585,13 @@ func (c *GatewayClient) nextBackoff(delay time.Duration) time.Duration {
 func (c *GatewayClient) runSession(ctx context.Context) (bool, error) {
 	base := c.CurrentURL()
 	dialCtx, cancelDial := context.WithTimeout(ctx, gatewayDialTimeout)
-	conn, _, err := websocket.Dial(dialCtx, base+gatewayRelayPath, &websocket.DialOptions{
-		CompressionMode: websocket.CompressionDisabled,
-	})
+	var conn nativeconn.MessageConn
+	var err error
+	if strings.HasPrefix(base, "tcp://") {
+		conn, err = nativeconn.Dial(dialCtx, base, nativeconn.RoleRelay)
+	} else {
+		conn, _, err = websocket.Dial(dialCtx, base+gatewayRelayPath, &websocket.DialOptions{CompressionMode: websocket.CompressionDisabled})
+	}
 	cancelDial()
 	if err != nil {
 		return false, fmt.Errorf("dial gateway: %w", err)
@@ -607,7 +643,7 @@ func (c *GatewayClient) runSession(ctx context.Context) (bool, error) {
 }
 
 // registerLink performs the JSON hello exchange that claims the relay id.
-func (c *GatewayClient) registerLink(parent context.Context, conn *websocket.Conn) error {
+func (c *GatewayClient) registerLink(parent context.Context, conn nativeconn.MessageConn) error {
 	ctx, cancel := context.WithTimeout(parent, gatewayHelloTimeout)
 	defer cancel()
 
@@ -842,7 +878,7 @@ func (c *GatewayClient) evictAll() {
 // interleave halves of a multiplexed frame.
 type gatewaySession struct {
 	client     *GatewayClient
-	conn       *websocket.Conn
+	conn       nativeconn.MessageConn
 	ctx        context.Context
 	cancel     context.CancelFunc
 	writes     chan []byte
@@ -899,7 +935,7 @@ func (s *gatewaySession) writeLoop() {
 		case <-s.done:
 			return
 		case frame := <-s.writes:
-			ctx, cancel := context.WithTimeout(s.ctx, frameWriteTimeout)
+			ctx, cancel := context.WithTimeout(s.ctx, gatewayFragmentWriteTimeout)
 			err := s.conn.Write(ctx, websocket.MessageBinary, frame)
 			cancel()
 			if err != nil {
@@ -1034,7 +1070,7 @@ func (s *gatewaySession) handleOpen(connID uint32, payload []byte) {
 
 	var conn *gatewayConn
 	// The ctx is unused: enqueue never blocks, and the shared writer bounds the
-	// actual socket write with frameWriteTimeout.
+	// actual socket write with gatewayFragmentWriteTimeout.
 	send := func(_ context.Context, frame []byte) error {
 		// Reachable only for a frame the hub built above the logical cap every
 		// transport shares; the gateway's own per-frame cap is what the chunks

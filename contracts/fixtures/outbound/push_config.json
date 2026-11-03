@@ -7,8 +7,13 @@
   "version": "0.9.0",
   "release_version": "0.9.0",
   "revision": "abc123",
-  "update": {"state": "current"},
-  "app_deploy": {"state": "idle", "configured": false},
+  "update": {
+    "state": "current"
+  },
+  "app_deploy": {
+    "state": "idle",
+    "configured": false
+  },
   "capabilities": [
     "pi_integration",
     "attention_classification",
@@ -24,12 +29,14 @@
     "pane_size_opt_in",
     "pane_size_opt_in_rows",
     "workspace_inspection",
-    "workspace_mobile_files_v1",
+    "workspace_file_read_v1",
     "semantic_input",
     "manual_terminal_input",
     "secret_input",
     "speech_voice_management",
-    "invitation_qr"
+    "invitation_qr",
+    "agent_model_settings_v1",
+    "agent_run_state_v1"
   ],
   "herdr_status": {
     "installed_client_version": "0.9.0",
@@ -39,13 +46,29 @@
     "endpoint_protocol_generation": 1,
     "generation": 1,
     "features": {
-      "ordinary_json": {"state": "supported", "reason": "ping", "generation": 1},
-      "workspace.move_block": {"state": "supported", "reason": "recognized_validation_refusal", "generation": 1}
+      "ordinary_json": {
+        "state": "supported",
+        "reason": "ping",
+        "generation": 1
+      },
+      "workspace.move_block": {
+        "state": "supported",
+        "reason": "recognized_validation_refusal",
+        "generation": 1
+      }
     }
   },
-  "inventory": {"state": "ready"},
+  "inventory": {
+    "state": "ready"
+  },
   "agent_profiles": [
-    {"id": "claude", "label": "Claude"},
-    {"id": "codex", "label": "Codex"}
+    {
+      "id": "claude",
+      "label": "Claude"
+    },
+    {
+      "id": "codex",
+      "label": "Codex"
+    }
   ]
 }

@@ -1,199 +1,83 @@
-# Herdr Relay Extra
+# Herdr Relay Extra + Herdr Pocket
 
-基于 [0cv/herdr-mobile-relay](https://github.com/0cv/herdr-mobile-relay) 0.24.0
-的文件扩展版本，供 Herdr Pocket 等移动客户端使用。上游基线为
-[`09b5278`](https://github.com/0cv/herdr-mobile-relay/commit/09b52781399114a7576d40fcdf91ccefd7686be6)。
+当前可配套使用的 **Relay 源码 + 原生 Android App 源码**。APK 通过本仓库的 **GitHub Releases** 发布，不存放在 Git 仓库目录中。
 
-- 下载工作目录中的文件（单文件最大 12 MiB），包括 PDF、图片与二进制文件。
-- 控制者设备可保存已有 UTF-8 文本文件（最大 1 MiB），使用 SHA-256 版本校验拒绝旧内容覆盖。
-- 沿用设备配对、端到端加密、精确 Agent 会话校验和写入审计。
+| 组件 | 版本 | 位置 |
+| --- | --- | --- |
+| 电脑 Relay | `0.23.5+codexfix.8` | 仓库根目录，`cmd/herdr-mobile-relay` |
+| 原生 TCP Gateway | `0.23.5+codexfix.6` | `cmd/herdr-gateway`，`deploy/native-tcp/` |
+| Herdr Pocket Android | `0.2.11` / versionCode `14` | `herdr-android/` |
 
-**安装位置：运行 Herdr、保存项目文件的那台电脑或服务器上的 relay。**
-本仓库已经包含扩展，无需另打补丁；不需要修改 Herdr 主程序或网关。
+本次按当前可用源码快照替换此前根目录的 0.24.0 文件扩展实现，不把两条不同基线混为同一版本。组件对应关系及源码来源见 [VERSION.json](VERSION.json)。旧内容仍可从 Git 历史查看。
 
-**[扩展说明、构建与运行 →](docs/mobile-files.md)** ·
-**[接口协议 →](docs/mobile-files-protocol.md)** ·
-**[测试结果与待验证项 →](docs/mobile-files-validation.md)**
+## 下载 Android APK
 
-当前提供源码，尚未发布本分支的预编译 release。
-下方是上游使用文档，其中 `herdr plugin install 0cv/herdr-mobile-relay`
-会安装上游原版；要使用文件扩展，请按上面的源码构建说明操作。
+进入仓库 **Releases → Herdr Pocket 0.2.11 + Relay codexfix.8**，下载 `Herdr-Pocket-0.2.11-debug.apk`。
 
----
+- Android 9 / API 28 及以上。
+- 与此前同签名的 Pocket APK 可直接覆盖安装，**不需要重新配对**。
+- 发布包使用调试签名，不是 Play 商店版本；签名私钥不随源码发布。自己构建的 debug APK 通常使用不同签名，不要为了覆盖安装而直接卸载含配对/草稿的旧 App。
+- Release 同时提供 SHA-256 校验文件，源码由对应 Git tag 的 Source code 下载项提供。
 
-# Herdr Mobile Relay (upstream)
+## 已实现
 
-[![check](https://github.com/0cv/herdr-mobile-relay/actions/workflows/check.yml/badge.svg)](https://github.com/0cv/herdr-mobile-relay/actions/workflows/check.yml)
+- 工作空间 / Tab 分组与可靠会话定位，修复恢复后的 Codex 历史读取。
+- 原生对话、连续工具调用的两层折叠、历史分页/缓存/加载反馈。
+- 手机适配终端字体和滚动历史。
+- 图片缩放、PDF/Markdown 全屏查看与 Codex 文件引用。
+- 指定工作空间新建 Agent、重命名；Codex 模型/思考强度按会话切换，下一轮生效。
+- 对话顶部运行状态及真实本轮计时，不以打开页面或最后输出时间代替开始时间。
+- **App 内常驻监控**：开启后默认关注全部 Agent，新 Agent 自动纳入，可单独关闭完成提醒。原生通知、按轮次去重、点击回到确切会话。
+- **纯 IP + TCP** 或既有 HTTPS/WSS：应用消息沿用设备鉴权和 E2EE，原生模式不需要域名/证书。
 
-Control [Herdr](https://herdr.dev) agents from your phone. Each Linux or macOS
-computer runs its own relay; the phone connects to them and merges every agent
-into one installable web app.
+## 构建电脑 Relay / Gateway
 
-**Current version:** [`0.24.0`](https://github.com/0cv/herdr-mobile-relay/releases/tag/v0.24.0) · [Changelog](CHANGELOG.md)
-
-> [!IMPORTANT]
-> Native Windows is not supported. WSL2 may work but is not tested.
-
-> [!WARNING]
-> 0.20.0 replaces the shared relay key with per-device credentials and a new
-> encrypted transport. It cannot be installed through the phone updater:
-> [upgrade the relay manually and pair every phone again](docs/updates.md#upgrading-from-v0191).
-
-## Get started in two minutes
-
-Requirements: Herdr 0.7.5 or newer, Git, and `curl`. Herdr 0.9.0 is
-recommended for the complete live JSON inventory and workspace-management
-surface; the relay does not treat that recommendation as a new minimum.
-
-The relay reports the installed Herdr client version separately from the
-running local server version and protocol. A server upgrade can enable or
-disable individual actions without changing the relay release.
+需要 `go.mod` 指定的 **Go 1.27.3**。首次构建需要下载依赖。
 
 ```bash
-herdr plugin install 0cv/herdr-mobile-relay
+mkdir -p bin
+CGO_ENABLED=0 go build -trimpath \
+  -ldflags '-s -w -X main.version=0.23.5+codexfix.8 -X main.revision=source-build' \
+  -o bin/herdr-mobile-relay ./cmd/herdr-mobile-relay
+CGO_ENABLED=0 go build -trimpath \
+  -ldflags '-s -w -X main.version=0.23.5+codexfix.6 -X main.revision=source-build' \
+  -o bin/herdr-gateway ./cmd/herdr-gateway
+
+go test -p 1 ./...
+go vet ./...
 ```
 
-The setup menu opens automatically after installation and asks how your phone
-should reach this computer:
-
-```text
-Choose a path:
-
-  1. Cloudflare
-  2. WebRTC
-  3. Tailscale
-  q. Exit, change nothing
-```
-
-Each path then lists only its own actions; **b** goes back.
-
-To reopen the main setup menu later:
+Android 构建需要 JDK 21、Android SDK 35 / Build Tools 35.0.0：
 
 ```bash
-herdr plugin pane open \
-  --plugin herdr-mobile-relay.events \
-  --entrypoint setup \
-  --placement zoomed \
-  --focus
+cd herdr-android
+export JAVA_HOME=/path/to/jdk-21
+export ANDROID_HOME=/path/to/android-sdk
+./gradlew --no-daemon testDebugUnitTest assembleDebug assembleDebugAndroidTest lintDebug
 ```
 
-Open **WebRTC → Community WebRTC Gateway**. It is the recommended path: as fast
-to set up as the temporary tunnel, with stable relay connectivity and no
-Cloudflare account, domain, `cloudflared`, or tunnel configuration. If prompted,
-choose the installed Herdr app that should host the phone UI. The relay starts
-and prints a QR code.
+APK 输出：`herdr-android/app/build/outputs/apk/debug/app-debug.apk`。
 
-**Cloudflare → Temporary Cloudflare Tunnel** is the fastest getting-started option for a
-one-computer trial. It installs any missing user-level tools with confirmation,
-starts the relay and bundled app, and prints a QR code.
+## 部署与配对
 
-If you already use Tailscale on your phone and computer, choose **Tailscale →
-Always on Tailscale** for private HTTPS inside your tailnet, without a
-Cloudflare account or gateway. Tailscale keeps the connection up in the
-background, so the app reconnects quickly
-([setup steps](QUICKSTART.md#use-tailscale-instead)).
+- 电脑 Relay 安装在运行 Herdr、保存项目/会话的电脑上；公网服务器只部署 Gateway。
+- 原生 TCP 业务仅需 **一个公网 TCP 端口 8377**，SSH 另作维护；Gateway HTTP 健康检查绑定 loopback，STUN 可关闭。
+- 示例地址只用于文档，必须换成自己的服务器。不要把运行时 `relay.env`、注册秘密、设备凭据、完整邀请链接或二维码提交到仓库。
+- `herdr-mobile-relay tcp-pair [设备名]` 通过正在运行的 Relay 的私有 Unix socket 创建限时设备邀请；调用时加载该 Relay 的环境配置。不要用另一进程直接写活跃的设备库。
+- 仅更新本地扩展二进制时，不要重启正在工作的 Herdr/Agent；先备份配置，只重启 Relay。
 
-Scan the QR with your phone. A relay started in the pane stops with Ctrl-C; an
-installed background service keeps running.
+[原生 TCP 配置与安全边界](docs/native-tcp.md) · [Agent 管理与模型设置](docs/agent-management.md) · [状态及计时](docs/agent-run-state.md) · [后台监控说明](herdr-android/BACKGROUND-MONITORING.md)
 
-The relay setup does not run `sudo` or need a Python, Node.js, or Go toolchain.
-Treat the QR and its setup link as secrets: they contain a one-use device
-invitation.
+## 通知与安全边界
 
-[QUICKSTART.md](QUICKSTART.md) has pairing detail and troubleshooting for all
-three paths.
+常驻监控需要用户开启、允许通知，通知栏提供停止按钮；可增加耗电。Android Doze、厂商省电、强行停止或断网仍可能延迟/漏报。**这是手机常驻连接，不是 FCM/厂商云推送。**目前未进行用户真机锁屏验收。
 
-## What you get
+TCP 本身不加密，应用数据由现有 ECDH/HMAC/AES-GCM E2EE 保护；路由/握手元数据、地址、大小和时序仍可见。未关闭原 HTTPS/WSS 证书校验，也未做独立安全审计。
 
-| Agents | Terminal | Pairing |
-| --- | --- | --- |
-| <img src="images/home.jpeg" alt="Agents grouped by workspace and worktree across computers" width="260"> | <img src="images/terminal.jpeg" alt="Mobile terminal with Copy, Speak, attachments, and terminal keys" width="260"> | <img src="images/devices-qr.jpeg" alt="One-use device invitation shown as a QR code" width="260"> |
+验证记录：129 个 Android JVM/Robolectric 测试通过，真实本地 TCP+E2EE fixture 覆盖后台监控/静音/重连，Go 全套 tests/vet 和相关 race 验证通过。详细范围与未验证项见 [Android VALIDATION.md](herdr-android/VALIDATION.md)。
 
-- Monitor and control agents across several computers, grouped by status and
-  Herdr workspace, with agents that need input pinned on top.
-- Answer approvals and structured plan questions from Codex, Claude Code,
-  Hermes, Qoder, OpenCode, Oh My Pi, and Pi.
-- Send prompts, terminal keys, and slash commands, including discovered Cursor
-  commands and skills; attach screenshots, photos, and documents in cancellable
-  batches. Optionally discover live Pi extension commands, skills, and templates
-  by enabling **Settings → Pi Integration** for that computer, then reloading Pi
-  ([CLI alternative](docs/slash-command-discovery.md#pi-runtime-commands)).
-- Read and search native conversations for agents with a native history reader,
-  including Hermes, OpenCode, Antigravity CLI, Oh My OpenCode plans and native Kimi Code journals.
-  Kimi imports and human-engine-only histories use the Terminal fallback. Inspect workspace files, images, and Git diffs read-only.
-- Manage workspaces and Git worktrees; start, rename, clear, and stop agents.
-- Have the relay read responses aloud, even with the screen off.
-- Pair every phone as its own named device — controller or read-only reader —
-  each with its own notification rules, and revoke any of them.
+## 许可证与历史代码
 
-**New in 0.24.0:** Connect through Tailscale. The setup menu groups Cloudflare,
-WebRTC and Tailscale; an open Conversation refreshes after a reconnect.
+遵循仓库 [LICENSE](LICENSE) 和第三方各自许可证；Android 依赖/引用来源见 [THIRD_PARTY.md](herdr-android/THIRD_PARTY.md)。保留上游 Go module 路径用于内部导入，不代表本分支由上游发布。
 
-**[Full feature tour →](docs/mobile-app.md)**
-
-## Mobile onboarding
-
-https://github.com/user-attachments/assets/e52c4fd0-ef77-4852-bb43-078a7154eae8
-
-The walkthrough follows setup from scanning the QR through the agent list,
-terminal controls, and notification settings.
-
-## Choosing how your phone connects
-
-The setup menu starts with **Cloudflare**, **WebRTC**, and **Tailscale**. Select a path to see only its actions; use **Back** to choose another path.
-
-| Choice | Needs | Best for |
-| --- | --- | --- |
-| Community gateway | no account, domain, or tunnel configuration; an installed app origin | the recommended stable, no-configuration relay path |
-| Cloudflare tunnel | nothing for a temporary URL; a Cloudflare account and domain for a permanent hostname | the fastest one-computer trial or a permanent background service |
-| Tailscale Serve | Tailscale on phone and computer, in the same tailnet | private HTTPS without Cloudflare or a gateway; fast reconnects |
-| Your own gateway | a small VPS | dedicated bandwidth and control of the transport logs |
-
-All four use end-to-end relay encryption. On either gateway the phone and the
-computer then negotiate a direct peer-to-peer connection, leaving the gateway
-with the fallback; Cloudflare tunnel traffic stays on Cloudflare. Tailscale
-Serve is available only inside your tailnet.
-[Set up Tailscale →](QUICKSTART.md#use-tailscale-instead).
-
-- **[Transports explained →](docs/transports.md)**
-- **[Permanent Cloudflare tunnel →](docs/cloudflare-tunnel.md)**
-- **[Run your own gateway →](docs/gateway-self-hosting.md)**
-
-## Agents with a non-default config directory
-
-The relay runs as a background service and does not see a pane's
-`CLAUDE_CONFIG_DIR`, `PI_CODING_AGENT_DIR`, or similar. If an agent's
-conversation shows as unavailable or a profile's slash commands are missing,
-point the relay at that profile with `HERDR_*_CONFIG_DIRS`:
-**[Agent directories →](docs/agent-directories.md)**
-
-## Documentation
-
-| Page | What is in it |
-| --- | --- |
-| [QUICKSTART.md](QUICKSTART.md) | The fast path, start to paired phone |
-| [docs/mobile-app.md](docs/mobile-app.md) | Every feature: agent list, terminal, devices, speech, notifications |
-| [docs/transports.md](docs/transports.md) | Cloudflare, Tailscale, gateways, direct WebRTC |
-| [docs/cloudflare-tunnel.md](docs/cloudflare-tunnel.md) | The stable tunnel wizard, DNS, and teardown |
-| [docs/gateway-self-hosting.md](docs/gateway-self-hosting.md) | Deploying and operating a gateway |
-| [docs/agent-directories.md](docs/agent-directories.md) | Agents that use a non-default config or profile directory |
-| [docs/slash-command-discovery.md](docs/slash-command-discovery.md) | Bounded slash-command discovery and incomplete-catalog guidance |
-| [docs/updates.md](docs/updates.md) | Verified releases, phone-driven upgrades, upgrading from 0.19.1 |
-| [docs/security.md](docs/security.md) | What is encrypted, device pairing, what an intermediary sees |
-| [docs/development.md](docs/development.md) | Building, testing, and contributing |
-
-## Security in one paragraph
-
-Prompts, terminal output, uploads, and push details are encrypted end to end
-between the phone and the relay. Whatever carries the traffic — a Cloudflare
-tunnel, a gateway, or Tailscale Serve — observes connection metadata only, never
-plaintext; on the direct path no application data reaches it at all, though a
-gateway still answers address discovery. Paired credentials distinguish
-controller and reader devices, mutations default to controller-only, attachment
-references stay bound to the terminal and agent session that created them,
-and the app can require device verification before it reconnects.
-[Details →](docs/security.md)
-
-## License
-
-[GNU Affero General Public License v3.0 or later](LICENSE).
+`web/` 是当前 Relay 配套的原始生成快照，未手工改写 JS/压缩产物；手机 App 不使用此网页作为 Agent UI。`QUICKSTART.md`、上游 CI 和部分网页文档仍保留上游工作流；本地扩展发布以本首页和 VERSION.json 为准，Android release tag 使用 `android-v...`，不触发上游 `v*` 插件发布流水线。

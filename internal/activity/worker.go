@@ -57,8 +57,7 @@ type workerRequest struct {
 }
 
 type workerReply struct {
-	entry Entry
-	err   error
+	event any
 }
 
 type Worker struct {
@@ -78,43 +77,72 @@ func NewWorker(journal *Journal) *Worker {
 }
 
 func (w *Worker) Commit(ctx context.Context, request ActivityCommitRequested) (ActivityCommitted, error) {
-	response, err := w.submit(ctx, workerRequest{commit: &request})
-	if err != nil {
-		return ActivityCommitted{}, err
-	}
-	return ActivityCommitted{Sequence: request.Sequence, Entry: response.entry}, nil
-}
-
-func (w *Worker) Clear(ctx context.Context, request ActivityClearRequested) (ActivityCleared, error) {
-	if _, err := w.submit(ctx, workerRequest{clear: &request}); err != nil {
-		return ActivityCleared{}, err
-	}
-	return ActivityCleared{Sequence: request.Sequence}, nil
-}
-
-func (w *Worker) Discard(ctx context.Context, request ActivityDiscardRequested) (ActivityDiscarded, error) {
-	if _, err := w.submit(ctx, workerRequest{discard: &request}); err != nil {
-		return ActivityDiscarded{}, err
-	}
-	return ActivityDiscarded{Sequence: request.Sequence, ID: request.ID}, nil
-}
-
-func (w *Worker) submit(ctx context.Context, request workerRequest) (workerReply, error) {
 	reply := make(chan workerReply, 1)
-	request.reply = reply
 	select {
-	case w.requests <- request:
+	case w.requests <- workerRequest{commit: &request, reply: reply}:
 	case <-ctx.Done():
-		return workerReply{}, ctx.Err()
+		return ActivityCommitted{}, ctx.Err()
 	case <-w.done:
-		return workerReply{}, errors.New("activity worker is closed")
+		return ActivityCommitted{}, errors.New("activity worker is closed")
 	}
 	select {
 	case response := <-reply:
-		return response, response.err
+		switch event := response.event.(type) {
+		case ActivityCommitted:
+			return event, nil
+		case ActivityCommitFailed:
+			return ActivityCommitted{}, event.Err
+		}
 	case <-ctx.Done():
-		return workerReply{}, ctx.Err()
+		return ActivityCommitted{}, ctx.Err()
 	}
+	return ActivityCommitted{}, errors.New("invalid activity worker response")
+}
+
+func (w *Worker) Clear(ctx context.Context, request ActivityClearRequested) (ActivityCleared, error) {
+	reply := make(chan workerReply, 1)
+	select {
+	case w.requests <- workerRequest{clear: &request, reply: reply}:
+	case <-ctx.Done():
+		return ActivityCleared{}, ctx.Err()
+	case <-w.done:
+		return ActivityCleared{}, errors.New("activity worker is closed")
+	}
+	select {
+	case response := <-reply:
+		switch event := response.event.(type) {
+		case ActivityCleared:
+			return event, nil
+		case ActivityClearFailed:
+			return ActivityCleared{}, event.Err
+		}
+	case <-ctx.Done():
+		return ActivityCleared{}, ctx.Err()
+	}
+	return ActivityCleared{}, errors.New("invalid activity worker response")
+}
+
+func (w *Worker) Discard(ctx context.Context, request ActivityDiscardRequested) (ActivityDiscarded, error) {
+	reply := make(chan workerReply, 1)
+	select {
+	case w.requests <- workerRequest{discard: &request, reply: reply}:
+	case <-ctx.Done():
+		return ActivityDiscarded{}, ctx.Err()
+	case <-w.done:
+		return ActivityDiscarded{}, errors.New("activity worker is closed")
+	}
+	select {
+	case response := <-reply:
+		switch event := response.event.(type) {
+		case ActivityDiscarded:
+			return event, nil
+		case ActivityDiscardFailed:
+			return ActivityDiscarded{}, event.Err
+		}
+	case <-ctx.Done():
+		return ActivityDiscarded{}, ctx.Err()
+	}
+	return ActivityDiscarded{}, errors.New("invalid activity worker response")
 }
 
 func (w *Worker) Close(ctx context.Context) error {
@@ -139,13 +167,35 @@ func (w *Worker) run() {
 		}
 		if request.commit != nil {
 			entry := NormalizeEntry(request.commit.Entry)
-			request.reply <- workerReply{entry: entry, err: w.journal.Append(entry)}
+			err := w.journal.Append(entry)
+			if err != nil {
+				request.reply <- workerReply{event: ActivityCommitFailed{Sequence: request.commit.Sequence, Err: err}}
+			} else {
+				request.reply <- workerReply{event: ActivityCommitted{Sequence: request.commit.Sequence, Entry: entry}}
+			}
 			continue
 		}
 		if request.discard != nil {
-			request.reply <- workerReply{err: w.journal.Discard(request.discard.ID)}
+			err := w.journal.Discard(request.discard.ID)
+			if err != nil {
+				request.reply <- workerReply{event: ActivityDiscardFailed{
+					Sequence: request.discard.Sequence,
+					ID:       request.discard.ID,
+					Err:      err,
+				}}
+			} else {
+				request.reply <- workerReply{event: ActivityDiscarded{
+					Sequence: request.discard.Sequence,
+					ID:       request.discard.ID,
+				}}
+			}
 			continue
 		}
-		request.reply <- workerReply{err: w.journal.Clear()}
+		err := w.journal.Clear()
+		if err != nil {
+			request.reply <- workerReply{event: ActivityClearFailed{Sequence: request.clear.Sequence, Err: err}}
+		} else {
+			request.reply <- workerReply{event: ActivityCleared{Sequence: request.clear.Sequence}}
+		}
 	}
 }

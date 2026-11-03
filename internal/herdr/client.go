@@ -213,20 +213,22 @@ func NewClient(bin, socketPath string) *Client {
 }
 
 type Pane struct {
-	ID             string `json:"pane_id"`
-	TerminalID     string `json:"terminal_id"`
-	TabID          string `json:"tab_id"`
-	TabLabel       string `json:"tab_label"`
-	TabNumber      int    `json:"tab_number"`
-	WorkspaceID    string `json:"workspace_id"`
-	Agent          string `json:"agent"`
-	Name           string `json:"name"`
-	Status         string `json:"agent_status"`
-	Focused        bool   `json:"focused"`
-	Cwd            string `json:"cwd"`
-	Revision       int    `json:"revision"`
-	StateChangeSeq int64  `json:"state_change_seq"`
-	Scroll         struct {
+	TerminalTitle         string `json:"terminal_title,omitempty"`
+	TerminalTitleStripped string `json:"terminal_title_stripped,omitempty"`
+	ID                    string `json:"pane_id"`
+	TerminalID            string `json:"terminal_id"`
+	TabID                 string `json:"tab_id"`
+	TabLabel              string `json:"tab_label"`
+	TabNumber             int    `json:"tab_number"`
+	WorkspaceID           string `json:"workspace_id"`
+	Agent                 string `json:"agent"`
+	Name                  string `json:"name"`
+	Status                string `json:"agent_status"`
+	Focused               bool   `json:"focused"`
+	Cwd                   string `json:"cwd"`
+	Revision              int    `json:"revision"`
+	StateChangeSeq        int64  `json:"state_change_seq"`
+	Scroll                struct {
 		MaxOffsetFromBottom int `json:"max_offset_from_bottom"`
 	} `json:"scroll"`
 	ForegroundCwd string `json:"foreground_cwd"`

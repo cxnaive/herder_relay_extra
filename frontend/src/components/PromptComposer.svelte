@@ -97,7 +97,6 @@
   let attachmentTarget: Agent | null = null;
   let attachmentUnsubscribe: (() => void) | null = null;
   let attachmentCancelRequested = false;
-  let attachmentGeneration = 0;
   let slashCatalog = $state<SlashCommandCatalog>({ commands: [], truncated: false });
   let slashCatalogLoading = $state(true);
   let slashCatalogUnavailable = $state(false);
@@ -381,8 +380,6 @@
   function appendUploadedAttachments(attachments: AttachmentRef[]): void {
     const rejected = attachmentSnapshot?.items.filter((item) => item.state === 'rejected') || [];
     if (!attachments.length) {
-      // A current cancel failure takes precedence over the canceled upload's completion.
-      if (attachmentCancelRequested && uploadError) return;
       uploadStatus = attachmentCancelRequested
         ? 'Attachment upload canceled.'
         : rejected.length
@@ -399,17 +396,15 @@
   }
 
   function releaseAttachmentController(controller: AttachmentBatchController, force = false): void {
-    if (attachmentController !== controller) return;
     if (!force && attachmentSnapshot?.items.some((item) => item.state === 'interrupted')) return;
     attachmentUnsubscribe?.();
     attachmentUnsubscribe = null;
-    attachmentController = null;
+    if (attachmentController === controller) attachmentController = null;
   }
 
   async function filesSelected(files: FileList | File[]) {
     const selected = [...files];
     if (attachmentsLocked || !selected.length || uploadingAttachment || sending) return;
-    attachmentGeneration += 1;
     const target = { ...agent };
     const identity = targetRefForAgent(target)!;
     uploadingAttachment = true;
@@ -452,7 +447,6 @@
     const controller = attachmentController;
     const identity = attachmentTarget && targetRefForAgent(attachmentTarget);
     if (attachmentsLocked || !controller || uploadingAttachment || sending || !identity || !targetRefMatchesAgent(identity, agent)) return;
-    attachmentGeneration += 1;
     uploadingAttachment = true;
     uploadStatus = 'Restarting interrupted files from the beginning…';
     uploadError = false;
@@ -474,16 +468,13 @@
   async function cancelAttachmentUpload(): Promise<void> {
     const controller = attachmentController;
     if (!controller) return;
-    const generation = attachmentGeneration;
     attachmentCancelRequested = true;
     try {
       await controller.cancel();
-      if (generation === attachmentGeneration) attachmentSnapshot = null;
+      attachmentSnapshot = null;
     } catch {
-      if (generation === attachmentGeneration) {
-        uploadStatus = 'The relay could not confirm attachment cancellation.';
-        uploadError = true;
-      }
+      uploadStatus = 'The relay could not confirm attachment cancellation.';
+      uploadError = true;
     } finally {
       releaseAttachmentController(controller, true);
     }

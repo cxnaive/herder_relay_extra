@@ -35,3 +35,21 @@ relay/phone-app-origin.*
 .ralph
 ralph.yml
 WATCHDOG.yml
+
+# Native Android local/build artifacts (APK is a GitHub Release asset)
+herdr-android/.gradle/
+herdr-android/.kotlin/
+herdr-android/**/build/
+herdr-android/local.properties
+*.apk
+*.aab
+*.jks
+*.keystore
+*.hprof
+
+# Only reviewed, generated demo screenshots are versioned.
+/herdr-android/screenshots/*
+!/herdr-android/screenshots/qa-0.2.11/
+/herdr-android/screenshots/qa-0.2.11/*
+!/herdr-android/screenshots/qa-0.2.11/agent-notification-menu.png
+!/herdr-android/screenshots/qa-0.2.11/monitor-settings.png

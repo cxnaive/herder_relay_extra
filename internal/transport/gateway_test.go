@@ -27,6 +27,7 @@ import (
 	"github.com/0cv/herdr-mobile-relay/internal/config"
 	"github.com/0cv/herdr-mobile-relay/internal/framing"
 	"github.com/0cv/herdr-mobile-relay/internal/gatewaywire"
+	"github.com/0cv/herdr-mobile-relay/internal/nativeconn"
 )
 
 const gatewayTestRelayKey = "0123456789abcdef0123456789abcdef"
@@ -358,6 +359,7 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 // Every logical frame — handshake JSON included — is fragmented and reassembled
 // exactly like the real phone does.
 type gatewayTestPhone struct {
+	tcp     *nativeconn.Conn
 	link    *fakeGatewayLink
 	connID  uint32
 	session *e2eeSession
@@ -373,7 +375,16 @@ func (p *gatewayTestPhone) send(t *testing.T, frame []byte) {
 	t.Helper()
 	p.chunks = framing.Chunk(p.chunks[:0], frame, framing.GatewayChunkSize)
 	for _, part := range p.chunks {
-		p.link.write(t, gatewaywire.OpData, p.connID, part)
+		if p.tcp != nil {
+			ctx, cancel := context.WithTimeout(t.Context(), gatewayTestTimeout)
+			err := p.tcp.Write(ctx, websocket.MessageBinary, part)
+			cancel()
+			if err != nil {
+				t.Fatal(err)
+			}
+		} else {
+			p.link.write(t, gatewaywire.OpData, p.connID, part)
+		}
 	}
 }
 
@@ -386,13 +397,24 @@ func (p *gatewayTestPhone) readFrame(t *testing.T) []byte {
 	}
 	p.lastChunks = 0
 	for {
-		wire := p.link.expect(t, gatewaywire.OpData, p.connID)
-		if len(wire.payload) > framing.GatewayChunkSize {
+		var payload []byte
+		if p.tcp != nil {
+			ctx, cancel := context.WithTimeout(t.Context(), gatewayTestTimeout)
+			kind, data, err := p.tcp.Read(ctx)
+			cancel()
+			if err != nil || kind != websocket.MessageBinary {
+				t.Fatalf("native read: %v, kind %v", err, kind)
+			}
+			payload = data
+		} else {
+			payload = p.link.expect(t, gatewaywire.OpData, p.connID).payload
+		}
+		if len(payload) > framing.GatewayChunkSize {
 			t.Fatalf("relay chunk of %d bytes exceeds the gateway chunk size %d",
-				len(wire.payload), framing.GatewayChunkSize)
+				len(payload), framing.GatewayChunkSize)
 		}
 		p.lastChunks++
-		frame, err := p.recv.Push(wire.payload)
+		frame, err := p.recv.Push(payload)
 		if err != nil {
 			t.Fatalf("reassemble relay chunk: %v", err)
 		}

@@ -6,50 +6,16 @@ project follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
-
-- Allow mobile clients to download workspace files up to 12 MiB, including PDFs,
-  and let controller devices save existing UTF-8 files up to 1 MiB. Saving checks
-  the file revision and refuses stale edits, symbolic links, and Git metadata.
-
-## [0.24.0] - 2026-11-02
-
-### Added
-
-- Connect through Tailscale Serve on your own tailnet, with an isolated dev
-  tunnel or a persistent background service and setup QR. Always on Tailscale
-  replaces a selected WebRTC gateway after confirmation.
-
-### Changed
-
-- Group setup actions under Cloudflare, WebRTC and Tailscale so each connection
-  path shows only its own choices, and explain the phone app choice: the hosted
-  app versus the app served by this computer. Each menu screen replaces the
-  previous one, and Ctrl-D after an action closes the menu.
-- Read Oh My Pi settings with a standard YAML parser. A settings file that is
-  not valid YAML is now ignored as a whole instead of being partly salvaged, so
-  skill commands follow the defaults until the file is fixed.
+- Read-only current Codex turn status and timing, using bounded metadata-only queries to distinguish running, waiting, finished and interrupted work without loading conversation bodies.
+- Authenticated, controller-only per-Codex-session model/reasoning updates using the live runtime catalog and exact pane identity; read back effective settings and never replay unconfirmed writes.
+- Native Android IP + TCP gateway mode with the existing E2EE protocol, a single public TCP port, protected relay registration and private local one-device invitation creation.
+- Read-only, exact-workspace document downloads in 512 KiB verified chunks (up to 12 MiB per file), enabling native PDF/Markdown/image reviewers without raising transport limits or granting file-write access.
 
 ### Fixed
-
-- Refresh an open Conversation and resume live updates after a relay reconnect
-  interrupts its history request.
-- Keep terminal styling correct after extended-color codes with a zero channel
-  and after trailing resets such as `31;0`.
-- Focus Cancel when a destructive workspace confirmation opens and when it
-  escalates to force removal, so a stray Enter cannot confirm it.
-- Expand `~` in Pi profile skill paths exactly once, so a bare `~` or
-  `~/skills` resolves to the home directory instead of a `~` folder inside it.
-- Carry the conversation error reason code to the app so it can show the right
-  message.
-- Keep the phase, code and retry safety of workspace move refusals.
-- Stop delayed terminal reads from running after their relay connection was
-  replaced, closed or disconnected.
-- Stop UPnP port mapping from following redirects away from the router that
-  answered discovery.
-- Reject operation requests whose type and action disagree, consistently for
-  authorization, audit and dispatch.
-- Cancel tab and workspace reordering cleanly and release its pointer when the
-  gesture is interrupted.
+- Keep history pages within a 256 KiB payload budget and allow slow gateway fragments 20 seconds to write (5 seconds for health probes), avoiding whole-link disconnects while paging older tool-heavy conversations.
+- Recover missing Codex session IDs from the local daemon’s TUI endpoint and exact foreground-process socket ownership. Shared or stale endpoints stay unavailable instead of selecting a similarly named conversation.
+- Allow an operator-selected local Codex session to be bound to an exact terminal and live process when Herdr omits its session ID; reject stale, renamed, replaced or ambiguous bindings instead of guessing by directory.
+- Locate resumed Codex threads through the read-only state database and validate the rollout's session metadata. Rotated `<thread-id>_<segment-id>.jsonl` files no longer appear to have no conversation.
 
 ## [0.23.5] - 2026-10-29
 
@@ -1984,8 +1950,7 @@ Version 0.22.5 was withdrawn; this release skips its version and asset generatio
 - Release pane-size leases when their WebSocket owner disappears, preventing a
   laptop terminal from remaining narrowed.
 
-[Unreleased]: https://github.com/0cv/herdr-mobile-relay/compare/v0.24.0...HEAD
-[0.24.0]: https://github.com/0cv/herdr-mobile-relay/compare/v0.23.5...v0.24.0
+[Unreleased]: https://github.com/0cv/herdr-mobile-relay/compare/v0.23.5...HEAD
 [0.23.5]: https://github.com/0cv/herdr-mobile-relay/compare/v0.23.4...v0.23.5
 [0.23.4]: https://github.com/0cv/herdr-mobile-relay/compare/v0.23.3...v0.23.4
 [0.23.3]: https://github.com/0cv/herdr-mobile-relay/compare/v0.23.2...v0.23.3

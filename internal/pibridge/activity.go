@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -72,12 +73,22 @@ func activityRead(ctx context.Context, identity Identity, operation, cursor stri
 	if directory == "" {
 		return errors.New("invalid instance")
 	}
-	conn, err := openBridgeTransport(ctx, directory, fmt.Sprintf("%d.activity.sock", identity.PID))
+	if _, err := owned(directory, false); err != nil {
+		return err
+	}
+	path := filepath.Join(directory, fmt.Sprintf("%d.activity.sock", identity.PID))
+	before, err := owned(path, true)
+	if err != nil {
+		return err
+	}
+	conn, err := (&net.Dialer{}).DialContext(ctx, "unix", path)
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
-	if err := checkPeer(conn.Conn.(*net.UnixConn), identity.PID); err != nil {
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
+	if err := checkPeer(conn.(*net.UnixConn), identity.PID); err != nil {
 		return err
 	}
 	var nonce [16]byte
@@ -106,8 +117,8 @@ func activityRead(ctx context.Context, identity Identity, operation, cursor stri
 		if err := decodeBridge(scanner.Bytes(), &frame); err != nil {
 			return err
 		}
-		after, err := owned(conn.path, true)
-		if err != nil || !os.SameFile(conn.before, after) || frame.Identity != identity || frame.Challenge != challenge || len(frame.Incarnation) != 36 || (incarnation != "" && incarnation != frame.Incarnation) {
+		after, err := owned(path, true)
+		if err != nil || !os.SameFile(before, after) || frame.Identity != identity || frame.Challenge != challenge || len(frame.Incarnation) != 36 || (incarnation != "" && incarnation != frame.Incarnation) {
 			return errors.New("activity source replaced")
 		}
 		incarnation = frame.Incarnation

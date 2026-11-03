@@ -19,7 +19,6 @@ require_supported_platform
 case "${1:-}" in
     "") ;;
     --install-missing) INSTALL_MISSING=1 ;;
-    --tailscale-prerequisites) INSTALL_MISSING=1 ;;
     --pi-install) exec bash "$SCRIPT_DIR/pi-commands.sh" install "${2:-${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}}" ;;
     --pi-remove) exec bash "$SCRIPT_DIR/pi-commands.sh" remove "${2:-${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}}" ;;
     *)
@@ -34,9 +33,6 @@ cleanup() {
     fi
 }
 trap cleanup EXIT
-if [ "${1:-}" != --tailscale-prerequisites ]; then
-    refuse_if_tailscale_selected "$ENV_FILE" || exit 1
-fi
 
 install_cloudflared() {
     local system
@@ -98,8 +94,7 @@ find_missing_tools() {
     local required=(herdr)
     # A gateway-configured relay dials the gateway itself, so cloudflared is
     # neither installed nor required on that path.
-    if [ -z "$GATEWAY_URL" ] && [ "${HERDR_DEV_TRANSPORT:-}" != tailscale ] &&
-        [ -z "$(env_file_value "$ENV_FILE" HERDR_TAILSCALE_PORT)" ]; then
+    if [ -z "$GATEWAY_URL" ]; then
         required+=(cloudflared)
     fi
     for command in "${required[@]}"; do
@@ -163,8 +158,7 @@ if [ "${#missing_tools[@]}" -ne 0 ]; then
     fi
     echo "  Herdr:       https://herdr.dev"
     echo "  Relay:       rerun the exact version installer from this plugin"
-    if [ -z "$GATEWAY_URL" ] && [ "${HERDR_DEV_TRANSPORT:-}" != tailscale ] &&
-        [ -z "$(env_file_value "$ENV_FILE" HERDR_TAILSCALE_PORT)" ]; then
+    if [ -z "$GATEWAY_URL" ]; then
         echo "  cloudflared: https://developers.cloudflare.com/tunnel/downloads/"
     fi
     exit 1

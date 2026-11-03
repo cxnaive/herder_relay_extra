@@ -13,8 +13,6 @@ async function operations(): Promise<Operation[]> {
 }
 const mutations = async () => (await operations()).filter(op => op.method === 'pane.send_input' || ['send-keys', 'send-text', 'resize'].includes(op.argv?.[1] || ''));
 const button = (page: Page, name: string) => page.getByRole('button', { name, exact: true });
-// The app appends an update note to the Settings button's accessible name when an update is available.
-const settingsButton = (page: Page) => page.getByRole('button', { name: /^Settings(,|$)/ });
 const openDialog = (page: Page, name: string) => button(page, `Open ${name} on Captured relay`).click();
 
 async function metadata(value: Record<string, { cwd: string }>) {
@@ -263,7 +261,7 @@ for (const view of manualViews) {
       } });
     });
     await bootController(page);
-    await settingsButton(page).click();
+    await button(page, 'Settings').click();
     await page.getByRole('switch', { name: 'Require Fingerprint / Device Unlock', exact: true }).click();
     await expect(page.getByText('Device verification is enabled.', { exact: true })).toBeVisible();
     await button(page, 'Back').click();
@@ -448,7 +446,7 @@ for (const { target, transition } of [
 
 test('manual refresh preserves configured Terminal history across repeated reads', async ({ page }) => {
   await bootController(page);
-  await settingsButton(page).click();
+  await button(page, 'Settings').click();
   const historySetting = page.getByRole('group', { name: 'Terminal History', exact: true }).getByRole('button', { name: '500', exact: true });
   await historySetting.click();
   await expect(historySetting).toHaveAttribute('aria-pressed', 'true');
@@ -473,7 +471,7 @@ test('manual refresh preserves configured Terminal history across repeated reads
 
 test('an authenticated reader cannot send text, keys, scroll or resize mutations', async ({ page, browser }) => {
   await bootController(page);
-  await settingsButton(page).click();
+  await button(page, 'Settings').click();
   await button(page, 'Invite Device').click();
   const invite = page.getByRole('dialog', { name: 'Invite Device', exact: true });
   await invite.getByLabel('Device name', { exact: true }).fill('Private manual-input reader');

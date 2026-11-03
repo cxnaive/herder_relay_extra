@@ -11,6 +11,8 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+
+	"github.com/0cv/herdr-mobile-relay/internal/nativeconn"
 )
 
 // Accepted HERDR_GATEWAY_SELECTION values.
@@ -158,6 +160,15 @@ func (c *Config) validate() error {
 	}
 	for _, gateway := range c.GatewayURLs {
 		parsed, err := url.Parse(gateway)
+		if err == nil && parsed.Scheme == "tcp" {
+			if _, err := nativeconn.Endpoint(gateway); err != nil {
+				return fmt.Errorf("invalid native TCP gateway endpoint")
+			}
+			if len(c.GatewayRegistrationToken) < 32 {
+				return errors.New("native TCP requires a registration token of at least 32 bytes")
+			}
+			continue
+		}
 		if err != nil || parsed.Host == "" || (parsed.Scheme != "ws" && parsed.Scheme != "wss") {
 			return fmt.Errorf("invalid gateway url %q: want ws:// or wss:// base url", gateway)
 		}

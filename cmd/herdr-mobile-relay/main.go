@@ -18,13 +18,13 @@ import (
 	"github.com/0cv/herdr-mobile-relay/internal/config"
 	"github.com/0cv/herdr-mobile-relay/internal/eventhook"
 	"github.com/0cv/herdr-mobile-relay/internal/launchd"
+	"github.com/0cv/herdr-mobile-relay/internal/localpair"
 	"github.com/0cv/herdr-mobile-relay/internal/readiness"
 	"github.com/0cv/herdr-mobile-relay/internal/release"
 	"github.com/0cv/herdr-mobile-relay/internal/setuphelper"
 	"github.com/0cv/herdr-mobile-relay/internal/speech"
 	"github.com/0cv/herdr-mobile-relay/internal/stablestate"
 	"github.com/0cv/herdr-mobile-relay/internal/support"
-	"github.com/0cv/herdr-mobile-relay/internal/tailscaleserve"
 	relayupdate "github.com/0cv/herdr-mobile-relay/internal/update"
 )
 
@@ -52,6 +52,30 @@ func run(args []string) (int, error) {
 			return 2, errors.New("serve does not accept arguments")
 		}
 		return runServe()
+	case "tcp-pair":
+		if len(args) > 1 {
+			return 2, errors.New("usage: herdr-mobile-relay tcp-pair [DEVICE_NAME]")
+		}
+		cfg, err := config.Load()
+		if err != nil {
+			return 1, err
+		}
+		name := "Herdr Pocket"
+		if len(args) == 1 {
+			name = args[0]
+		}
+		response, err := localpair.Create(context.Background(), cfg.RuntimeDir, name)
+		if err != nil {
+			return 1, err
+		}
+		qr, err := setuphelper.TerminalQR(response.Link, 0)
+		if err != nil {
+			return 1, err
+		}
+		fmt.Println("一次性配对邀请；请勿分享或截图公开。到期时间:", response.ExpiresAt.Local().Format("2006-01-02 15:04:05 MST"))
+		fmt.Println(qr)
+		fmt.Println(response.Link)
+		return 0, nil
 	case "version":
 		if len(args) == 1 && args[0] == "--json" {
 			data, _ := json.Marshal(map[string]string{"version": version, "revision": revision, "target": release.CurrentTarget()})
@@ -159,8 +183,6 @@ func run(args []string) (int, error) {
 			return 2, errors.New("unknown pages-projects operation")
 		}
 		return 0, nil
-	case "tailscale":
-		return tailscaleserve.Run(args, os.Stdout, os.Stderr)
 	case "stable-state":
 		if len(args) == 0 {
 			return 2, errors.New("stable-state requires an operation")

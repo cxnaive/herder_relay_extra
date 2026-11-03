@@ -10,7 +10,7 @@ import (
 
 func (s *Server) conversationContentCurrent(ctx context.Context, agent *coordinator.AgentState) bool {
 	current, exists := s.state.Agent(agent.PaneID)
-	return exists && current.Generation == agent.Generation && current.TerminalID == agent.TerminalID && current.ServerSessionID == agent.ServerSessionID && sameConversationTuple(agent, current) && s.kimiSelectionCurrent(ctx, agent)
+	return exists && current.Generation == agent.Generation && current.TerminalID == agent.TerminalID && current.ServerSessionID == agent.ServerSessionID && sameConversationTuple(agent, current) && s.conversationSelectionCurrent(ctx, agent)
 }
 
 func (s *Server) readAgentConversation(ctx context.Context, agent *coordinator.AgentState, limit int) (conversation.Page, error) {

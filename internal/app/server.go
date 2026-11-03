@@ -37,6 +37,7 @@ import (
 	"github.com/0cv/herdr-mobile-relay/internal/herdr"
 	"github.com/0cv/herdr-mobile-relay/internal/hermesprofiles"
 	"github.com/0cv/herdr-mobile-relay/internal/history"
+	"github.com/0cv/herdr-mobile-relay/internal/localpair"
 	"github.com/0cv/herdr-mobile-relay/internal/noecho"
 	"github.com/0cv/herdr-mobile-relay/internal/panesize"
 	"github.com/0cv/herdr-mobile-relay/internal/piintegration"
@@ -308,7 +309,7 @@ func (s *Server) authorizeDeviceAction(client *transport.ClientConn, action prot
 }
 
 func authorizeAuthenticatedIdentity(identity transport.AuthenticatedIdentity, authenticated bool, action protocol.ActionMetadata, deviceID string) *protocol.ApiError {
-	if action.Operation == "get_pi_integration" && !authenticated {
+	if (action.Operation == "get_pi_integration" || action.Operation == "get_agent_run_state" || action.Operation == "get_agent_settings" || action.Operation == "set_agent_settings") && !authenticated {
 		apiErr := protocol.NewApiError(protocol.ErrorReaderDenied, map[string]any{"operation": action.Operation})
 		return &apiErr
 	}
@@ -748,6 +749,10 @@ func (s *Server) Run(ctx context.Context) error {
 			return nil
 		})
 		switch action {
+		case "get_agent_run_state":
+			s.handleAgentRunState(commandCtx, client, inbound)
+		case "get_agent_settings", "set_agent_settings":
+			s.handleAgentSettings(commandCtx, client, inbound, msg)
 		case "get_pi_integration", "set_pi_integration":
 			s.handlePiIntegration(commandCtx, client, inbound, msg)
 		case "get_pi_prompt_capability", "send_pi_prompt_unconfirmed":
@@ -1065,28 +1070,9 @@ func (s *Server) Run(ctx context.Context) error {
 			}
 			catalog = fitSlashCommandCatalog(slashcmd.Revise(catalog), requestID, "list_slash_commands", paneID)
 			s.sendCommandResult(client, requestID, "list_slash_commands", true, "completed", "", paneID, catalog)
-		case "workspace_file_write":
-			agent, exists := s.state.Agent(inbound.PaneID)
-			if !exists || inbound.Cwd == "" || inbound.Cwd != strings.TrimSpace(agent.Cwd) {
-				s.sendAuditedCommandResult(client, msg, inbound.RequestID, action, false, "failed", "Agent workspace changed; reload the file", inbound.PaneID, nil)
-				break
-			}
-			cwd := strings.TrimSpace(agent.Cwd)
-			data, writeErr := workspace.WriteMobileFile(cwd, inbound.Path, inbound.Text, inbound.ExpectedRevision, func() error {
-				current, ok := s.state.Agent(inbound.PaneID)
-				if client.Context().Err() != nil || !ok || strings.TrimSpace(current.Cwd) != cwd ||
-					s.authorizeDeviceAction(client, scope.Action, inbound.DeviceID) != nil ||
-					validateExactPaneTarget(s.state, inbound, authenticated) != nil {
-					return errors.New("Device or workspace changed before save")
-				}
-				return nil
-			})
-			if writeErr != nil {
-				s.sendAuditedCommandResult(client, msg, inbound.RequestID, action, false, "failed", writeErr.Error(), inbound.PaneID, nil)
-				break
-			}
-			s.sendAuditedCommandResult(client, msg, inbound.RequestID, action, true, "completed", "", inbound.PaneID, data)
-		case "workspace_tree", "workspace_file", "workspace_file_read", "workspace_git_status", "workspace_git_diff":
+		case "workspace_file_read":
+			s.handleWorkspaceDocument(commandCtx, client, inbound)
+		case "workspace_tree", "workspace_file", "workspace_git_status", "workspace_git_diff":
 			requestID := inbound.RequestID
 			paneID := inbound.PaneID
 			agent, exists := s.state.Agent(paneID)
@@ -1103,12 +1089,6 @@ func (s *Server) Run(ctx context.Context) error {
 				data, inspectErr = workspace.TreeFor(cwd)
 			case "workspace_file":
 				data, inspectErr = workspace.ReadFile(cwd, inbound.Path)
-			case "workspace_file_read":
-				if inbound.Cwd != "" && inbound.Cwd != cwd {
-					inspectErr = errors.New("Agent workspace changed; reload the file list")
-				} else {
-					data, inspectErr = workspace.ReadMobileFile(cwd, inbound.Path)
-				}
 			case "workspace_git_status":
 				data, inspectErr = workspace.GitStatusFor(client.Context(), cwd)
 			case "workspace_git_diff":
@@ -1347,6 +1327,8 @@ func (s *Server) Run(ctx context.Context) error {
 
 	s.poller.SetEnrich(func(ctx context.Context, agents []*coordinator.AgentState) {
 		s.enrichKimiSessions(ctx, agents)
+		s.enrichCodexRuntime(ctx, agents)
+		s.enrichCodexBindings(ctx, agents)
 		for _, a := range agents {
 			s.resolveAgentSessionName(a)
 			if a.Status != "blocked" {
@@ -1385,6 +1367,26 @@ func (s *Server) Run(ctx context.Context) error {
 	ln, err := net.Listen("tcp", s.cfg.Addr())
 	if err != nil {
 		return fmt.Errorf("listen %s: %w", s.cfg.Addr(), err)
+	}
+
+	if strings.HasPrefix(s.cfg.GatewayURL, "tcp://") {
+		if s.deviceAuth == nil {
+			_ = ln.Close()
+			return errors.New("native TCP requires device authentication")
+		}
+		stopPairing, err := localpair.Listen(s.cfg.RuntimeDir, func(name string) (localpair.Response, error) {
+			invitation, err := s.deviceAuth.CreateInvitation(name, deviceauth.RoleController, "zh")
+			if err != nil {
+				return localpair.Response{}, err
+			}
+			link, err := localpair.InvitationLink(s.cfg.GatewayURL, s.cfg.Token, invitation)
+			return localpair.Response{Link: link, ExpiresAt: invitation.ExpiresAt}, err
+		})
+		if err != nil {
+			_ = ln.Close()
+			return fmt.Errorf("start private TCP pairing: %w", err)
+		}
+		defer stopPairing()
 	}
 
 	srv := &http.Server{
@@ -2257,8 +2259,8 @@ func (s *Server) handleConversationHistory(client *transport.ClientConn, inbound
 		s.sendCommandResult(client, inbound.RequestID, action, false, "failed", "Conversation history could not be read", inbound.PaneID, nil)
 		return
 	}
-	if !s.kimiSelectionCurrent(client.Context(), agent) {
-		s.sendCommandResult(client, inbound.RequestID, action, false, "failed", "Kimi session changed", inbound.PaneID, nil)
+	if !s.conversationSelectionCurrent(client.Context(), agent) {
+		s.sendCommandResult(client, inbound.RequestID, action, false, "failed", "Agent conversation session changed", inbound.PaneID, nil)
 		return
 	}
 	var page conversation.BrowsePage
@@ -2280,7 +2282,7 @@ func (s *Server) handleConversationHistory(client *transport.ClientConn, inbound
 	}
 	current, currentExists := s.state.Agent(inbound.PaneID)
 	if !currentExists || s.state.Generation(inbound.PaneID) != generation ||
-		!sameConversationTuple(agent, current) || !s.kimiSelectionCurrent(client.Context(), agent) ||
+		!sameConversationTuple(agent, current) || !s.conversationSelectionCurrent(client.Context(), agent) ||
 		s.authorizeDeviceAction(client, protocol.ActionMetadata{Operation: action, Class: protocol.ActionReadOnly}, "") != nil {
 		s.sendCommandResult(client, inbound.RequestID, action, false, "failed", "Agent changed while conversation history was loading", inbound.PaneID, nil)
 		return
@@ -3242,9 +3244,6 @@ func (s *Server) recordWriteAudit(
 		return
 	}
 	action := auditAction(message)
-	if action == "" {
-		return
-	}
 	requestID, _ := message["request_id"].(string)
 	paneID, _ := message["pane_id"].(string)
 	if paneID == "" {
@@ -3297,19 +3296,15 @@ func (s *Server) recordWriteAudit(
 }
 
 func auditAction(message map[string]any) string {
-	messageType, _ := message["type"].(string)
-	action, _ := message["action"].(string)
-	operation, _ := protocol.ResolveOperation(messageType, action)
-	return operation
+	action, _ := message["type"].(string)
+	if action == "" || action == "command" {
+		action, _ = message["action"].(string)
+	}
+	return action
 }
 
 func auditWriteDetails(message map[string]any) map[string]any {
-	action := auditAction(message)
-	// Invalid/ambiguous identities must never reach payload hashing or logging.
-	if action == "" {
-		return nil
-	}
-	if action == "set_pi_integration" {
+	if auditAction(message) == "set_pi_integration" {
 		details := make(map[string]any)
 		if enabled, ok := message["enabled"].(bool); ok {
 			details["enabled"] = enabled
@@ -3319,7 +3314,7 @@ func auditWriteDetails(message map[string]any) map[string]any {
 	// A secret answering a noecho prompt gets no payload digest and no keys: the
 	// digest of a low-entropy secret is crackable offline and the keys spell the
 	// secret out. Only its shape is auditable.
-	if action == "send_secret" || action == "send_terminal_text" || action == "send_pi_prompt_unconfirmed" {
+	if action := auditAction(message); action == "send_secret" || action == "send_terminal_text" || action == "send_pi_prompt_unconfirmed" {
 		details := make(map[string]any, 1)
 		if text, ok := message["text"].(string); ok {
 			details["text_bytes"] = len(text)

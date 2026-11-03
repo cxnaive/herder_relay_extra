@@ -52,10 +52,15 @@ func run() error {
 		return err
 	}
 	opts.Logger = logger
+	opts.TCPAddr = os.Getenv("HERDR_GATEWAY_TCP_ADDR")
 
 	srv, err := gateway.New(opts)
 	if err != nil {
 		return err
+	}
+
+	if srv.TCPAddress() != "" {
+		logger.Info("native TCP gateway listening", "addr", srv.TCPAddress())
 	}
 
 	httpServer := &http.Server{

@@ -509,6 +509,9 @@ func projectDirectories(root, cwd, preferredProjectName string) []string {
 func findCodexSession(roots []string, sessionID string) Location {
 	suffix := "-" + strings.ToLower(sessionID) + ".jsonl"
 	for _, root := range roots {
+		if location, indexed := indexedCodexSession(root, sessionID); indexed {
+			return location
+		}
 		for _, year := range descendingDirectories(root) {
 			yearPath := filepath.Join(root, year)
 			for _, month := range descendingDirectories(yearPath) {
@@ -519,13 +522,18 @@ func findCodexSession(roots []string, sessionID string) Location {
 					if err != nil {
 						continue
 					}
-					for _, file := range files {
+					for index := len(files) - 1; index >= 0; index-- {
+						file := files[index]
 						name := strings.ToLower(file.Name())
 						filePath := filepath.Join(dayPath, file.Name())
-						if isDir(filePath) || !strings.HasPrefix(name, "rollout-") || !strings.HasSuffix(name, suffix) {
+						resumed := resumedCodexFilename(name, sessionID)
+						if isDir(filePath) || !strings.HasPrefix(name, "rollout-") || (!strings.HasSuffix(name, suffix) && !resumed) {
 							continue
 						}
 						if path := containedRegularFile(filePath, root); path != "" {
+							if resumed && !codexSessionHeaderMatches(path, sessionID) {
+								continue
+							}
 							return Location{Path: path, Root: root}
 						}
 					}
@@ -684,19 +692,46 @@ func parseTranscript(agent, text string) []Entry {
 			if !ok || location.entry >= len(entries) || location.tool >= len(entries[location.entry].Tools) {
 				continue
 			}
+			output := sanitizeText(result.output)
+			output, truncated := clampText(output, maxEntryBytes)
 			tool := &entries[location.entry].Tools[location.tool]
-			applyProjectedToolResult(tool, result)
+			tool.Output = output
+			tool.Error = result.failed
+			tool.Truncated = tool.Truncated || truncated
 			delete(pendingTools, toolAssociationKey(normalized, result.id))
 		}
 
-		entry := prepareJSONLEntry(agent, record, calls)
-		if entry == nil {
+		role, timestamp, body := "", stringValue(record["timestamp"]), ""
+		switch normalized {
+		case "claude", "claudecode", "qoder", "qodercli":
+			role, body = parseClaudeRecord(record)
+		case "codex", "openaicodex":
+			role, body = parseCodexRecord(record)
+		case "pi", "picodingagent", "omp", "ohmypi", "omo", "ohmyopencode":
+			role, body = parsePiRecord(record)
+		case "cursor", "cursoragent":
+			role, body = parseCursorRecord(record)
+			if timestamp == "" {
+				timestamp = cursorTimestampFromRecord(record)
+			}
+		}
+		body = sanitizeText(body)
+		if role == "" && len(calls) > 0 {
+			role = "assistant"
+		}
+		if role == "" || (body == "" && len(calls) == 0) {
 			continue
 		}
-		normalizeEntryTools(entry)
+		body, truncated := clampText(body, maxEntryBytes)
+		kind := ""
+		if role == "notice" {
+			kind, role = "notice", "assistant"
+		}
+		entry := Entry{Kind: kind, Timestamp: timestamp, Role: role, Text: body, Tools: calls, Truncated: truncated}
+		normalizeEntryTools(&entry)
 		entry.ID = stableRowID(line, seenIDs)
 		entryIndex := len(entries)
-		entries = append(entries, *entry)
+		entries = append(entries, entry)
 		for toolIndex := range calls {
 			if id := toolAssociationID(calls[toolIndex]); id != "" {
 				pendingTools[toolAssociationKey(normalized, id)] = toolLocation{entry: entryIndex, tool: toolIndex}

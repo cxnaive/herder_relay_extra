@@ -29,6 +29,7 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/0cv/herdr-mobile-relay/internal/gatewaywire"
+	"github.com/0cv/herdr-mobile-relay/internal/nativeconn"
 )
 
 const (
@@ -92,6 +93,8 @@ const (
 // Options configures a Server. Every limit follows the same convention: a zero
 // value selects the documented default, and a negative value removes the limit.
 type Options struct {
+	// TCPAddr enables the opt-in native encrypted-payload TCP transport.
+	TCPAddr string
 	// RegistrationToken optionally requires relays to prove knowledge of this
 	// shared secret. Empty preserves open registration.
 	RegistrationToken string
@@ -184,12 +187,16 @@ type Server struct {
 	mu     sync.Mutex
 	relays map[string]*relayLink
 
-	ctx       context.Context
-	cancel    context.CancelFunc
-	persistWG sync.WaitGroup
-	stunWG    sync.WaitGroup
-	closeOnce sync.Once
-	closeErr  error
+	ctx            context.Context
+	cancel         context.CancelFunc
+	persistWG      sync.WaitGroup
+	stunWG         sync.WaitGroup
+	tcpListener    net.Listener
+	tcpWG          sync.WaitGroup
+	tcpConnections sync.Map
+	tcpSlots       chan struct{}
+	closeOnce      sync.Once
+	closeErr       error
 }
 
 // New validates opts, applies defaults, loads persisted counters, and returns a
@@ -258,6 +265,14 @@ func New(opts Options) (*Server, error) {
 		}
 	}
 
+	if opts.TCPAddr != "" {
+		if err := s.startTCP(opts.TCPAddr); err != nil {
+			cancel()
+			s.stunWG.Wait()
+			return nil, err
+		}
+	}
+
 	if opts.StatePath != "" {
 		s.persistWG.Add(1)
 		go s.runPersist()
@@ -274,6 +289,10 @@ func (s *Server) Handler() http.Handler { return s.mux }
 func (s *Server) Close() error {
 	s.closeOnce.Do(func() {
 		s.cancel()
+		if s.tcpListener != nil {
+			_ = s.tcpListener.Close()
+		}
+		s.tcpConnections.Range(func(key, value any) bool { _ = key.(net.Conn).Close(); return true })
 
 		s.mu.Lock()
 		links := make([]*relayLink, 0, len(s.relays))
@@ -286,6 +305,7 @@ func (s *Server) Close() error {
 		for _, link := range links {
 			link.close(websocket.StatusGoingAway, reasonGatewayShutdown)
 		}
+		s.tcpWG.Wait()
 		s.persistWG.Wait()
 		s.stunWG.Wait()
 		s.closeErr = s.quota.save(s.now())
@@ -470,7 +490,7 @@ func randomNonce() (string, error) {
 }
 
 // writeJSON sends one JSON control message as a WebSocket text frame.
-func writeJSON(ctx context.Context, conn *websocket.Conn, value any) error {
+func writeJSON(ctx context.Context, conn nativeconn.MessageConn, value any) error {
 	data, err := json.Marshal(value)
 	if err != nil {
 		return fmt.Errorf("gateway: encode control message: %w", err)
@@ -481,7 +501,7 @@ func writeJSON(ctx context.Context, conn *websocket.Conn, value any) error {
 }
 
 // readHello reads one bounded JSON text frame within timeout.
-func readHello(ctx context.Context, conn *websocket.Conn, timeout time.Duration) ([]byte, error) {
+func readHello(ctx context.Context, conn nativeconn.MessageConn, timeout time.Duration) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	messageType, data, err := conn.Read(ctx)
@@ -500,7 +520,7 @@ func readHello(ctx context.Context, conn *websocket.Conn, timeout time.Duration)
 // reject reports a coded refusal on a connection that never reached framing and
 // then closes it. The close reason repeats the code so a client that misses the
 // text frame still learns why.
-func reject(ctx context.Context, conn *websocket.Conn, code, message string) {
+func reject(ctx context.Context, conn nativeconn.MessageConn, code, message string) {
 	_ = writeJSON(ctx, conn, gatewaywire.ErrorMessage{
 		Type:    gatewaywire.TypeError,
 		Code:    code,

@@ -4,11 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
-
-	"github.com/0cv/herdr-mobile-relay/internal/atomicfile"
 )
 
 type Snapshot struct {
@@ -36,10 +35,6 @@ func Path(runtimeDir string) string {
 }
 
 func Write(runtimeDir string, snapshot Snapshot) error {
-	return write(runtimeDir, snapshot, atomicfile.Replace)
-}
-
-func write(runtimeDir string, snapshot Snapshot, replace func(string, string, string, []byte, os.FileMode) (atomicfile.Outcome, error)) error {
 	if err := os.MkdirAll(runtimeDir, 0o700); err != nil {
 		return err
 	}
@@ -48,11 +43,39 @@ func write(runtimeDir string, snapshot Snapshot, replace func(string, string, st
 	if err != nil {
 		return err
 	}
-	outcome, err := replace(runtimeDir, Path(runtimeDir), ".support-state.*.tmp", data, 0o600)
-	if outcome == atomicfile.Renamed {
-		return nil
+	path := Path(runtimeDir)
+	temp, err := os.CreateTemp(runtimeDir, ".support-state.*.tmp")
+	if err != nil {
+		return err
 	}
-	return err
+	tempPath := temp.Name()
+	defer os.Remove(tempPath)
+	if err := temp.Chmod(0o600); err != nil {
+		_ = temp.Close()
+		return err
+	}
+	written, writeErr := temp.Write(data)
+	if writeErr == nil && written != len(data) {
+		writeErr = io.ErrShortWrite
+	}
+	if writeErr == nil {
+		writeErr = temp.Sync()
+	}
+	closeErr := temp.Close()
+	if writeErr != nil {
+		return writeErr
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	if err := os.Rename(tempPath, path); err != nil {
+		return err
+	}
+	if directory, err := os.Open(runtimeDir); err == nil {
+		_ = directory.Sync()
+		_ = directory.Close()
+	}
+	return nil
 }
 
 func Load(runtimeDir string) (Snapshot, error) {

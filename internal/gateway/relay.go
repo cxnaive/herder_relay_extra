@@ -14,6 +14,7 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/0cv/herdr-mobile-relay/internal/gatewaywire"
+	"github.com/0cv/herdr-mobile-relay/internal/nativeconn"
 )
 
 // errTooManyClients reports that a registration is at its concurrent client cap.
@@ -31,7 +32,7 @@ var errLinkClosed = errors.New("gateway: relay link is closed")
 type relayLink struct {
 	server  *Server
 	relayID string
-	conn    *websocket.Conn
+	conn    nativeconn.MessageConn
 	logger  *slog.Logger
 	ctx     context.Context
 	cancel  context.CancelFunc
@@ -67,22 +68,27 @@ func (s *Server) handleRelay(w http.ResponseWriter, r *http.Request) {
 		s.logger.Debug("relay upgrade failed", "error", err)
 		return
 	}
-	defer conn.CloseNow()
-	conn.SetReadLimit(gatewaywire.HeaderSize + gatewaywire.MaxFramePayload)
+	s.serveRelay(r.Context(), conn)
+}
 
-	relayID, ok := s.relayHello(r.Context(), conn)
+func (s *Server) serveRelay(ctx context.Context, conn nativeconn.MessageConn) {
+	defer conn.CloseNow()
+	conn.SetReadLimit(gatewaywire.MaxHelloBytes)
+
+	relayID, ok := s.relayHello(ctx, conn)
 	if !ok {
 		return
 	}
 
-	link, refusal := s.registerRelay(r.Context(), relayID, conn)
+	conn.SetReadLimit(gatewaywire.HeaderSize + gatewaywire.MaxFramePayload)
+	link, refusal := s.registerRelay(ctx, relayID, conn)
 	if link == nil {
 		s.logger.Warn("relay registration refused",
 			"relay", shortID(relayID), "code", refusal)
-		reject(r.Context(), conn, refusal, refusalMessage(refusal))
+		reject(ctx, conn, refusal, refusalMessage(refusal))
 		return
 	}
-	if err := writeJSON(r.Context(), conn, gatewaywire.ReadyMessage{
+	if err := writeJSON(ctx, conn, gatewaywire.ReadyMessage{
 		Type:  gatewaywire.TypeReady,
 		Proto: gatewaywire.Proto,
 	}); err != nil {
@@ -97,7 +103,7 @@ func (s *Server) handleRelay(w http.ResponseWriter, r *http.Request) {
 }
 
 // relayHello performs the challenge exchange and optional registration checks.
-func (s *Server) relayHello(ctx context.Context, conn *websocket.Conn) (string, bool) {
+func (s *Server) relayHello(ctx context.Context, conn nativeconn.MessageConn) (string, bool) {
 	nonce, err := randomNonce()
 	if err != nil {
 		s.logger.Error("nonce generation failed", "error", err)
@@ -158,7 +164,7 @@ func (s *Server) relayHello(ctx context.Context, conn *websocket.Conn) (string, 
 // Only a genuinely new id can hit that ceiling: replacing an id that is already
 // in the table does not grow it, and refusing a reconnect would strand a relay
 // that is merely re-establishing its own link.
-func (s *Server) registerRelay(parent context.Context, relayID string, conn *websocket.Conn) (*relayLink, string) {
+func (s *Server) registerRelay(parent context.Context, relayID string, conn nativeconn.MessageConn) (*relayLink, string) {
 	ctx, cancel := context.WithCancel(parent)
 	link := &relayLink{
 		server:    s,

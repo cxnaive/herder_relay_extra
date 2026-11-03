@@ -103,6 +103,9 @@ func mutateAction(operation string, coordinated, audited bool) ActionMetadata {
 }
 
 var actionCatalog = map[string]ActionMetadata{
+	"get_agent_run_state":        readAction("get_agent_run_state"),
+	"get_agent_settings":         readAction("get_agent_settings"),
+	"set_agent_settings":         mutateAction("set_agent_settings", false, true),
 	"acknowledge_pane":           mutateAction("acknowledge_pane", true, false),
 	"agent_clear":                mutateAction("agent_clear", true, true),
 	"agent_rename":               mutateAction("agent_rename", true, true),
@@ -174,7 +177,6 @@ var actionCatalog = map[string]ActionMetadata{
 	"workspace_create":           mutateAction("workspace_create", true, true),
 	"workspace_file":             readAction("workspace_file"),
 	"workspace_file_read":        readAction("workspace_file_read"),
-	"workspace_file_write":       mutateAction("workspace_file_write", false, true),
 	"workspace_git_diff":         readAction("workspace_git_diff"),
 	"workspace_git_status":       readAction("workspace_git_status"),
 	"workspace_rename":           mutateAction("workspace_rename", true, true),
@@ -187,6 +189,9 @@ var actionCatalog = map[string]ActionMetadata{
 }
 
 type Inbound struct {
+	Model                string          `json:"model,omitempty"`
+	Effort               string          `json:"effort,omitempty"`
+	SettingsRevision     string          `json:"settings_revision,omitempty"`
 	Type                 string          `json:"type"`
 	Protocol             int             `json:"protocol"`
 	RequestID            string          `json:"request_id,omitempty"`
@@ -269,29 +274,15 @@ func DecodeMap(raw map[string]any) (Inbound, error) {
 	if err := json.Unmarshal(data, &message); err != nil {
 		return Inbound{}, err
 	}
-	action, _ := raw["action"].(string)
-	message.Type, err = ResolveOperation(message.Type, action)
-	if err != nil {
-		return Inbound{}, err
+	if action, _ := raw["action"].(string); action != "" {
+		if message.Type == "" || message.Type == "command" {
+			message.Type = action
+		}
+	}
+	if message.Type == "" {
+		return Inbound{}, fmt.Errorf("message type is required")
 	}
 	return message, nil
-}
-
-// ResolveOperation preserves legacy command/action-only envelopes, but rejects
-// contradictory concrete identities. Non-string field validation remains with
-// the decoder; callers using maps retain their existing string extraction policy.
-func ResolveOperation(messageType, action string) (string, error) {
-	if messageType == "" || messageType == "command" {
-		if action != "" {
-			return action, nil
-		}
-	} else if action != "" && action != messageType {
-		return "", fmt.Errorf("conflicting message type and action")
-	}
-	if messageType == "" {
-		return "", fmt.Errorf("message type is required")
-	}
-	return messageType, nil
 }
 
 type RequestScope struct {
@@ -540,7 +531,9 @@ var Capabilities = []string{
 	"conversation_history",
 	"conversation_activity",
 	"workspace_inspection",
-	"workspace_mobile_files_v1",
+	"workspace_file_read_v1",
+	"agent_model_settings_v1",
+	"agent_run_state_v1",
 	"semantic_input",
 	"manual_terminal_input",
 	"secret_input",

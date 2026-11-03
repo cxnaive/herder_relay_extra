@@ -12,6 +12,7 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/0cv/herdr-mobile-relay/internal/gatewaywire"
+	"github.com/0cv/herdr-mobile-relay/internal/nativeconn"
 )
 
 // clientConn is one phone connection. Unlike the relay link it is not
@@ -20,7 +21,7 @@ import (
 // back.
 type clientConn struct {
 	link   *relayLink
-	conn   *websocket.Conn
+	conn   nativeconn.MessageConn
 	connID uint32
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -60,10 +61,13 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 		s.logger.Debug("client upgrade failed", "error", err)
 		return
 	}
-	defer conn.CloseNow()
-	conn.SetReadLimit(gatewaywire.MaxFramePayload)
+	s.serveConnect(r.Context(), conn, s.clientIP(r))
+}
 
-	ctx := r.Context()
+func (s *Server) serveConnect(ctx context.Context, conn nativeconn.MessageConn, clientIP string) {
+	defer conn.CloseNow()
+	conn.SetReadLimit(gatewaywire.MaxHelloBytes)
+
 	nonce, err := randomNonce()
 	if err != nil {
 		s.logger.Error("nonce generation failed", "error", err)
@@ -87,9 +91,11 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	conn.SetReadLimit(gatewaywire.MaxFramePayload)
+
 	// The rate limit is charged before the registration lookup so a stranger
 	// cannot enumerate relay ids cheaply.
-	if !s.connectLimiter.allow("connect:"+s.clientIP(r), s.now()) {
+	if !s.connectLimiter.allow("connect:"+clientIP, s.now()) {
 		reject(ctx, conn, gatewaywire.CodeRateLimited, "too many connection attempts")
 		return
 	}
@@ -162,7 +168,7 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 // connectHello reads and validates the phone's answer to the challenge. The
 // gateway checks only the shape: the proof is verified by the relay, which is
 // the only party holding the rendezvous key.
-func (s *Server) connectHello(ctx context.Context, conn *websocket.Conn) (gatewaywire.ConnectHello, bool) {
+func (s *Server) connectHello(ctx context.Context, conn nativeconn.MessageConn) (gatewaywire.ConnectHello, bool) {
 	var hello gatewaywire.ConnectHello
 	data, err := readHello(ctx, conn, helloTimeout)
 	if err != nil {

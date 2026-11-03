@@ -1,6 +1,4 @@
 <script lang="ts">
-  import { createReorderHold } from '$lib/reorder-hold';
-  import { displacedSlot, insertionSlot, slotGap, type ReorderSlot } from '$lib/reorder-geometry';
   import { onMount } from 'svelte';
   import AgentLogo, { agentDisplayName, hasAgentLogo } from '$components/AgentLogo.svelte';
   import PairDeferredRelay from '$components/PairDeferredRelay.svelte';
@@ -88,15 +86,19 @@
   ] as const;
   let relativeNow = $state(Date.now());
   let movingTab = $state('');
+  interface TabSlot {
+    id: string;
+    top: number;
+    height: number;
+  }
   let tabDrag = $state<{
-    owner: HTMLElement;
     workspaceKey: string;
     sourceTabId: string;
     pointerId: number;
     startY: number;
     deltaY: number;
     insertIdx: number;
-    items: ReorderSlot[];
+    items: TabSlot[];
     gap: number;
   } | null>(null);
   // Optimistic arrangement applied between releasing a drag and the relay
@@ -212,7 +214,6 @@
   }
 
   async function commitReorder(workspace: WorkspaceGroup, sourceTabId: string, insertIndex: number, order: string[]) {
-    if (movingTab) return;
     const agent = displayTabs(workspace).find((tab) => tab.id === sourceTabId)?.agents[0];
     if (!agent) return;
     pendingTabOrder = { key: workspace.key, order };
@@ -228,109 +229,127 @@
     }
   }
 
+  const LONG_PRESS_MS = 550;
+  const PRESS_SLOP_PX = 12;
   let suppressOpen = false;
 
   // Long-press a working agent card to lift its tab, drag to reorder, and
   // release to commit; a plain tap still opens the agent.
   function reorderPress(node: HTMLElement, params: { workspace?: WorkspaceGroup; tabId: string }) {
     let current = params;
-    const hold = createReorderHold(node);
-    let liftedOwner: { pointerId: number; pointerType: string } | null = null;
+    let timer = 0;
+    let pointerId = -1;
+    let startX = 0;
+    let startY = 0;
+    let dragging = false;
 
-    function pointerIdentity(event: MouseEvent) {
-      const { pointerId, pointerType } = event as PointerEvent;
-      return Number.isInteger(pointerId) && pointerId > 0 && ['mouse', 'touch', 'pen'].includes(pointerType)
-        ? { pointerId, pointerType } : null;
-    }
-
-    function clearOwnedDrag() {
-      if (tabDrag?.owner === node) tabDrag = null;
+    function reset() {
+      if (timer) {
+        clearTimeout(timer);
+        timer = 0;
+      }
+      pointerId = -1;
+      dragging = false;
     }
 
     function onPointerDown(event: PointerEvent) {
-      if (hold.pointerId !== -1) return;
-      liftedOwner = null;
       suppressOpen = false;
       const workspace = current.workspace;
       if (!workspace || !event.isPrimary || event.button !== 0 || movingTab) return;
-      hold.start(event, () => {
+      pointerId = event.pointerId;
+      startX = event.clientX;
+      startY = event.clientY;
+      timer = window.setTimeout(() => {
+        timer = 0;
         const items = measureTabSlots(node);
         if (items.length < 2) {
-          hold.reset();
+          reset();
           return;
         }
-        hold.lift(() => {
-          liftedOwner = pointerIdentity(event);
-          suppressOpen = true;
-        });
+        dragging = true;
+        suppressOpen = true;
+        navigator.vibrate?.(12);
+        node.setPointerCapture?.(pointerId);
         const sourceIdx = items.findIndex((item) => item.id === current.tabId);
         tabDrag = {
-          owner: node,
           workspaceKey: workspace.key,
           sourceTabId: current.tabId,
-          pointerId: hold.pointerId,
-          startY: hold.startY + window.scrollY,
+          pointerId,
+          startY: startY + window.scrollY,
           deltaY: 0,
           insertIdx: Math.max(0, sourceIdx),
           items,
-          gap: slotGap(items),
+          gap: items.length > 1 ? Math.max(0, items[1].top - items[0].top - items[0].height) : 12,
         };
-      });
+      }, LONG_PRESS_MS);
+    }
+
+    function onPointerMove(event: PointerEvent) {
+      if (event.pointerId !== pointerId) return;
+      if (!dragging) {
+        if (Math.hypot(event.clientX - startX, event.clientY - startY) > PRESS_SLOP_PX) reset();
+        return;
+      }
+      event.preventDefault();
+      if (current.workspace) trackTabDrag(event, current.workspace);
+    }
+
+    function onPointerUp(event: PointerEvent) {
+      if (event.pointerId !== pointerId) return;
+      if (dragging && current.workspace) finishTabDrag(event, current.workspace);
+      reset();
+    }
+
+    function onPointerCancel(event: PointerEvent) {
+      if (event.pointerId !== pointerId) return;
+      if (tabDrag?.pointerId === event.pointerId) tabDrag = null;
+      reset();
+    }
+
+    // Non-passive so an active drag can stop the browser from scrolling;
+    // Svelte's own touchmove handlers are passive.
+    function onTouchMove(event: TouchEvent) {
+      if (dragging) event.preventDefault();
+    }
+
+    function onContextMenu(event: Event) {
+      if (dragging || timer) event.preventDefault();
     }
 
     function onClick(event: MouseEvent) {
-      // Identified overlaps cannot spend the owner's ticket or the legacy fallback.
-      if (hold.pointerId === -1 && liftedOwner) {
-        const identity = pointerIdentity(event);
-        if (identity) {
-          if (identity.pointerId === liftedOwner.pointerId && identity.pointerType === liftedOwner.pointerType) {
-            liftedOwner = null;
-            suppressOpen = false;
-          }
-          event.preventDefault();
-          event.stopPropagation();
-          return;
-        }
-      }
-      // Zero-detail clicks can be keyboard or programmatic activation during a pending hold.
-      if (!suppressOpen && (hold.pointerId === -1 || event.detail === 0)) return;
-      // Keep a lifted owner's one-shot suppression until its pointer lifetime ends.
-      if (hold.pointerId === -1) suppressOpen = false;
+      if (!suppressOpen) return;
+      suppressOpen = false;
       event.preventDefault();
       event.stopPropagation();
     }
 
-    const stopListening = hold.listen(onPointerDown, {
-      move(event) {
-        if (current.workspace) trackTabDrag(event, current.workspace);
-      },
-      finish(event) {
-        if (current.workspace) finishTabDrag(event, current.workspace);
-      },
-      cancel: clearOwnedDrag,
-    });
+    node.addEventListener('pointerdown', onPointerDown);
+    node.addEventListener('pointermove', onPointerMove);
+    node.addEventListener('pointerup', onPointerUp);
+    node.addEventListener('pointercancel', onPointerCancel);
+    node.addEventListener('touchmove', onTouchMove, { passive: false });
+    node.addEventListener('contextmenu', onContextMenu);
     node.addEventListener('click', onClick, true);
     return {
       update(next: { workspace?: WorkspaceGroup; tabId: string }) {
         current = next;
-        if (!next.workspace) {
-          clearOwnedDrag();
-          hold.cancel();
-        }
       },
       destroy() {
-        liftedOwner = null;
-        stopListening();
+        node.removeEventListener('pointerdown', onPointerDown);
+        node.removeEventListener('pointermove', onPointerMove);
+        node.removeEventListener('pointerup', onPointerUp);
+        node.removeEventListener('pointercancel', onPointerCancel);
+        node.removeEventListener('touchmove', onTouchMove);
+        node.removeEventListener('contextmenu', onContextMenu);
         node.removeEventListener('click', onClick, true);
-        clearOwnedDrag();
-        hold.destroy();
+        reset();
       },
     };
   }
 
   // Slots are captured in document coordinates when the drag starts, so the
   // preview stays correct while the page auto-scrolls under the pointer.
-  function measureTabSlots(node: HTMLElement): ReorderSlot[] {
+  function measureTabSlots(node: HTMLElement): TabSlot[] {
     const container = node.closest('.workspace-tabs');
     if (!container) return [];
     return [...container.querySelectorAll<HTMLElement>('.workspace-tab')].map((section) => {
@@ -345,7 +364,11 @@
     if (event.clientY < 72) window.scrollBy(0, -12);
     else if (event.clientY > window.innerHeight - 72) window.scrollBy(0, 12);
     const pointerY = event.clientY + window.scrollY;
-    const insertIdx = insertionSlot(tabDrag.items, tabDrag.sourceTabId, pointerY);
+    let insertIdx = 0;
+    for (const item of tabDrag.items) {
+      if (item.id === tabDrag.sourceTabId) continue;
+      if (pointerY > item.top + item.height / 2) insertIdx += 1;
+    }
     tabDrag = { ...tabDrag, deltaY: pointerY - tabDrag.startY, insertIdx };
   }
 
@@ -355,7 +378,13 @@
     if (!tabDrag || tabDrag.workspaceKey !== workspace.key) return '';
     if (tabId === tabDrag.sourceTabId) return `translateY(${tabDrag.deltaY}px)`;
     const { items, sourceTabId, insertIdx, gap } = tabDrag;
-    return displacedSlot(items, sourceTabId, tabId, insertIdx, gap);
+    const sourceIdx = items.findIndex((item) => item.id === sourceTabId);
+    const itemIdx = items.findIndex((item) => item.id === tabId);
+    if (sourceIdx < 0 || itemIdx < 0) return '';
+    const span = items[sourceIdx].height + gap;
+    const othersIdx = itemIdx > sourceIdx ? itemIdx - 1 : itemIdx;
+    const shift = (itemIdx > sourceIdx ? -span : 0) + (othersIdx >= insertIdx ? span : 0);
+    return shift ? `translateY(${shift}px)` : '';
   }
 
   function finishTabDrag(event: PointerEvent, workspace: WorkspaceGroup) {

@@ -215,6 +215,11 @@ func (r *Resolver) loadINI() (
 				if value == "" {
 					continue
 				}
+				if value == "~" || strings.HasPrefix(value, "~/") {
+					if home, homeErr := os.UserHomeDir(); homeErr == nil {
+						value = filepath.Join(home, strings.TrimPrefix(value, "~/"))
+					}
+				}
 				paths = append(paths, value)
 			}
 			if len(paths) > 0 {

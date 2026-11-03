@@ -1,0 +1,5 @@
+app/src/main/assets/agent/** -text
+gradlew text eol=lf
+*.sh text eol=lf
+*.patch -text
+*.zip -text

@@ -136,7 +136,7 @@ func DefaultBrowserOptions() BrowserOptions {
 		MaxRecordBytes:       16 * 1024 * 1024,
 		DefaultPageSize:      defaultPageSize,
 		MaxPageSize:          maxPageSize,
-		ResponseBytes:        2 * 1024 * 1024,
+		ResponseBytes:        256 * 1024,
 		ActiveWorkers:        1,
 		QueuedPreparations:   4,
 		InterestLease:        30 * time.Second,
