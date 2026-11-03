@@ -130,14 +130,25 @@ jobs:
           set -euo pipefail
           version="$(jq -r '.android.version' VERSION.json)"
           mkdir -p dist
+          mapfile -t apks < <(find herdr-android/app/build/outputs/apk -type f -name '*.apk' | sort)
+          printf 'Generated APKs:\n'
+          printf '%s\n' "${apks[@]}"
           for kind in debug release; do
             for abi in armeabi-v7a arm64-v8a x86_64; do
-              source="herdr-android/app/build/outputs/apk/$kind/app-$kind-$abi.apk"
-              if [ ! -f "$source" ]; then
-                source="herdr-android/app/build/outputs/apk/$kind/app-$kind-$abi-unsigned.apk"
+              match=""
+              for apk in "${apks[@]}"; do
+                case "$apk" in
+                  */apk/"$kind"/app-"$abi"-"$kind"*.apk|*/apk/"$kind"/app-"$kind"-"$abi"*.apk)
+                    match="$apk"
+                    break
+                    ;;
+                esac
+              done
+              if [ -z "$match" ]; then
+                echo "Missing $kind APK for $abi" >&2
+                exit 1
               fi
-              test -f "$source"
-              cp "$source" "dist/Herdr-Pocket-$version-$kind-$abi.apk"
+              cp "$match" "dist/Herdr-Pocket-$version-$kind-$abi.apk"
             done
           done
           ls -l dist/*.apk
