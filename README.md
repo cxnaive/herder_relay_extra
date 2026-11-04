@@ -32,6 +32,13 @@
 - Release 同时提供 SHA-256 校验文件，源码由对应 Git tag 的 Source code 下载项提供。
 - 用旧版 App 下载本次 APK 若仍显示 `.bin`，这一次先将完整名称改为 `Herdr-Pocket-0.2.22-debug.apk` 再安装。
 
+## CI 构建与固定签名
+
+Actions 的 `build-artifacts` 提供三平台 Relay/Gateway 和三种 ABI 的 Android 构建。
+现有主分支 `feat/android-file-companion` 的可信构建通过独立签名任务使用原有 Pocket 证书，
+产物为 `android-apks-signed`；PR/其他分支仅提供 `android-apks-ci`，不能当作现有 App 的覆盖安装包。
+产物保留一天，不自动发布或替换 Release。详见[构建、签名与密钥管理](docs/native-ci.md)。
+
 ## 下载 Relay / Gateway 与部署指南
 
 **[完整部署指南：从零安装 → systemd → 配对 → 升级/回滚](docs/native-deployment.md)**

@@ -31,11 +31,11 @@ jobs:
             goos: darwin
             goarch: arm64
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
 
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: 1.27.3
           cache: true
@@ -91,71 +91,94 @@ jobs:
               BUILD-INFO.json SHA256SUMS.txt
           )
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: native-binaries-${{ matrix.target }}
           path: dist/herdr-native-binaries_${{ matrix.target }}.zip
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 1
 
   android-apk:
     name: Android Debug and Release APKs
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
 
-      - uses: actions/setup-java@v6
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
         with:
           distribution: temurin
           java-version: "21"
 
-      - uses: android-actions/setup-android@v4
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4
 
       - name: Install Android SDK packages
         run: |
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+
+      - name: Test APK packaging and signing guards
+        run: python3 -m unittest discover -s scripts/tests -p test_android_artifacts.py
 
       - name: Build and test Android app
         working-directory: herdr-android
-        run: ./gradlew --no-daemon testDebugUnitTest assembleDebug assembleRelease assembleDebugAndroidTest lintDebug
+        run: ./gradlew --no-daemon -PsplitApks=true testDebugUnitTest assembleDebug assembleRelease assembleDebugAndroidTest lintDebug
 
-      - name: Collect APKs
-        run: |
-          set -euo pipefail
-          version="$(jq -r '.android.version' VERSION.json)"
-          mkdir -p dist
-          mapfile -t apks < <(find herdr-android/app/build/outputs/apk -type f -name '*.apk' | sort)
-          printf 'Generated APKs:\n'
-          printf '%s\n' "${apks[@]}"
-          for kind in debug release; do
-            for abi in armeabi-v7a arm64-v8a x86_64; do
-              match=""
-              for apk in "${apks[@]}"; do
-                case "$apk" in
-                  */apk/"$kind"/app-"$abi"-"$kind"*.apk|*/apk/"$kind"/app-"$kind"-"$abi"*.apk)
-                    match="$apk"
-                    break
-                    ;;
-                esac
-              done
-              if [ -z "$match" ]; then
-                echo "Missing $kind APK for $abi" >&2
-                exit 1
-              fi
-              cp "$match" "dist/Herdr-Pocket-$version-$kind-$abi.apk"
-            done
-          done
-          ls -l dist/*.apk
+      - name: Collect APKs without publishing a trusted signature
+        run: python3 scripts/android-artifacts.py collect herdr-android/app/build/outputs/apk dist/android-ci
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: android-apks
-          path: dist/*.apk
+          name: android-apks-ci
+          path: dist/android-ci/
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 1
+
+  android-sign:
+    name: Android APKs signed for existing installations
+    needs: android-apk
+    if: >-
+      github.repository == 'cxnaive/herder_relay_extra' &&
+      github.ref == 'refs/heads/feat/android-file-companion' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    environment: android-signing
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4
+
+      - name: Install APK signing tools
+        run: sdkmanager "build-tools;35.0.0"
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: android-apks-ci
+          path: android-input
+
+      - name: Sign and verify every APK with the existing certificate
+        env:
+          HERDR_ANDROID_KEYSTORE_BASE64: ${{ secrets.HERDR_ANDROID_KEYSTORE_BASE64 }}
+          HERDR_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.HERDR_ANDROID_KEYSTORE_PASSWORD }}
+          HERDR_ANDROID_KEY_ALIAS: ${{ secrets.HERDR_ANDROID_KEY_ALIAS }}
+          HERDR_ANDROID_KEY_PASSWORD: ${{ secrets.HERDR_ANDROID_KEY_PASSWORD }}
+        run: python3 scripts/android-artifacts.py sign android-input dist/android-signed
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: android-apks-signed
+          path: dist/android-signed/
+          if-no-files-found: error
+          retention-days: 1

@@ -270,10 +270,10 @@ function audit(workflow: any, action: any, release: any, check: any, shardSource
   assert.equal(jobs.gate.steps.find((step: any) => step.id === 'qualification').if, undefined);
   assert.deepEqual(check.jobs.mobile.needs, ['release', 'mobile-host-check', 'mobile-inspection-check', 'mobile-unit-aggregate']);
   assert.equal(check.jobs.mobile.uses, './.github/workflows/mobile-ci.yml');
-  for (const ref of ['dev', 'main', 'ci-mobile', 'feature']) {
-    assert.equal(condition(check.jobs.mobile.if, { needs: {}, github: { ref: 'refs/heads/' + ref, event_name: 'push' }, success: true }), ref === 'dev' || ref === 'main');
+  for (const ref of ['dev', 'main', 'feat/android-file-companion', 'ci-mobile', 'feature']) {
+    assert.equal(condition(check.jobs.mobile.if, { needs: {}, github: { ref: 'refs/heads/' + ref, event_name: 'push' }, success: true }), ['dev', 'main', 'feat/android-file-companion'].includes(ref));
   }
-  for (const base of ['dev', 'main', 'other']) for (const head of ['ci-mobile', 'feature']) for (const repository of ['public/repo', 'foreign/repo']) {
+  for (const base of ['dev', 'main', 'feat/android-file-companion', 'other']) for (const head of ['ci-mobile', 'feature']) for (const repository of ['public/repo', 'foreign/repo']) {
     const github = { ref: 'refs/pull/25/merge', event_name: 'pull_request', repository: 'public/repo', event: { pull_request: { base: { ref: base }, head: { ref: head, repo: { full_name: repository } } } } };
     assert.equal(condition(check.jobs.mobile.if, { needs: {}, success: true, github }), base !== 'other');
     assert.equal(condition(check.jobs.mobile.if, { needs: {}, success: false, github }), false);
@@ -337,6 +337,42 @@ function simulate(workflow: any, rows: Row[], overrides: Record<string, Status> 
   return completed;
 }
 export const mobileWorkflowTests: Array<[string, () => Promise<void>]> = [
+  ['mobile artifact workflow isolates fixed signing from PRs and untrusted branches', async () => {
+    const runtime = (globalThis as unknown as { Bun: { YAML: { parse(source: string): unknown } } }).Bun;
+    const workflow = runtime.YAML.parse(await readFile(repositoryPath('.github/workflows/build-artifacts.yml'), 'utf8')) as any;
+    const check = runtime.YAML.parse(await readFile(repositoryPath('.github/workflows/check.yml'), 'utf8')) as any;
+    assert.ok(check.on.push.branches.includes('feat/android-file-companion'));
+    assert.equal(workflow.on.pull_request_target, undefined);
+    assert.deepEqual(workflow.permissions, { contents: 'read' });
+    const signer = workflow.jobs['android-sign'];
+    assert.equal(signer.environment, 'android-signing');
+    assert.equal(signer.needs, 'android-apk');
+    for (const repository of ['cxnaive/herder_relay_extra', 'other/fork']) {
+      for (const ref of ['refs/heads/feat/android-file-companion', 'refs/heads/feature', 'refs/tags/android-v0.2.22', 'refs/pull/1/merge']) {
+        for (const event_name of ['push', 'workflow_dispatch', 'pull_request', 'pull_request_target']) {
+          const expected = repository === 'cxnaive/herder_relay_extra' && ref === 'refs/heads/feat/android-file-companion' && ['push', 'workflow_dispatch'].includes(event_name);
+          assert.equal(condition(signer.if, { needs: {}, success: true, github: { repository, ref, event_name } }), expected);
+        }
+      }
+    }
+    for (const [id, job] of Object.entries(workflow.jobs) as Array<[string, any]>) {
+      if (id !== 'android-sign') assert.doesNotMatch(JSON.stringify(job), /secrets\./u);
+      for (const step of job.steps) {
+        if (step.uses) assert.match(step.uses, /@[0-9a-f]{40}$/u);
+        if (step.uses?.startsWith('actions/upload-artifact@')) {
+          assert.equal(step.with['retention-days'], 1);
+          assert.doesNotMatch(step.with.path, /keystore|runner\.temp|\.gradle/u);
+        }
+        if (step.env && JSON.stringify(step.env).includes('secrets.')) {
+          assert.equal(step.run, 'python3 scripts/android-artifacts.py sign android-input dist/android-signed');
+          assert.equal(Object.keys(step.env).length, 4);
+        }
+      }
+    }
+    assert.ok(workflow.jobs['android-apk'].steps.some((step: any) => step.run?.includes('-PsplitApks=true')));
+    assert.ok(signer.steps.some((step: any) => step.uses?.startsWith('actions/download-artifact@') && step.with.name === 'android-apks-ci'));
+    assert.ok(signer.steps.some((step: any) => step.uses?.startsWith('actions/upload-artifact@') && step.with.name === 'android-apks-signed'));
+  }],
   ['mobile evidence accepts exactly one shared baseline across Android and iOS', async () => {
     const android = await evidenceFixture('android'), ios = await evidenceFixture('ios');
     const root = await mkdtemp(join(tmpdir(), 'herdr-mobile-two-rows-'));
@@ -558,7 +594,16 @@ export const mobileWorkflowTests: Array<[string, () => Promise<void>]> = [
         for (const [index, candidate] of steps.entries()) {
           if (!candidate.run?.includes('appium.log') || candidate === step) continue;
           assert.ok(copyIndex > index, 'only startup logging may precede capture');
-          assert.match(candidate.run, /sed -n '1,160p' "\$RUNNER_TEMP\/appium.log"/u);
+          assert.doesNotMatch(candidate.run, /(?:sed|cat|head|tail)\b[^\n]*appium\.log/u);
+          const failure = candidate.run.slice(candidate.run.indexOf("printf '%s\\n' 'Appium startup failed;"));
+          assert.match(failure, /payload-bearing log withheld/u);
+          await assert.rejects(command('bash', ['-c', failure], 1_000), (error: unknown) => {
+            assert.ok(error instanceof CommandError);
+            assert.equal(error.exitCode, 1);
+            assert.equal(error.stdout, '');
+            assert.equal(error.stderr.trim(), 'Appium startup failed; payload-bearing log withheld');
+            return true;
+          });
           assert.doesNotMatch(candidate.run, /MOBILE_OUTPUT\/appium.log/u);
         }
         for (const upload of steps.filter((candidate: any) => candidate.uses?.startsWith('actions/upload-artifact'))) {

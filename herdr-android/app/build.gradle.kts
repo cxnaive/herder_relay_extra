@@ -10,7 +10,7 @@ android {
     buildToolsVersion = "35.0.0"
     splits {
         abi {
-            isEnable = true
+            isEnable = providers.gradleProperty("splitApks").orNull == "true"
             reset()
             include("armeabi-v7a", "arm64-v8a", "x86_64")
             isUniversalApk = false

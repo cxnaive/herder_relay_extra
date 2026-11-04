@@ -12,6 +12,7 @@ project follows [Semantic Versioning](https://semver.org/).
 - Read-only, exact-workspace document downloads in 512 KiB verified chunks (up to 12 MiB per file), enabling native PDF/Markdown/image reviewers without raising transport limits or granting file-write access.
 
 ### Fixed
+- Keep trusted Android build artifacts on the existing Pocket signing certificate so upgrades preserve pairing and drafts; clearly distinguish unsigned and temporary-key test APKs.
 - Keep history pages within a 256 KiB payload budget and allow slow gateway fragments 20 seconds to write (5 seconds for health probes), avoiding whole-link disconnects while paging older tool-heavy conversations.
 - Recover missing Codex session IDs from the local daemon’s TUI endpoint and exact foreground-process socket ownership. Shared or stale endpoints stay unavailable instead of selecting a similarly named conversation.
 - Allow an operator-selected local Codex session to be bound to an exact terminal and live process when Herdr omits its session ID; reject stale, renamed, replaced or ambiguous bindings instead of guessing by directory.

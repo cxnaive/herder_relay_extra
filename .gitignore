@@ -69,3 +69,7 @@ herdr-android/local.properties
 !/herdr-android/screenshots/qa-0.2.15/
 /herdr-android/screenshots/qa-0.2.15/*
 !/herdr-android/screenshots/qa-0.2.15/workspace-directory.png
+
+# Python tooling
+__pycache__/
+*.pyc
