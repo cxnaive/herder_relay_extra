@@ -500,3 +500,26 @@ test('an authenticated reader cannot send text, keys, scroll or resize mutations
     expect((await mutations()).length).toBe(before);
   } finally { await context.close(); }
 });
+
+test('unverified Codex permits literal terminal input without granting chat or approval', async ({ page }) => {
+  await bootController(page);
+  await openDialog(page, 'codex-notes');
+  await expect(page.getByRole('status').filter({ hasText: 'Main conversation unverified' })).toBeVisible();
+  await expect(page.locator('.question-form')).toHaveCount(0);
+  const initial = (await mutations()).length;
+  await openManual(page);
+  await page.getByLabel('Terminal text', { exact: true }).fill('manual-only synthetic input');
+  await button(page, 'Send text').click();
+  await expect(page.getByText('Text delivered; Enter not sent.', { exact: true })).toBeVisible();
+  await button(page, 'Close').click();
+  const sent = (await mutations()).slice(initial);
+  expect(sent).toEqual([{ method: 'pane.send_input', params: { pane_id: 'codex-notes', text: 'manual-only synthetic input' } }]);
+  await page.getByLabel('Prompt', { exact: true }).fill('must not become a conversation prompt');
+  await expect(button(page, 'Send prompt')).toBeDisabled();
+  expect((await mutations()).length).toBe(initial + 1);
+  await button(page, 'Manage agent').click();
+  const dialog = page.getByRole('dialog', { name: 'Manage Agent' });
+  await expect(dialog.getByRole('button', { name: 'Stop Agent', exact: true })).toBeEnabled();
+  await expect(dialog.getByRole('button', { name: 'Clear Agent', exact: true })).toBeEnabled();
+  await expect(dialog.getByRole('button', { name: 'Rename Session', exact: true })).toHaveCount(0);
+});

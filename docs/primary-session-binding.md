@@ -1,6 +1,6 @@
 # Codex terminal-scoped primary session discovery
 
-Relay codexfix.14 / Pocket 0.2.26 applies this policy **only to `agent == codex`**.
+Relay codexfix.15 / Pocket 0.2.28 applies this policy **only to `agent == codex`**.
 All other providers keep the existing Herdr Relay discovery, session identifiers,
 history parsers, and interaction authorization. No Codex runtime or hook report
 is required for them.
@@ -117,6 +117,36 @@ Existing device/role authorization and exact terminal request leases remain in
 force; this does not replace them. Workspace/file authorization remains separate
 from Codex conversation identity. Changing terminal, process instance, selected
 ID, runtime endpoint or proof state invalidates old requests and subscriptions.
+
+## Terminal recovery is not conversation authority
+
+Starting with Pocket 0.2.28 / Relay codexfix.15, an unresolved conversation does
+not disable explicit terminal control. These use terminal scope:
+
+- Literal terminal text/input, raw text/keys, constrained filter input and masked
+  terminal input; existing character/no-echo validation still applies.
+- Explicit size lease and Stop/Restart/Clear. Restart/Clear still require an owned
+  launch profile; this does not guess a profile or resume an unknown conversation.
+
+Only an authenticated controller with a ready inventory can perform them. Relay
+retains exact server/pane/terminal/generation/session-field/binding-epoch request
+checks (the session field may be empty). It freshly reads `pane.get` to verify
+terminal incarnation, provider and cwd both at admission and just before writes,
+including after queue/capacity waits. Discovery and global loaded-thread matching
+are not part of this check. A stale request is not silently retargeted. Lifecycle
+confirmations on Android are captured to the original exact target.
+
+This permits manual keystrokes in the currently displayed terminal—including
+keys that the program may interpret as a confirmation—but does **not** authorize
+Relay-generated approval decisions based on an unverified history. `submit_prompt`,
+structured question/approval actions, model changes and conversation reads retain
+their primary checks. Unknown mutations remain primary-bound by default. Readers,
+unauthenticated clients and uncertain/pending sends do not gain a bypass.
+
+The browser keeps the normal conversation composer and structured controls gated,
+but exposes the explicit Keyboard path and Stop/Clear. Android's Terminal composer
+sends literal text with Enter separate; its Conversation composer stays gated.
+Terminal access neither confirms a primary ID nor discards the user's draft.
 
 ## Resume and cache behavior
 

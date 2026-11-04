@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"sync"
+	"time"
 
 	"github.com/0cv/herdr-mobile-relay/internal/coordinator"
 	"github.com/0cv/herdr-mobile-relay/internal/protocol"
@@ -114,8 +115,22 @@ func (s *Server) enrichCodexSessions(ctx context.Context, agents []*coordinator.
 	s.codexBindings.reconcile(agents)
 }
 
-func codexMutationNeedsPrimary(action protocol.ActionMetadata) bool {
+// These commands target the displayed terminal, not a resolved conversation.
+// Unknown/future mutations remain primary-bound by default.
+func codexTerminalMutation(action protocol.ActionMetadata) bool {
 	if action.Class != protocol.ActionMutating {
+		return false
+	}
+	switch action.Operation {
+	case "send_terminal_text", "send_text", "send_keys", "send_input", "send_filter_text", "send_secret", "lease_pane_size", "agent_stop", "agent_restart", "agent_clear":
+		return true
+	default:
+		return false
+	}
+}
+
+func codexMutationNeedsPrimary(action protocol.ActionMetadata) bool {
+	if action.Class != protocol.ActionMutating || codexTerminalMutation(action) {
 		return false
 	}
 	switch action.Operation {
@@ -127,14 +142,32 @@ func codexMutationNeedsPrimary(action protocol.ActionMetadata) bool {
 }
 
 func (s *Server) codexInteractionCurrent(ctx context.Context, in protocol.Inbound, action protocol.ActionMetadata) bool {
-	if in.PaneID == "" || !codexMutationNeedsPrimary(action) {
+	if in.PaneID == "" {
 		return true
 	}
 	a, exists := s.state.Agent(in.PaneID)
 	if !exists || a.Agent != "codex" || a.BindingState == "" {
 		return true
 	}
+	if codexTerminalMutation(action) {
+		return s.codexTerminalCurrent(ctx, in, a)
+	}
+	if !codexMutationNeedsPrimary(action) {
+		return true
+	}
 	return a.BindingState == "verified" && s.codexPrimaryCurrent(ctx, a)
+}
+
+// Called both at admission and by the dispatch guard after scheduler/capacity
+// waits. Session IDs may be empty but exact inventory leases may not be stale.
+func (s *Server) codexTerminalCurrent(ctx context.Context, in protocol.Inbound, a *coordinator.AgentState) bool {
+	if s.herdrC == nil || ctx.Err() != nil || validateExactPaneTarget(s.state, in, true) != nil || (in.Cwd != "" && in.Cwd != a.Cwd) {
+		return false
+	}
+	check, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	pane, err := s.herdrC.PaneGet(check, a.PaneID)
+	return err == nil && pane != nil && pane.ID == a.PaneID && pane.TerminalID == a.TerminalID && pane.Agent == a.Agent && pane.Cwd == a.Cwd && ctx.Err() == nil && validateExactPaneTarget(s.state, in, true) == nil
 }
 
 // File access proves terminal/workspace identity independently of chat discovery.

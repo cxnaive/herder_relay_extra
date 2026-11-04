@@ -28,6 +28,8 @@ const childReportID = "323e4567-e89b-12d3-a456-426614174002"
 const reportOrigin = "http://127.0.0.1:1234"
 
 type reportPaneFixture struct {
+	acceptTerminalInput                      bool
+	terminalInputs                           []map[string]any
 	mu                                       sync.Mutex
 	pane                                     herdr.Pane
 	calls                                    []string
@@ -80,7 +82,15 @@ func reportServer(t *testing.T) (*Server, *reportPaneFixture, *coordinator.Agent
 					f.pane.SessionRaw = f.changed
 				}
 				p := f.pane
+				acceptInput := f.acceptTerminalInput && req.Method == "pane.send_input"
+				if acceptInput {
+					f.terminalInputs = append(f.terminalInputs, req.Params)
+				}
 				f.mu.Unlock()
+				if acceptInput {
+					json.NewEncoder(conn).Encode(map[string]any{"id": req.ID, "result": map[string]any{"type": "ok"}})
+					return
+				}
 				if req.Method != "pane.get" {
 					t.Errorf("unexpected Herdr operation: %s", req.Method)
 					return

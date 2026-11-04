@@ -18,6 +18,24 @@ class PrimarySessionBindingTest {
         }
         assertTrue(PrimarySessionBinding.label(agent(state = "ambiguous").put("binding_reason", "standalone_ambiguous")).contains("旧 hook"))
     }
+    @Test fun terminalRecoveryDoesNotNeedChatButNeverGrantsApproval() {
+        for (state in listOf("verifying", "ambiguous", "stale", "conflict")) {
+            val unresolved = agent(state = state).put("agent_session_id", "")
+            for (action in listOf("send_terminal_text", "send_keys", "send_text", "send_secret", "lease_pane_size")) {
+                assertTrue(PrimarySessionBinding.operationWritable(unresolved, action, terminalView = true))
+                assertFalse(PrimarySessionBinding.operationWritable(unresolved, action))
+            }
+            for (action in listOf("agent_stop", "agent_restart", "agent_clear", "agent_rename")) {
+                assertTrue(PrimarySessionBinding.operationWritable(unresolved, action))
+            }
+            for (action in listOf("submit_prompt", "respond", "answer_question", "set_agent_settings", "future_unknown_action")) {
+                assertFalse(PrimarySessionBinding.operationWritable(unresolved, action, terminalView = true))
+            }
+            assertFalse(PrimarySessionBinding.readable(unresolved))
+            assertFalse(PrimarySessionBinding.operationWritable(JSONObject(unresolved.toString()).put("terminal_id", ""), "send_keys", terminalView = true))
+            assertTrue(PrimarySessionBinding.terminalLabel(unresolved).contains("可直接操作当前终端"))
+        }
+    }
     @Test fun availabilityIsNotHistoryOrDraftIdentity() {
         val old = WorkspaceBinding.fromAgent("computer", agent())
         val recovered = WorkspaceBinding.fromAgent("computer", agent(3))

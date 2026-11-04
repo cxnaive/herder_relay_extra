@@ -29,9 +29,9 @@
 
 | 组件 | 当前源码版本 | 位置 |
 | --- | --- | --- |
-| 电脑 Relay | `0.23.5+codexfix.14` | 仓库根目录，`cmd/herdr-mobile-relay` |
+| 电脑 Relay | `0.23.5+codexfix.15` | 仓库根目录，`cmd/herdr-mobile-relay` |
 | 原生 TCP Gateway | `0.23.5+codexfix.6` | `cmd/herdr-gateway`，`deploy/native-tcp/` |
-| Herdr Pocket Android | `0.2.27` / versionCode `30` | `herdr-android/` |
+| Herdr Pocket Android | `0.2.28` / versionCode `31` | `herdr-android/` |
 
 本次按当前可用源码快照替换此前根目录的 0.24.0 文件扩展实现，不把两条不同基线混为同一版本。组件对应关系及源码来源见 [VERSION.json](VERSION.json)。旧内容仍可从 Git 历史查看。
 
@@ -42,6 +42,8 @@
 **`--no-daemon` 已有独立关联路径**：只读验证该 TUI 进程实际持有的会话写锁及精确 ID 元数据，不查询共享后台。主线程唯一即可绑定，不依赖 hook；新会话可能要等首轮输入落下元数据。若 `/new`、`/resume` 后仍持有多个主线程，旧 hook 上报不作消歧依据，保持未确认。独立模式模型设置请在电脑端操作，运行计时不冒用共享后台；其他 agent 不受影响。
 
 Pocket `0.2.27` 修复终端输出刷新打断手机输入法编辑：普通快照/增量不再重设输入框类型，保留拼音编辑状态、光标与草稿；密码输入仍单独处理。本次只更新 App，Relay codexfix.14 / Gateway codexfix.6 不变。
+
+Pocket `0.2.28` / Relay `codexfix.15` 将终端操作与主对话确认分开：主会话不唯一时，控制者仍可手动输入终端文本/按键、停止或重启 Agent。电脑端每次核对确切终端和请求代次；不猜选历史，不开放结构化审批或按对话发送。配套更新 App 和 Relay，Gateway 不变。
 
 “会话绑定诊断”通过[独立只读接口](docs/session-binding-diagnostics.md)提供带版本的可扩展 JSON；手机不查询可操作候选、不分析子代理或确认主会话，也不会自动上传诊断。
 
@@ -119,7 +121,7 @@ Android 为 Latest；服务端版本和 Android 版本分别编号。
 ```bash
 mkdir -p bin
 CGO_ENABLED=0 go build -trimpath \
-  -ldflags '-s -w -X main.version=0.23.5+codexfix.14 -X main.revision=source-build' \
+  -ldflags '-s -w -X main.version=0.23.5+codexfix.15 -X main.revision=source-build' \
   -o bin/herdr-mobile-relay ./cmd/herdr-mobile-relay
 CGO_ENABLED=0 go build -trimpath \
   -ldflags '-s -w -X main.version=0.23.5+codexfix.6 -X main.revision=source-build' \

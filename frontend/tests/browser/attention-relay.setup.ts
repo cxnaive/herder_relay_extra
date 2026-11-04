@@ -336,6 +336,9 @@ export default async function setup() {
             },
           };
           break;
+        case 'pane.get':
+          response = { id, result: { type: 'pane_info', pane: panes.find(pane => pane.pane_id === request.params?.pane_id) } };
+          break;
         case 'agent.list':
           response = { id, result: { type: 'agent_list', agents: panes } };
           break;

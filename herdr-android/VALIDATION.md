@@ -1,5 +1,13 @@
 # 验证记录
 
+## 0.2.28 / codexfix.15 · 终端恢复操作独立授权
+
+2026-11-05：将终端手动输入、按键与停止/重启从主对话确认中分离，保留设备角色、确切终端、cwd、请求代次和未确认投递保护；历史/对话发送/结构化审批/模型设置仍按主会话验证。管理确认不能随切换目标转发给另一个终端。
+
+- 本地验证：Go 全量 tests/vet、app/coordinator/herdr race 通过；Android 325 项 JVM/Robolectric 测试及 lintDebug 通过；前端 1309 项单测、typecheck/lint 及 14 个 Chromium 真实 Relay 联调用例通过。`make web-release` build 489，gzip 172018 / 172032 bytes，dist/web 相同。未以测试结果代替用户手机真机验收。
+- 修复前 Go 回归复现 10 类终端/生命周期操作均因主会话未确认被拒；修复后真实 socket/dispatcher fixture 验证字面文本只投递一次、旧终端/过期代次/错误 cwd 拒绝、生命周期可通过边界但不会查询共享对话运行时。停止/重启仅操作测试-owned fake Herdr，没有操作用户 Agent。
+- Android TCP+E2EE UI fixture 覆盖未确认主会话下的文本、单独 Enter、停止/重启/清空请求，保留对话禁用、reader 禁写、未确认投递和延迟管理确认不改目标。
+
 ## 0.2.27 · 终端刷新与输入法编辑
 
 2026-11-05：仅修改 App 输入框配置，Relay/Gateway 不变。修复前的专项回归在 Android API 28/35 均确认连续 6 帧普通快照触发 6 次 `restartInput`，增量和密码快照也会重复重启输入法；修复后普通输出刷新不重设 `inputType`，仅隐私模式实际改变时配置。

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { bindingUnverified } from '$lib/primary-session-binding';
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
   import ActivityDetail from '$components/ActivityDetail.svelte';
@@ -102,10 +103,8 @@
     if (!agent || !view.target) return agent;
     return targetIdentityMatchesAgent(view.target, agent) ? agent : null;
   });
-  const activeReadOnly = $derived(Boolean(
-    activeAgent && (relayStore.deviceCredential(activeAgent.relay_id)?.role === 'reader'
-      || Boolean(activeAgent.binding_state && activeAgent.binding_state !== 'verified')),
-  ));
+  const activeTerminalReadOnly = $derived(Boolean(activeAgent && relayStore.deviceCredential(activeAgent.relay_id)?.role === 'reader'));
+  const activeReadOnly = $derived(activeTerminalReadOnly || Boolean(activeAgent && bindingUnverified(activeAgent)));
   const readOnlyRelayIds = $derived.by(() => {
     void $connections;
     return new Set($relays
@@ -770,7 +769,7 @@
     {#key activeAgent.pane_id}
       <div class="terminal-layout">
         <AgentRail agents={$agents} active={activeAgent} onopen={openAgent} onjump={() => { jumpOpen = true; }} />
-        <TerminalView bind:this={terminalView} agent={activeAgent} allAgents={$agents} frame={$frames.get(activeAgent.pane_id)} responding={$responding} readOnly={activeReadOnly} />
+        <TerminalView bind:this={terminalView} agent={activeAgent} allAgents={$agents} frame={$frames.get(activeAgent.pane_id)} responding={$responding} readOnly={activeTerminalReadOnly} />
       </div>
     {/key}
   {:else if $currentView.view === 'terminal'}
@@ -797,7 +796,7 @@
 </div>
 
 <UpdateProgressDialog {readOnlyRelayIds} />
-<ManageDialog bind:open={manageOpen} agent={activeAgent} readOnly={activeReadOnly} />
+<ManageDialog bind:open={manageOpen} agent={activeAgent} readOnly={activeTerminalReadOnly} />
 <GlobalJump bind:open={jumpOpen} agents={$agents} onselect={openAgent} />
 <WorkspaceInspector bind:open={workspaceOpen} agent={activeAgent} />
 <LockScreen />

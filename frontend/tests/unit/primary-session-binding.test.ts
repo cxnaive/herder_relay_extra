@@ -61,3 +61,16 @@ describe('Codex runtime-only boundary', () => {
     expect(text).not.toMatch(/upgrade|--no-daemon/);
   });
 });
+
+describe('terminal and conversation authority are separate', () => {
+  it('keeps Codex chat unverified without disabling terminal recovery', async () => {
+    const { bindingUnverified, terminalBindingNotice } = await import('../../src/lib/primary-session-binding');
+    for (const binding_state of ['ambiguous', 'verifying', 'stale', 'conflict']) {
+      expect(bindingUnverified({ agent: 'codex', binding_state })).toBe(true);
+      expect(bindingUnverified({ agent: 'claude', binding_state })).toBe(false);
+    }
+    expect(bindingUnverified({ agent: 'codex', binding_state: 'verified' })).toBe(false);
+    expect(terminalBindingNotice).toContain('Manual terminal input');
+    expect(terminalBindingNotice).toContain('chat and approvals do not');
+  });
+});

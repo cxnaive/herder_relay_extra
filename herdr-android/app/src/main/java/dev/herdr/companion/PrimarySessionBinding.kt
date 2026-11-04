@@ -5,6 +5,15 @@ import org.json.JSONObject
 /** Session identity survives temporary loss of proof; permission to interact does not. */
 object PrimarySessionBinding {
     fun writable(agent: JSONObject?): Boolean = agent != null && (agent.optString("agent") != "codex" || agent.optString("binding_state") in setOf("", "verified"))
+    private val terminalActions = setOf("send_terminal_text", "send_text", "send_keys", "send_input", "send_filter_text", "send_secret", "lease_pane_size")
+    private val lifecycleActions = setOf("agent_stop", "agent_restart", "agent_clear", "agent_rename")
+    fun terminalWritable(agent: JSONObject?): Boolean = agent != null && agent.optString("pane_id").isNotBlank() && agent.optString("terminal_id").isNotBlank()
+    fun operationWritable(agent: JSONObject?, operation: String, terminalView: Boolean = false): Boolean = when {
+        operation in lifecycleActions || terminalView && operation in terminalActions -> terminalWritable(agent)
+        else -> writable(agent)
+    }
+    fun terminalLabel(agent: JSONObject): String = if (agent.optString("agent") == "codex" && !writable(agent))
+        "主对话未确认：历史、按对话发送和审批不可用；可直接操作当前终端，也可停止或重启 Agent。" else label(agent)
     fun readable(agent: JSONObject?): Boolean = writable(agent)
     fun live(agent: JSONObject?): Boolean = writable(agent)
     fun label(agent: JSONObject): String {

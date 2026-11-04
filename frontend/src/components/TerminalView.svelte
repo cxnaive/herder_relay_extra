@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { bindingReadOnlyNotice } from '$lib/primary-session-binding';
+  import { bindingReadOnlyNotice, bindingUnverified, terminalBindingNotice } from '$lib/primary-session-binding';
   import { onDestroy, onMount, tick, untrack } from 'svelte';
   import PromptComposer from '$components/PromptComposer.svelte';
   import TerminalKeys, { type QueuedKeyCommand } from '$components/TerminalKeys.svelte';
@@ -194,11 +194,12 @@
   // event comes with it, so the pane handler is called directly.
   let paneVisibilityChanged: (() => void) | null = null;
   let paneLocked = false;
+  const primaryReadOnly = $derived(readOnly || bindingUnverified(agent));
   const responsePending = $derived(agentNeedsResponse(agent));
   const approvalMode = $derived(responsePending && attentionKind(agent) === 'approval');
   const inspectionMode = $derived(agentNeedsInspection(agent));
   const interaction = $derived(questionInteraction(agent));
-  const questionMode = $derived(Boolean(!readOnly && responsePending && attentionKind(agent) === 'question' && interaction));
+  const questionMode = $derived(Boolean(!primaryReadOnly && responsePending && attentionKind(agent) === 'question' && interaction));
   // Resize Session needs three things: this device opted in, it controls the
   // relay, and the relay advertises the opt-in capability. The legacy
   // pane_size_lease name is ignored: a relay offering only that resizes on any
@@ -238,9 +239,9 @@
   let inputBlocked = $state(false);
   // Literal terminal input is the escape hatch for when the composer cannot send: the agent awaits a structured
   // response or needs inspection, or an earlier terminal send is unconfirmed and must be inspected first.
-  const manualInputOffered = $derived(!readOnly && (Boolean(promptDispatchRestriction(agent)) || inputBlocked));
+  const manualInputOffered = $derived(!readOnly && (bindingUnverified(agent) || Boolean(promptDispatchRestriction(agent)) || inputBlocked));
   const manualInputBusy = $derived(sendingPrompt || keySending || responding.has(agent.pane_id));
-  const dispatchBlocked = $derived(responsePending || !terminalTextMode ? promptDispatchRestriction(agent) : '');
+  const dispatchBlocked = $derived(bindingUnverified(agent) ? terminalBindingNotice : responsePending || !terminalTextMode ? promptDispatchRestriction(agent) : '');
   const draftState = terminalDraftState(() => agent, () => frame);
   const noEchoActive = $derived(Boolean(frame?.paneId === agent.pane_id && frame?.noEcho));
   const submitAdapter = $derived<ComposerSubmitAdapter | undefined>(terminalTextMode ? {
@@ -1551,9 +1552,11 @@
 >
   {#if readOnly}
     <p class="key-feedback" role="status">{bindingReadOnlyNotice(agent)}</p>
+  {:else if bindingUnverified(agent)}
+    <p class="key-feedback" role="status">{terminalBindingNotice}</p>
   {/if}
   {#if questionMode && interaction && !manualInput}
-    <AgentInteraction {agent} {readOnly} responding={responding.has(agent.pane_id)} blocked={inputBlocked} />
+    <AgentInteraction {agent} readOnly={primaryReadOnly} responding={responding.has(agent.pane_id)} blocked={inputBlocked} />
     <TerminalKeys queue={keyQueue} {agent} {readOnly} blocked={inputBlocked} bind:sending={keySending} extra={manualInputTrigger} />
   {/if}
   <div class:hidden={questionMode} class="terminal-view term">
@@ -1683,7 +1686,7 @@
     {#if !questionMode && !manualInput}<TerminalKeys queue={keyQueue} bind:this={terminalKeys} {agent} {readOnly} blocked={sendingFilter || inputBlocked} bind:sending={keySending} extra={manualInputTrigger} />{/if}
     {#key JSON.stringify(targetRefForAgent(agent))}
       <PromptComposer {agent} {frame} {readOnly} dispatchBlocked={manualInput || inputBlocked ? 'Check terminal input delivery before sending.' : draftState.secretReady ? '' : dispatchBlocked}
-        blockExplained={manualInput || inputBlocked} attachmentsBlocked={inputLocked}
+        blockExplained={primaryReadOnly || manualInput || inputBlocked} attachmentsBlocked={inputLocked || primaryReadOnly}
         {noEchoActive} draftPersistenceAllowed={draftState.allowed} noEchoPrompt={frame?.noEchoPrompt || 'Password:'}
         {submitAdapter} bind:sending={sendingPrompt}
         placeholder={terminalTextMode ? 'Type filter text…' : 'Type a reply…'}
@@ -1714,7 +1717,7 @@
       </section>
     {/if}
 
-    {#if !questionMode && !manualInput}<AgentInteraction {agent} {readOnly} responding={responding.has(agent.pane_id)} blocked={inputBlocked} />{/if}
+    {#if !questionMode && !manualInput}<AgentInteraction {agent} readOnly={primaryReadOnly} responding={responding.has(agent.pane_id)} blocked={inputBlocked} />{/if}
     {#if nextBlocked}
       <div class="quick-actions"><Button variant="secondary" onclick={openNext}>Next blocked →</Button></div>
     {/if}

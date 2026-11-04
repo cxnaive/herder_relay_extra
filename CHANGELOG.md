@@ -20,6 +20,7 @@ project follows [Semantic Versioning](https://semver.org/).
 - Read-only, exact-workspace document downloads in 512 KiB verified chunks (up to 12 MiB per file), enabling native PDF/Markdown/image reviewers without raising transport limits or granting file-write access.
 
 ### Fixed
+- Keep explicit terminal input, keys and Stop/Restart available when Codex conversation identity is unresolved. Recheck the exact terminal before dispatch without granting history, conversation prompts or structured approval authority; reject stale targets and retain uncertain-delivery protection.
 - Keep Android terminal drafts, cursor selection and active keyboard composition intact while terminal snapshots and deltas refresh. Only actual privacy-mode transitions reconfigure the input method; masked terminal input remains excluded from saved drafts.
 - Recognize explicit Codex `--no-daemon` sessions through the TUI’s own live writer locks and exact thread metadata, without requiring a shared app-server or hook report. Retained multiple roots stay unconfirmed; standalone settings and timers never target an unrelated shared backend.
 - Explain an unconfirmed primary on Android instead of treating the new status response as a temporary connection/read failure; never show an old running timer for an unverified target.

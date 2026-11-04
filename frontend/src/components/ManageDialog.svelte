@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { bindingUnverified } from '$lib/primary-session-binding';
   import { tick } from 'svelte';
   import { get } from 'svelte/store';
   import AppDialog from '$components/ui/AppDialog.svelte';
@@ -29,7 +30,7 @@
   const inheritedPaneViewLabel = $derived(`Use default (${$defaultAgentView === 'conversation' ? 'Conversation' : 'Terminal'})`);
 
   const sessionRenameAvailable = $derived(Boolean(
-    agent && String(agent.agent || '').trim().toLocaleLowerCase().replace(/[\s_-]+/g, '') !== 'opencode',
+    agent && !bindingUnverified(agent) && String(agent.agent || '').trim().toLocaleLowerCase().replace(/[\s_-]+/g, '') !== 'opencode',
   ));
 
   $effect(() => {

@@ -41,6 +41,7 @@ test('drives captured attention panes through the real relay', async ({ page }) 
   // Both browsers share one relay fixture. Question keys are sent again on every run, but each
   // approval is answered once, so a later run gets the first answer back without new keys.
   const earlier = (await operations()).length;
+  const inputEarlier = (await operations(process.env.HERDR_ATTENTION_INPUT_OPERATIONS)).length;
   const sentByThisRun = async () => (await operations()).slice(earlier);
   const approvalsSent = async (argv: string[]) => (await operations())
     .filter((operation) => JSON.stringify(operation.argv) === JSON.stringify(argv)).length;
@@ -82,21 +83,21 @@ test('drives captured attention panes through the real relay', async ({ page }) 
   await page.getByRole('button', { name: 'Back' }).click();
 
   // These are captured screens, not running Codex TUIs: no PID/runtime proof is
-  // supplied. Captured text must not grant approval or input authority. Positive
+  // supplied. Captured text must not grant chat/approval authority. Positive
   // Codex question rendering/parsing is covered by component and Go parser tests.
   const unverified = ['codex-notes', 'codex-final-question', 'codex-single-question', 'codex-plan-approval'];
   for (const pane of unverified) {
     await page.getByRole('button', { name: `Open ${pane} on Captured relay`, exact: true }).click();
-    await expect(page.getByRole('status').filter({ hasText: 'Codex primary session is unverified' })).toBeVisible();
+    await expect(page.getByRole('status').filter({ hasText: 'Main conversation unverified' })).toBeVisible();
     await expect(page.getByRole('log', { name: 'Agent terminal output' })).not.toBeEmpty();
     await expect(page.locator('.question-form')).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Keyboard', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Keyboard', exact: true })).toBeEnabled();
     await expect(page.getByRole('button', { name: 'Yes, implement this plan Switch to Default and start coding.', exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: 'Back' }).click();
   }
-  expect((await operations()).filter(operation => unverified.includes(operation.argv?.[2] || '') && ['send-keys', 'send-text', 'send-input'].includes(operation.argv?.[1] || ''))).toEqual([]);
+  expect((await sentByThisRun()).filter(operation => unverified.includes(operation.argv?.[2] || '') && ['send-keys', 'send-text', 'send-input'].includes(operation.argv?.[1] || ''))).toEqual([]);
   expect(process.env.HERDR_ATTENTION_INPUT_OPERATIONS).toBeTruthy();
-  expect((await operations(process.env.HERDR_ATTENTION_INPUT_OPERATIONS)).filter(operation => unverified.includes(operation.params?.pane_id || ''))).toEqual([]);
+  expect((await operations(process.env.HERDR_ATTENTION_INPUT_OPERATIONS)).slice(inputEarlier).filter(operation => unverified.includes(operation.params?.pane_id || ''))).toEqual([]);
 
   await page.getByRole('button', { name: /Open omp-plan-approval on Captured relay/ }).click();
   await expect(page.getByRole('button', { name: 'Approve and execute', exact: true })).toBeVisible();
