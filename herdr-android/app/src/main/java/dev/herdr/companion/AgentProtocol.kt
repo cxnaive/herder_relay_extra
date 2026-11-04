@@ -42,16 +42,18 @@ class ConversationState {
     var sequence = 0L; private set
     var next = ""; private set
     var loadedOlder = false; private set
+    private var needsFreshPage = false
+    fun prepareRefresh() { next = ""; loadedOlder = false; subscription = ""; sequence = 0; needsFreshPage = true }
     fun resetCursor() { next = ""; loadedOlder = false }
     fun cachedPage(): JSONObject = JSONObject().put("available", true).put("source_revision", revision).put("next_cursor", next)
         .put("entries", JSONArray(entries.values.toList())).put("loaded_older", loadedOlder)
-    fun restoreCached(value: JSONObject) { page(value); loadedOlder = value.optBoolean("loaded_older"); subscription = ""; sequence = 0 }
+    fun restoreCached(value: JSONObject) { page(value); loadedOlder = value.optBoolean("loaded_older"); prepareRefresh() }
     fun page(value: JSONObject, older: Boolean = false, preserveLoaded: Boolean = false): Boolean {
         if (!value.optBoolean("available") || value.optString("state") in listOf("preparing", "failed")) return false
         val newRevision = value.optString("source_revision")
         if (older && newRevision != revision) return false
         val rows = value.optJSONArray("entries") ?: JSONArray()
-        val preserve = !older && preserveLoaded && revision.isNotBlank() && revision == newRevision
+        val preserve = !older && !needsFreshPage && preserveLoaded && revision.isNotBlank() && revision == newRevision
         val oldNext = next; val hadOlder = loadedOlder
         val retained = if (older || preserve) LinkedHashMap(entries) else linkedMapOf()
         entries.clear()
@@ -78,6 +80,7 @@ class ConversationState {
         next = if (preserve && hadOlder) oldNext else value.optString("next_cursor")
         loadedOlder = older || (preserve && hadOlder)
         if (!older) {
+            needsFreshPage = false
             revision = newRevision; subscription = value.optString("subscription_id"); sequence = value.optLong("sequence")
             val provisional = value.optJSONArray("provisional")
             if (provisional != null) for (i in 0 until provisional.length()) provisional.optJSONObject(i)?.let { entries[it.getString("id")] = it }

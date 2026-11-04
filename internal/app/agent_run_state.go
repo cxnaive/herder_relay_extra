@@ -2,9 +2,11 @@ package app
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/0cv/herdr-mobile-relay/internal/codexruntime"
+	"github.com/0cv/herdr-mobile-relay/internal/coordinator"
 	"github.com/0cv/herdr-mobile-relay/internal/herdr"
 	"github.com/0cv/herdr-mobile-relay/internal/protocol"
 	"github.com/0cv/herdr-mobile-relay/internal/transport"
@@ -30,8 +32,14 @@ func (s *Server) agentRunState(ctx context.Context, in protocol.Inbound) (codexr
 	if agent.Agent != "codex" {
 		return fallback, nil
 	}
-	if agent.BindingState == "history_only" {
+	if agent.BindingState != "" && agent.BindingState != "verified" {
 		return codexruntime.RunState{Status: "unknown", Source: "unverified_primary", ObservedAt: time.Now().UnixMilli(), Timing: "unknown"}, nil
+	}
+	if agent.BindingMode == "standalone" {
+		if !s.codexPrimaryCurrent(ctx, agent) || validateExactPaneTarget(s.state, in, true) != nil || herdr.CheckDispatch(ctx) != nil {
+			return codexruntime.RunState{}, codexruntime.ErrRunStateUnavailable
+		}
+		return fallback, nil
 	}
 	select {
 	case runStateSlots <- struct{}{}:
@@ -41,6 +49,9 @@ func (s *Server) agentRunState(ctx context.Context, in protocol.Inbound) (codexr
 	}
 	socket, id, cwd, guard, err := s.codexRuntimeTarget(ctx, in)
 	if err != nil {
+		if ctx.Err() != nil || errors.Is(err, coordinator.ErrPaneReplaced) || !s.codexBindings.current(agent) || herdr.CheckDispatch(ctx) != nil || validateExactPaneTarget(s.state, in, true) != nil {
+			return codexruntime.RunState{}, codexruntime.ErrRunStateUnavailable
+		}
 		return fallback, nil
 	}
 	result, err := codexruntime.CurrentRun(ctx, socket, id, cwd, guard)

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/0cv/herdr-mobile-relay/internal/codexruntime"
@@ -14,6 +13,8 @@ import (
 	"github.com/0cv/herdr-mobile-relay/internal/protocol"
 	"github.com/0cv/herdr-mobile-relay/internal/transport"
 )
+
+var errStandaloneSettings = errors.New("standalone Codex has no external settings endpoint")
 
 var agentSettingsGate = make(chan struct{}, 1)
 
@@ -39,13 +40,20 @@ func (s *Server) agentSettings(ctx context.Context, in protocol.Inbound) (codexr
 func (s *Server) handleAgentSettings(ctx context.Context, client *transport.ClientConn, in protocol.Inbound, msg map[string]any) {
 	settings, err := s.agentSettings(ctx, in)
 	if in.Type == "get_agent_settings" && err != nil {
-		s.sendCommandResult(client, in.RequestID, in.Type, true, "completed", "", in.PaneID, map[string]any{"available": false, "reason": "无法确认此 Agent 的运行时设置。当前仅支持会话身份明确、仍在运行的 Codex。"})
+		reason := "无法确认此 Agent 的运行时设置。当前仅支持会话身份明确、仍在运行的 Codex。"
+		if errors.Is(err, errStandaloneSettings) {
+			reason = "此 Codex 使用 --no-daemon，未提供外部模型设置接口；请在电脑终端修改。会话历史与终端交互仍可使用。"
+		}
+		s.sendCommandResult(client, in.RequestID, in.Type, true, "completed", "", in.PaneID, map[string]any{"available": false, "reason": reason})
 		return
 	}
 	phase, message := "completed", ""
 	if err != nil {
 		phase = "failed"
 		message = "无法修改此 Agent 的设置，请刷新并确认它仍在运行。"
+		if errors.Is(err, errStandaloneSettings) {
+			message = "独立 Codex 未提供外部设置接口，请在电脑终端修改模型或思考强度。"
+		}
 		if errors.Is(err, codexruntime.ErrSettingsChanged) {
 			message = "模型设置已在电脑端变化，请重新打开设置后选择。"
 		}
@@ -85,22 +93,34 @@ func (s *Server) codexRuntimeTarget(ctx context.Context, in protocol.Inbound) (s
 		if err != nil || pane == nil || pane.TerminalID != agent.TerminalID || pane.Agent != "codex" || pane.Cwd != agent.Cwd {
 			return coordinator.ErrPaneReplaced
 		}
-		if !strings.HasPrefix(current.ConversationSource, codexRuntimeSource) && pane.Session != "" && pane.Session != agent.SessionID {
-			return coordinator.ErrPaneReplaced
-		}
 		return nil
 	}
 	if err := guard(); err != nil {
 		return "", "", "", nil, err
 	}
-	if !s.conversationM.CodexSessionProjectMatches(agent.Cwd, agent.SessionID) {
+	if agent.BindingMode == "standalone" {
+		return "", "", "", nil, errStandaloneSettings
+	}
+	var root string
+	if agent.BindingState == "verified" {
+		probe, reason := s.inspectCodexProcess(ctx, agent)
+		if probe.mode == "standalone" {
+			return "", "", "", nil, errStandaloneSettings
+		}
+		if reason != "" || probe.process != agent.ConversationProcess || codexStoreID(probe.root) != agent.BindingStoreID {
+			return "", "", "", nil, codexruntime.ErrSettingsUnavailable
+		}
+		root = probe.root
+	} else {
+		if !s.conversationM.CodexSessionProjectMatches(agent.Cwd, agent.SessionID) {
+			return "", "", "", nil, codexruntime.ErrSettingsUnavailable
+		}
+		root = s.conversationM.Locate("codex", agent.Cwd, agent.SessionID).Root
+	}
+	if root == "" {
 		return "", "", "", nil, codexruntime.ErrSettingsUnavailable
 	}
-	location := s.conversationM.Locate("codex", agent.Cwd, agent.SessionID)
-	if location.Root == "" {
-		return "", "", "", nil, codexruntime.ErrSettingsUnavailable
-	}
-	socket := filepath.Join(filepath.Dir(location.Root), "app-server-control", "app-server-control.sock")
+	socket := filepath.Join(filepath.Dir(root), "app-server-control", "app-server-control.sock")
 	info, err := os.Stat(socket)
 	if err != nil || info.Mode()&os.ModeSocket == 0 {
 		return "", "", "", nil, codexruntime.ErrSettingsUnavailable

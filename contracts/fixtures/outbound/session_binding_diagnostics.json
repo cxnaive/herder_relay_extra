@@ -1,0 +1,45 @@
+{
+  "type": "command_result",
+  "request_id": "binding-diag-unresolved-1",
+  "action": "get_session_binding_diagnostics",
+  "ok": true,
+  "phase": "completed",
+  "pane_id": "pane-1",
+  "data": {
+    "schema_version": 1,
+    "available": true,
+    "generated_at": 1700000000000,
+    "observation": "inventory_snapshot",
+    "inventory_revision": 12,
+    "agent": "codex",
+    "target": {
+      "server_session_id": "primary",
+      "pane_id": "pane-1",
+      "terminal_id": "terminal-1",
+      "generation": 2,
+      "agent_session_id": "",
+      "binding_epoch": 3
+    },
+    "binding": {
+      "state": "ambiguous",
+      "reason": "runtime_ambiguous_no_report"
+    },
+    "details": {
+      "policy": "codex-terminal-roots-v1",
+      "selection_source": "",
+      "binding_lease_current": false,
+      "herdr_report": {
+        "provider": "codex",
+        "kind": "",
+        "id": "",
+        "source": ""
+      },
+      "runtime": {
+        "process_instance": "synthetic-process-instance",
+        "runtime_instance": "synthetic-runtime-instance",
+        "store_id": "synthetic-store-id"
+      }
+    },
+    "truncated": false
+  }
+}

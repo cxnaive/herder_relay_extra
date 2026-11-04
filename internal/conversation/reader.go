@@ -123,9 +123,10 @@ type locationCacheEntry struct {
 // configured root that contains it. Session-title resolution consumes the same
 // location so it cannot read a different copy of the session.
 type Location struct {
-	Path  string
-	Root  string
-	Title string
+	ValidationError string
+	Path            string
+	Root            string
+	Title           string
 }
 
 // NewReader keeps a bounded tuple-to-location cache. Sharing one Reader between
@@ -1165,4 +1166,22 @@ func stableRowID(line string, seen map[string]int) string {
 func stringValue(value any) string {
 	text, _ := value.(string)
 	return text
+}
+
+// RefreshLocation discards a cached path/miss, not transcript content. Waiting
+// for an in-flight lookup prevents it from restoring an obsolete path afterward.
+func (r *Reader) RefreshLocation(agent string, project ProjectContext, sessionID string) {
+	project = NormalizeProjectContext(agent, project)
+	key := locationKey{Agent: normalizedAgent(agent), CWD: project.CWD, ForegroundCWD: project.ForegroundCWD, SessionID: strings.TrimSpace(sessionID)}
+	for {
+		r.mu.Lock()
+		ready, busy := r.locating[key]
+		if !busy {
+			delete(r.locations, key)
+			r.mu.Unlock()
+			return
+		}
+		r.mu.Unlock()
+		<-ready
+	}
 }

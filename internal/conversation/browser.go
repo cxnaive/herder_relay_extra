@@ -690,6 +690,9 @@ func (b *Browser) ReadPage(ctx context.Context, request BrowseRequest) (BrowsePa
 		return browseUnavailable("invalid_session", "This agent has not reported a conversation session yet."), nil
 	}
 	provider := normalizedAgent(request.Scope.Provider)
+	if provider == "codex" && request.Cursor == "" {
+		b.reader.RefreshLocation("codex", ProjectContext{CWD: request.Scope.CWD, ForegroundCWD: request.Scope.ForegroundCWD}, request.Scope.SessionID)
+	}
 	if !Supported(provider) {
 		return browseUnavailable("invalid_provider", "Conversation history is not available for this agent."), nil
 	}

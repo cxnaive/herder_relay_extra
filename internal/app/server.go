@@ -76,14 +76,15 @@ type speechRequest struct {
 }
 
 type Server struct {
-	codexBindings    codexBindingRegistry
-	codexDiscoveryMu sync.Mutex
-	cfg              *config.Config
-	version          string
-	revision         string
-	hostname         string
-	home             string
-	logger           *slog.Logger
+	codexBindings     codexBindingRegistry
+	codexDiscoveryMu  sync.Mutex
+	codexProcessProbe func(context.Context, *coordinator.AgentState) (codexRuntimeProbe, string)
+	cfg               *config.Config
+	version           string
+	revision          string
+	hostname          string
+	home              string
+	logger            *slog.Logger
 
 	state          *coordinator.State
 	hub            *transport.Hub
@@ -311,6 +312,11 @@ func (s *Server) authorizeDeviceAction(client *transport.ClientConn, action prot
 }
 
 func authorizeAuthenticatedIdentity(identity transport.AuthenticatedIdentity, authenticated bool, action protocol.ActionMetadata, deviceID string) *protocol.ApiError {
+	if action.Operation == protocol.SessionBindingDiagnosticsAction && (!authenticated || (identity.Role != string(protocol.RoleReader) && identity.Role != string(protocol.RoleController))) {
+		apiErr := protocol.NewApiError(protocol.ErrorReaderDenied, map[string]any{"operation": action.Operation})
+		return &apiErr
+	}
+
 	if (action.Operation == "file_access_get" || action.Operation == "file_access_set" || action.Operation == "workspace_list" || action.Operation == "get_pi_integration" || action.Operation == "get_agent_run_state" || action.Operation == "get_agent_settings" || action.Operation == "set_agent_settings") && !authenticated {
 		apiErr := protocol.NewApiError(protocol.ErrorReaderDenied, map[string]any{"operation": action.Operation})
 		return &apiErr
@@ -771,6 +777,8 @@ func (s *Server) Run(ctx context.Context) error {
 		switch action {
 		case "file_access_get", "file_access_set":
 			s.handleFileAccess(client, inbound, msg)
+		case protocol.SessionBindingDiagnosticsAction:
+			s.handleSessionBindingDiagnostics(commandCtx, client, inbound)
 		case "get_agent_run_state":
 			s.handleAgentRunState(commandCtx, client, inbound)
 		case "get_agent_settings", "set_agent_settings":
@@ -1577,9 +1585,7 @@ func (s *Server) effectiveCapabilities() []string {
 func (s *Server) effectiveCapabilitiesFor(herdrStatus herdr.ServerStatus) []string {
 	capabilities := append([]string(nil), protocol.Capabilities...)
 	capabilities = append(capabilities, "pi_prompt_unconfirmed")
-	if codexProcessProofSupported() {
-		capabilities = append(capabilities, "primary_session_binding_v1")
-	}
+	capabilities = append(capabilities, "primary_session_binding_v1")
 	// Never the legacy pane_size_lease names: apps up to 0.22.7 lease
 	// automatically when they see them.
 	if s.paneSizeM.Available() {
@@ -1763,9 +1769,10 @@ func (s *Server) handleTransition(
 			return
 		}
 		check, cancel := context.WithTimeout(parent, 3*time.Second)
-		b, ok := s.resolveCodexRuntime(check, []*coordinator.AgentState{agentState})[paneID]
+		valid := s.codexPrimaryCurrent(check, agentState)
+		pane, err := s.herdrC.PaneGet(check, paneID)
 		cancel()
-		if !ok || b.SessionID != agentState.SessionID || b.ProcessStart != agentState.ConversationProcess || b.Status != status {
+		if !valid || err != nil || pane.Status != status {
 			return
 		}
 	}
@@ -2309,8 +2316,15 @@ func (s *Server) handleConversationHistory(client *transport.ClientConn, inbound
 		s.sendCommandResult(client, inbound.RequestID, action, false, "failed", "Conversation history could not be read", inbound.PaneID, nil)
 		return
 	}
+	if agent.Agent == "codex" && inbound.Cursor == "" {
+		s.conversationM.RefreshLocation("codex", projectContextForAgent(agent), agent.SessionID)
+	}
 	if !s.conversationSelectionCurrent(client.Context(), agent) {
-		s.sendCommandResult(client, inbound.RequestID, action, false, "failed", "Agent conversation session changed", inbound.PaneID, nil)
+		message := "Agent conversation session changed"
+		if agent.Agent == "codex" {
+			message = s.codexPrimaryError(client.Context(), agent)
+		}
+		s.sendCommandResult(client, inbound.RequestID, action, false, "failed", message, inbound.PaneID, nil)
 		return
 	}
 	var page conversation.BrowsePage
@@ -2617,7 +2631,7 @@ func (s *Server) copyAgentResponse(parent context.Context, client *transport.Cli
 		return
 	}
 	current, exists := s.state.Agent(paneID)
-	if s.state.Generation(paneID) != generation || !exists || (agent.BindingState != "" && (!sameConversationTuple(agent, current) || !s.codexRuntimeCurrent(ctx, current))) {
+	if s.state.Generation(paneID) != generation || !exists || (agent.BindingState != "" && (!sameConversationTuple(agent, current) || !s.codexPrimaryCurrent(ctx, current))) {
 		s.sendCommandResult(client, requestID, "copy_agent_response", false, "failed", "The agent pane was replaced while the response was being copied", paneID, nil)
 		return
 	}

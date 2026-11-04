@@ -2,8 +2,6 @@ package app
 
 import (
 	"context"
-	"crypto/sha256"
-	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
@@ -11,7 +9,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 
 	"github.com/0cv/herdr-mobile-relay/internal/agentroots"
 	"github.com/0cv/herdr-mobile-relay/internal/codexruntime"
@@ -20,312 +17,312 @@ import (
 )
 
 const codexRuntimeSource = "codex-tui-runtime:"
-const codexHistorySource = "codex-associated-history:"
 
 type codexRuntimeProbe struct {
-	binding   codexSessionBinding
-	listeners map[string]string
-	root      string
-}
-type codexRuntimeThread struct {
-	thread codexruntime.Thread
-	root   string
+	pid           int
+	process, root string
+	mode          string
+	writers       map[string]string
+	listeners     map[string]string
 }
 type codexObservation struct {
-	binding codexSessionBinding
-	reason  string
+	probe           codexRuntimeProbe
+	report          herdr.AgentSession
+	thread          codexruntime.Thread
+	runtime, reason string
+}
+type codexStoreResult struct {
+	threads  map[string]codexruntime.Thread
+	instance string
+	err      error
 }
 
-func codexTerminalTitle(pane *herdr.Pane) string {
-	title := pane.TerminalTitleStripped
-	if title == "" {
-		title = pane.TerminalTitle
-	}
-	title = strings.TrimSpace(title)
-	r, n := utf8.DecodeRuneInString(title)
-	// Some Herdr revisions retain the leading working spinner in stripped titles.
-	if r >= 0x2800 && r <= 0x28ff && strings.HasPrefix(title[n:], " ") {
-		title = strings.TrimSpace(title[n:])
-	}
-	return title
-}
-
-func codexRuntimeCandidate(probe codexRuntimeProbe, candidates map[string][]codexRuntimeThread) (codexRuntimeThread, string, bool) {
-	var selected codexRuntimeThread
-	origin := ""
-	for addr := range probe.listeners {
-		rows := candidates[addr]
-		if len(rows) > 1 {
-			return selected, "", false
+func canonicalCodexRoot(root string) (string, error) {
+	path, err := filepath.EvalSymlinks(root)
+	if os.IsNotExist(err) {
+		parent, e := filepath.EvalSymlinks(filepath.Dir(root))
+		if e != nil {
+			return "", e
 		}
-		if len(rows) == 0 {
+		return filepath.Join(parent, filepath.Base(root)), nil
+	}
+	return path, err
+}
+
+func (s *Server) inspectCodexProcess(ctx context.Context, a *coordinator.AgentState) (codexRuntimeProbe, string) {
+	if s.codexProcessProbe != nil {
+		return s.codexProcessProbe(ctx, a)
+	}
+	bad := func(reason string) (codexRuntimeProbe, string) { return codexRuntimeProbe{}, reason }
+	if !codexProcessProofSupported() {
+		return bad("runtime_platform_unsupported")
+	}
+	if s.herdrC == nil || s.home == "" {
+		return bad("process_unavailable")
+	}
+	info, err := s.herdrC.PaneProcessInfoFresh(ctx, a.PaneID)
+	if err != nil {
+		return bad("process_unavailable")
+	}
+	process, err := codexRuntimeForegroundProcess(info, a.PaneID)
+	if err != nil {
+		return bad("process_unavailable")
+	}
+	if process.Cwd != a.Cwd {
+		return bad("process_project_conflict")
+	}
+	birth, err := codexProcessStart(process.PID)
+	if err != nil {
+		return bad("process_unavailable")
+	}
+	home, err := codexProcessHome(process.PID, s.home)
+	if err != nil {
+		return bad("provider_store_unavailable")
+	}
+	root, err := canonicalCodexRoot(filepath.Join(home, "sessions"))
+	if err != nil {
+		return bad("provider_store_unavailable")
+	}
+	allowed := false
+	for _, candidate := range agentroots.Codex(s.home) {
+		canonical, e := canonicalCodexRoot(candidate)
+		allowed = allowed || (e == nil && root == canonical)
+	}
+	if !allowed {
+		return bad("provider_store_unavailable")
+	}
+	probe := codexRuntimeProbe{pid: process.PID, process: birth, root: root, mode: "shared"}
+	if codexNoDaemonArgs(process.Argv) {
+		probe.mode = "standalone"
+		probe.writers, err = codexProcessWriters(process.PID, root)
+		if err != nil || len(probe.writers) == 0 {
+			return probe, "standalone_runtime_unavailable"
+		}
+		return probe, ""
+	}
+	listeners, err := codexProcessListeners(process.PID)
+	probe.listeners = listeners
+	if err != nil || len(listeners) == 0 {
+		return probe, "runtime_unavailable"
+	}
+	return probe, ""
+}
+
+func codexPaneMatches(p *herdr.Pane, a *coordinator.AgentState) bool {
+	return p != nil && p.ID == a.PaneID && p.TerminalID == a.TerminalID && p.Agent == "codex" && p.Cwd == a.Cwd
+}
+
+// Candidate IDs have already been restricted to this TUI's owned endpoint and
+// reduced by explicit parent relationships. Reports only break remaining ties.
+func selectCodexPrimary(probe codexRuntimeProbe, threads map[string]codexruntime.Thread, report herdr.AgentSession) (codexruntime.Thread, string, string) {
+	candidates := map[string]codexruntime.Thread{}
+	origins := map[string]string{}
+	for origin := range probe.listeners {
+		t, ok := threads[origin]
+		if !ok || t.Unavailable == "runtime_unavailable" {
 			continue
 		}
-		if origin != "" {
-			return selected, "", false
+		if t.Unavailable != "" && t.Unavailable != "runtime_ambiguous" && t.Unavailable != "runtime_disconnected" {
+			return codexruntime.Thread{}, "", t.Unavailable
 		}
-		selected, origin = rows[0], addr
+		for _, root := range t.Candidates {
+			if old, exists := candidates[root.ID]; exists && (old.CWD != root.CWD || old.SessionID != root.SessionID || old.Connected != root.Connected || origins[root.ID] != origin) {
+				return codexruntime.Thread{}, "", "runtime_ambiguous"
+			}
+			candidates[root.ID] = root
+			origins[root.ID] = origin
+		}
 	}
-	t := selected.thread
-	if origin == "" || !codexBindingID.MatchString(t.ID) || t.CWD != probe.binding.CWD || t.Delegated() {
-		return codexRuntimeThread{}, "", false
+	if len(candidates) == 0 {
+		return codexruntime.Thread{}, "", "runtime_unavailable"
 	}
-	return selected, origin, true
+	var selected codexruntime.Thread
+	if len(candidates) == 1 {
+		for _, t := range candidates {
+			selected = t
+		}
+	} else {
+		if reason := codexReportReason(report); reason != "" {
+			if reason == "herdr_session_missing" {
+				reason = "runtime_ambiguous_no_report"
+			}
+			return selected, "", reason
+		}
+		for id, t := range candidates {
+			if strings.EqualFold(id, report.Value) {
+				selected = t
+				break
+			}
+		}
+		if selected.ID == "" {
+			return selected, "", "reported_session_not_candidate"
+		}
+	}
+	if !selected.Connected {
+		return codexruntime.Thread{}, "", "runtime_disconnected"
+	}
+	return selected, origins[selected.ID], ""
 }
 
-func codexStoreID(root string) string {
-	return fmt.Sprintf("%x", sha256.Sum256([]byte(filepath.Clean(root))))
-}
-
-// Only the native process's configured store is queried. A slow or unrelated
-// daemon cannot invalidate every other terminal on the machine.
 func (s *Server) observeCodexRuntime(ctx context.Context, agents []*coordinator.AgentState) map[string]codexObservation {
-	out := map[string]codexObservation{}
-	probes := map[string]codexRuntimeProbe{}
-	roots := map[string][]string{}
-	allowed := map[string]bool{}
-	for _, root := range agentroots.Codex(s.home) {
-		if canonical, err := filepath.EvalSymlinks(root); err == nil {
-			allowed[canonical] = true
-		}
-	}
+	observations := map[string]codexObservation{}
+	wanted := map[string]map[string]bool{}
 	for _, a := range agents {
 		if a.Agent != "codex" || (a.ServerSessionID != "" && a.ServerSessionID != "primary") {
 			continue
 		}
-		obs := codexObservation{reason: "process_unavailable"}
-		out[a.PaneID] = obs
-		if s.home == "" || s.herdrC == nil || s.conversationM == nil || len(probes) >= 128 {
+		obs := codexObservation{reason: "herdr_report_unavailable"}
+		observations[a.PaneID] = obs
+		if s.herdrC == nil {
 			continue
 		}
-		check, cancel := context.WithTimeout(ctx, time.Second)
-		pane, err := s.herdrC.PaneGet(check, a.PaneID)
-		if err != nil || pane == nil || pane.ID != a.PaneID || pane.TerminalID != a.TerminalID || pane.Agent != "codex" || pane.Cwd != a.Cwd {
-			cancel()
-			continue
-		}
-		info, err := s.herdrC.PaneProcessInfoFresh(check, a.PaneID)
-		cancel()
+		pane, err := s.herdrC.PaneGet(ctx, a.PaneID)
 		if err != nil {
 			continue
 		}
-		process, err := codexRuntimeForegroundProcess(info, a.PaneID)
-		if err != nil {
+		if !codexPaneMatches(pane, a) {
+			obs.reason = "runtime_changed"
+			observations[a.PaneID] = obs
 			continue
 		}
-		birth, err := codexProcessStart(process.PID)
-		if err != nil {
+		obs.report = pane.SessionRaw
+		if len(observations) > 128 {
+			obs.reason = "runtime_unavailable"
+			observations[a.PaneID] = obs
 			continue
 		}
-		obs.binding = codexSessionBinding{PaneID: a.PaneID, TerminalID: a.TerminalID, CWD: a.Cwd, PID: process.PID, ProcessStart: birth}
-		obs.reason = "runtime_unavailable"
-		out[a.PaneID] = obs
-		if process.Cwd != a.Cwd {
-			obs.reason = "process_project_conflict"
-			out[a.PaneID] = obs
+		obs.probe, obs.reason = s.inspectCodexProcess(ctx, a)
+		observations[a.PaneID] = obs
+		if obs.reason != "" || obs.probe.mode == "standalone" {
 			continue
 		}
-		home, err := codexProcessHome(process.PID, s.home)
-		if err != nil {
-			continue
+		if wanted[obs.probe.root] == nil {
+			wanted[obs.probe.root] = map[string]bool{}
 		}
-		root, err := filepath.EvalSymlinks(filepath.Join(home, "sessions"))
-		if err != nil || !allowed[root] {
-			obs.reason = "provider_store_unavailable"
-			out[a.PaneID] = obs
-			continue
-		}
-		obs.binding.Root = root
-		out[a.PaneID] = obs
-		listeners, err := codexProcessListeners(process.PID)
-		if err != nil || len(listeners) == 0 {
-			continue
-		}
-		probes[a.PaneID] = codexRuntimeProbe{binding: obs.binding, listeners: listeners, root: root}
-		roots[root] = append(roots[root], a.PaneID)
-	}
-
-	wantedByRoot := map[string]map[string]bool{}
-	for root, panes := range roots {
-		wantedByRoot[root] = map[string]bool{}
-		for _, pane := range panes {
-			for origin := range probes[pane].listeners {
-				wantedByRoot[root][origin] = true
-			}
+		for origin := range obs.probe.listeners {
+			wanted[obs.probe.root][origin] = true
 		}
 	}
-	results := queryCodexStores(ctx, wantedByRoot, readCodexStore)
-
-	for pane, probe := range probes {
-		obs := out[pane]
-		r := results[probe.root]
-		if r.err != nil || r.threads == nil {
+	stores := queryCodexStores(ctx, wanted, readCodexStore)
+	for _, a := range agents {
+		obs, managed := observations[a.PaneID]
+		if !managed || obs.reason != "" {
 			continue
 		}
-		candidates := map[string][]codexRuntimeThread{}
-		reason := "runtime_unavailable"
-		for origin, t := range r.threads {
-			candidates[origin] = []codexRuntimeThread{{thread: t, root: probe.root}}
-			if t.Unavailable != "" {
-				reason = t.Unavailable
-			}
-		}
-		chosen, origin, ok := codexRuntimeCandidate(probe, candidates)
-		historyOnly := false
-		if !ok {
-			chosen, origin, ok = s.codexAssociatedHistoryCandidate(probe, r.threads)
-			historyOnly = ok
-		}
-		if !ok {
-			obs.reason = reason
-			out[pane] = obs
+		if obs.probe.mode == "standalone" {
+			observations[a.PaneID] = s.observeCodexStandalone(ctx, a, obs)
 			continue
 		}
-		b := probe.binding
-		b.SessionID = chosen.thread.ID
-		b.HistoryOnly = historyOnly
-		b.Status = chosen.thread.AgentStatus()
-		if historyOnly {
-			b.Status = "unknown"
-		}
-		b.RuntimeInstance = r.instance
-		check, cancel := context.WithTimeout(ctx, time.Second)
-		valid := verifyCodexProcessBinding(check, s.herdrC, b, codexProcessStart, codexRuntimeBindingMatches)
-		info, e := s.herdrC.PaneProcessInfoFresh(check, pane)
-		if e == nil {
-			p, e := codexRuntimeForegroundProcess(info, pane)
-			valid = valid && e == nil && p.PID == b.PID && p.Cwd == b.CWD
-		} else {
-			valid = false
-		}
-		after, e := codexProcessListeners(b.PID)
-		valid = valid && e == nil && codexListenerSetCurrent(probe.listeners, after, origin)
-		birth, e := codexProcessStart(b.PID)
-		valid = valid && e == nil && birth == b.ProcessStart && check.Err() == nil
-		cancel()
-		if !valid {
-			obs.reason = "process_changed"
-			out[pane] = obs
+		store := stores[obs.probe.root]
+		if store.err != nil || store.threads == nil {
+			obs.reason = "runtime_unavailable"
+			observations[a.PaneID] = obs
 			continue
 		}
-		location := s.conversationM.Locate("codex", b.CWD, b.SessionID)
-		root, e := filepath.EvalSymlinks(location.Root)
-		if e != nil || root != probe.root || !s.conversationM.CodexSessionProjectMatches(b.CWD, b.SessionID) {
+		var origin string
+		obs.thread, origin, obs.reason = selectCodexPrimary(obs.probe, store.threads, obs.report)
+		if obs.reason == "" && obs.thread.CWD != a.Cwd {
 			obs.reason = "runtime_metadata_conflict"
-			out[pane] = obs
+		}
+		if obs.reason != "" {
+			observations[a.PaneID] = obs
 			continue
 		}
-		out[pane] = codexObservation{binding: b}
-	}
-	return out
-}
-
-func (s *Server) resolveCodexRuntime(ctx context.Context, agents []*coordinator.AgentState) map[string]codexSessionBinding {
-	result := map[string]codexSessionBinding{}
-	for pane, obs := range s.observeCodexRuntime(ctx, agents) {
-		if obs.reason == "" && obs.binding.SessionID != "" {
-			result[pane] = obs.binding
+		// Missing/unmaterialized history does not make a runtime-confirmed ID unknown.
+		if s.conversationM != nil {
+			location, reason := s.conversationM.ValidateCodexReport(a.Cwd, obs.thread.ID)
+			if reason != "" && reason != "herdr_history_unavailable" {
+				obs.reason = "runtime_metadata_conflict"
+			}
+			if reason == "" {
+				root, err := canonicalCodexRoot(location.Root)
+				if err != nil || root != obs.probe.root {
+					obs.reason = "runtime_metadata_conflict"
+				}
+			}
 		}
+		after, err := s.herdrC.PaneGet(ctx, a.PaneID)
+		if err != nil || !codexPaneMatches(after, a) {
+			obs.reason = "runtime_changed"
+		} else {
+			// Re-select with the fresh report; an irrelevant stale hook cannot veto a
+			// unique runtime root, while an ambiguous root must still match the report.
+			selected, selectedOrigin, reason := selectCodexPrimary(obs.probe, store.threads, after.SessionRaw)
+			if reason != "" || selected.ID != obs.thread.ID || selectedOrigin != origin {
+				obs.reason = "runtime_changed"
+			}
+			obs.report = after.SessionRaw
+		}
+		current, reason := s.inspectCodexProcess(ctx, a)
+		if reason != "" || current.mode != obs.probe.mode || current.pid != obs.probe.pid || current.process != obs.probe.process || current.root != obs.probe.root || !maps.Equal(current.listeners, obs.probe.listeners) || ctx.Err() != nil {
+			obs.reason = "runtime_changed"
+		}
+		obs.runtime = store.instance + ":" + origin + ":" + obs.probe.listeners[origin]
+		observations[a.PaneID] = obs
 	}
-	return result
+	return observations
 }
 
 func (s *Server) enrichCodexRuntime(ctx context.Context, agents []*coordinator.AgentState) {
-	if !codexProcessProofSupported() {
-		return
-	}
 	observations := s.observeCodexRuntime(ctx, agents)
 	for _, a := range agents {
 		obs, managed := observations[a.PaneID]
 		if !managed {
 			continue
 		}
-		reported := a.ReportedSession
-		if reported.Value == "" && a.Session != "" {
-			reported.Value = a.Session
-			reported.Kind = a.SessionKind
-			a.ReportedSession = reported
-		}
+		a.ReportedSession = obs.report
 		a.Session = ""
 		a.SessionKind = ""
 		a.ConversationSource = ""
-		a.ConversationProcess = obs.binding.ProcessStart
-		a.BindingState = "verifying"
+		a.ConversationProcess = obs.probe.process
+		a.BindingRuntime = obs.runtime
+		a.BindingMode = obs.probe.mode
+		a.BindingStoreID = ""
+		if obs.probe.root != "" {
+			a.BindingStoreID = codexStoreID(obs.probe.root)
+		}
 		a.BindingReason = obs.reason
 		a.ConversationReason = obs.reason
-		if obs.binding.Root != "" {
-			a.BindingStoreID = codexStoreID(obs.binding.Root)
+		a.BindingState = "verifying"
+		if strings.Contains(obs.reason, "ambiguous") || strings.HasSuffix(obs.reason, "ancestry_unavailable") || obs.reason == "primary_thread_unconfirmed" {
+			a.BindingState = "ambiguous"
+		}
+		if strings.Contains(obs.reason, "conflict") || obs.reason == "herdr_session_invalid" || obs.reason == "reported_session_not_candidate" {
+			a.BindingState = "conflict"
 		}
 		if obs.reason != "" {
-			if strings.Contains(obs.reason, "ambiguous") || obs.reason == "primary_thread_unconfirmed" {
-				a.BindingState = "ambiguous"
-			}
-			if strings.Contains(obs.reason, "conflict") {
-				a.BindingState = "conflict"
-			}
-			if reported.Value != "" && (reported.Kind == "id" || (reported.Kind == "" && codexBindingID.MatchString(reported.Value))) && s.conversationM != nil && !s.conversationM.CodexSessionProjectMatches(a.Cwd, reported.Value) {
-				a.BindingState = "conflict"
-				a.BindingReason = "reported_session_project_mismatch"
-				a.ConversationReason = "codex_session_project_mismatch"
-			}
 			continue
 		}
-		b := obs.binding
-		a.Session = b.SessionID
+		a.Session = obs.thread.ID
 		a.SessionKind = "id"
-		a.ConversationSource = codexRuntimeSource + b.SessionID
-		a.ConversationReason = ""
-		a.BindingRuntime = b.RuntimeInstance
+		a.ConversationSource = codexBindingSource(obs.probe) + obs.thread.ID
 		a.BindingState = "verified"
-		a.BindingReason = ""
-		if b.HistoryOnly {
-			a.ConversationSource = codexHistorySource + b.SessionID
-			a.BindingState = "history_only"
-			a.BindingReason = "associated_history_primary_unconfirmed"
-		}
 		a.BindingVerifiedAt = time.Now().UnixMilli()
-		if !b.HistoryOnly && reported.Value != "" && (reported.Value != b.SessionID || reported.Kind != "id" || (reported.Agent != "" && reported.Agent != "codex")) {
-			a.BindingReason = "reported_session_conflict"
+		if status := obs.thread.AgentStatus(); status != "" {
+			a.Status = status
 		}
-		a.Status = b.Status
 	}
 }
 
-func (s *Server) codexRuntimeCurrent(ctx context.Context, agent *coordinator.AgentState) bool {
-	if agent == nil {
+func (s *Server) codexPrimaryCurrent(ctx context.Context, a *coordinator.AgentState) bool {
+	if a == nil {
 		return false
 	}
-	if agent.Agent != "codex" {
+	if a.Agent != "codex" {
 		return true
 	}
-	if !codexProcessProofSupported() && agent.BindingState == "" && !strings.HasPrefix(agent.ConversationSource, codexRuntimeSource) && !strings.HasPrefix(agent.ConversationSource, codexHistorySource) {
-		return true
+	if a.BindingState == "" {
+		return s.herdrC == nil && (s.conversationM == nil || a.SessionID == "" || s.conversationM.CodexSessionProjectMatches(a.Cwd, a.SessionID))
 	}
-
-	if agent.BindingState != "" && !usableCodexBinding(agent.BindingState) {
+	if a.BindingState != "verified" || !s.codexBindings.current(a) {
 		return false
 	}
-	if !s.codexBindings.current(agent) {
-		return false
-	}
-	if agent.ConversationReason != "" {
-		return false
-	}
-	if strings.HasPrefix(agent.ConversationSource, codexBindingSource) {
-		return true
-	}
-	if !strings.HasPrefix(agent.ConversationSource, codexRuntimeSource) && !strings.HasPrefix(agent.ConversationSource, codexHistorySource) {
-		if s.home != "" && s.herdrC != nil {
-			return false
-		}
-		return s.conversationM == nil || agent.SessionID == "" || s.conversationM.CodexSessionProjectMatches(agent.Cwd, agent.SessionID)
-	}
-	b, ok := s.resolveCodexRuntime(ctx, []*coordinator.AgentState{agent})[agent.PaneID]
-	valid := ok && b.HistoryOnly == (agent.BindingState == "history_only") &&
-		strings.HasPrefix(agent.ConversationSource, codexHistorySource) == b.HistoryOnly &&
-		b.SessionID == agent.SessionID && b.ProcessStart == agent.ConversationProcess && (agent.BindingRuntime == "" || agent.BindingRuntime == b.RuntimeInstance) && (agent.BindingStoreID == "" || agent.BindingStoreID == codexStoreID(b.Root))
+	check, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	obs, ok := s.observeCodexRuntime(check, []*coordinator.AgentState{a})[a.PaneID]
+	valid := ok && obs.reason == "" && obs.thread.ID == a.SessionID && obs.probe.process == a.ConversationProcess && obs.runtime == a.BindingRuntime && codexStoreID(obs.probe.root) == a.BindingStoreID && a.ConversationSource == codexBindingSource(obs.probe)+a.SessionID
 	if !valid {
-		s.codexBindings.invalidate(agent)
+		s.codexBindings.invalidate(a)
 		if s.poller != nil {
 			s.poller.Wake()
 		}
@@ -333,10 +330,8 @@ func (s *Server) codexRuntimeCurrent(ctx context.Context, agent *coordinator.Age
 	return valid
 }
 
-type codexStoreResult struct {
-	threads  map[string]codexruntime.Thread
-	instance string
-	err      error
+func (s *Server) conversationSelectionCurrent(ctx context.Context, a *coordinator.AgentState) bool {
+	return s.codexPrimaryCurrent(ctx, a) && s.kimiSelectionCurrent(ctx, a)
 }
 
 func readCodexStore(ctx context.Context, root string, wanted map[string]bool) codexStoreResult {
@@ -352,7 +347,6 @@ func readCodexStore(ctx context.Context, root string, wanted map[string]bool) co
 	}
 	return codexStoreResult{threads: threads, instance: codexSocketIdentity(before), err: err}
 }
-
 func queryCodexStores(ctx context.Context, wanted map[string]map[string]bool, query func(context.Context, string, map[string]bool) codexStoreResult) map[string]codexStoreResult {
 	results := map[string]codexStoreResult{}
 	var mu sync.Mutex
@@ -368,7 +362,7 @@ func queryCodexStores(ctx context.Context, wanted map[string]map[string]bool, qu
 			break
 		}
 		wg.Add(1)
-		go func(root string) {
+		go func() {
 			defer wg.Done()
 			select {
 			case slots <- struct{}{}:
@@ -382,12 +376,8 @@ func queryCodexStores(ctx context.Context, wanted map[string]map[string]bool, qu
 			mu.Lock()
 			results[root] = result
 			mu.Unlock()
-		}(root)
+		}()
 	}
 	wg.Wait()
 	return results
-}
-
-func codexListenerSetCurrent(before, after map[string]string, origin string) bool {
-	return before[origin] != "" && maps.Equal(before, after)
 }

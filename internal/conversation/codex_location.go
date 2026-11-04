@@ -73,8 +73,11 @@ func indexedCodexSession(root, sessionID string) (Location, bool) {
 			return Location{}, true
 		}
 		path = containedRegularFile(path, root)
-		if path == "" || !codexSessionHeaderMatches(path, sessionID) {
+		if path == "" {
 			return Location{}, true
+		}
+		if !codexSessionHeaderMatches(path, sessionID) {
+			return Location{ValidationError: "herdr_session_mismatch"}, true
 		}
 		return Location{Path: path, Root: root}, true
 	}
@@ -192,4 +195,63 @@ func (r *Reader) CodexPinnedTitleCurrent(cwd, sessionID, terminalTitle string) b
 		}
 	}
 	return matches == 1
+}
+
+// CodexThreadMetadata contains only the immutable identity/ancestry header.
+// Reading it cannot choose a thread or disclose conversation contents.
+type CodexThreadMetadata struct {
+	ID             string          `json:"id"`
+	CWD            string          `json:"cwd"`
+	SessionID      string          `json:"session_id"`
+	ParentThreadID string          `json:"parent_thread_id"`
+	ForkedFromID   string          `json:"forked_from_id"`
+	Source         json.RawMessage `json:"source"`
+	ThreadSource   string          `json:"thread_source"`
+}
+
+func (r *Reader) CodexBindingMetadata(cwd, id string) (CodexThreadMetadata, Location, string) {
+	bad := func(loc Location, reason string) (CodexThreadMetadata, Location, string) {
+		return CodexThreadMetadata{}, loc, reason
+	}
+	if !canonicalSessionID.MatchString(id) || !filepath.IsAbs(cwd) {
+		return bad(Location{}, "herdr_session_invalid")
+	}
+	loc := r.Locate("codex", cwd, id)
+	if loc.ValidationError != "" {
+		return bad(loc, loc.ValidationError)
+	}
+	if loc.Path == "" {
+		return bad(loc, "herdr_history_unavailable")
+	}
+	file, err := openConversationSource(loc.Path)
+	if err != nil {
+		return bad(loc, "herdr_history_unavailable")
+	}
+	defer file.Close()
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+	if !scanner.Scan() {
+		return bad(loc, "herdr_history_unavailable")
+	}
+	var row struct {
+		Type    string              `json:"type"`
+		Payload CodexThreadMetadata `json:"payload"`
+	}
+	if json.Unmarshal(scanner.Bytes(), &row) != nil || row.Type != "session_meta" || !strings.EqualFold(row.Payload.ID, id) {
+		return bad(loc, "herdr_session_mismatch")
+	}
+	if !filepath.IsAbs(row.Payload.CWD) {
+		return bad(loc, "herdr_project_mismatch")
+	}
+	return row.Payload, loc, ""
+}
+
+// ValidateCodexReport validates only the supplied Codex ID, never choosing another
+// session. Missing history is distinct from conflicting ID/project metadata.
+func (r *Reader) ValidateCodexReport(cwd, id string) (Location, string) {
+	meta, loc, reason := r.CodexBindingMetadata(cwd, id)
+	if reason == "" && filepath.Clean(meta.CWD) != filepath.Clean(cwd) {
+		reason = "herdr_project_mismatch"
+	}
+	return loc, reason
 }

@@ -1,4 +1,21 @@
-# 验证记录 · Android 0.2.24 / Relay codexfix.12
+# 验证记录
+
+## 0.2.26 / codexfix.14 · Codex runtime 主线程与缓存刷新
+
+2026-11-05：当前源码仅对 Codex 使用终端 runtime 候选、明确父子关系和共享模式下匹配 Herdr 上报确认主线程；其他 agent 沿用原有发现和操作流程。没有动态 hook、`/status`、自动修改启动方式或重启生产 agent。手机已移除 `initialDiscovery` 特殊分支，不提供候选选择/确认接口，只跟随 Relay 最终 ID 并保持请求代次隔离。新增 `get_session_binding_diagnostics` 只读快照接口，支持未确认会话诊断与可扩展 `details`，不会重新发现或改绑；模型设置与运行状态接口已改用最终绑定，不要求 Herdr 上报相同 ID。
+
+- 新增显式 `--no-daemon` 分支：读取本 TUI 的内核独占写锁与精确 ID 元数据；无需共享 socket 或 hook 即可绑定唯一主线程。新线程无元数据、主子关系不完整或多个主线程时不猜选。多个独立根不靠旧 hook 上报消歧，避免 `/resume` 首轮前误读旧对话。
+- 原版 Codex 0.166.0、UID 1000、隔离 HOME/CODEX_HOME/工作区、原样 Herdr hook、本地假 Responses SSE 验证新 resolver 的 9 个检查点全部通过：新线程首轮前/后、两个独立 TUI、`/new`、`/resume` 前后及退出后新进程恢复；4 次 hook 的 ID/真实 header/转发报告一致。terminal→测试 PID 用 fixture，实际 argv/进程 birth/内核锁/rollout 为真实读取，不能等同于生产 Herdr 或真机端到端验收。所有测试 Codex 进程已退出，没有调用外部模型。
+- 独立模式不访问共享后台设置/计时；模型设置提示在电脑端修改，已确认绑定的状态回退 Herdr、计时 unknown。诊断 JSON 包含 runtime mode。内核锁、陈旧报告、主子树/独立 fork、进程/mode/inode/store 改变、共享模式不降级到上报兜底等回归通过。
+- `go vet ./...`、`go test -p 1 ./...` 通过。
+- 诊断接口专项 race 通过，覆盖 reader/controller 权限、匿名拒绝、过期目标、未确认状态只读、复杂字段与大小限制。Android 真实 TCP/E2EE UI 测试确认只获取诊断，不读历史、不选择候选、不写入主绑定。
+- app / codexruntime / conversation / coordinator 关键包 race 通过；随后运行模式切换与旧状态回退保护的 app 专项 race 通过。
+- Android `:app:testDebugUnitTest`：311 tests，0 failures，0 errors；测试生成的五张已有 QA 图片已按测试前字节恢复。
+- `make web-release` 通过：前端 60 个测试文件、1308 tests，类型检查 0 errors / 0 warnings；`frontend/dist` 与 `web/` 一致，gzip 初始负载 171837 / 172032 bytes（build 486）。
+- 本机只读核对 7 个 Codex 终端：6 个主会话确认成功，历史与运行状态可读；其中多个没有 Herdr 上报。1 个仍为多根且无上报，按规则保留未确认状态，没有猜选。真实 ID/对话不进入仓库测试。
+- 以上为源码测试记录；正式版本及 CI 来源以 README 下载区和 VERSION.json 的发行记录为准。未进行手机真机或完整浏览器/Appium 设备验收；之前的临时状态栏、动态探针和 `/status` 研究不作为本方案能力。
+
+边界见 [会话身份设计](../docs/primary-session-binding.md)。
 
 ## 0.2.24 / codexfix.12 GitHub Releases
 

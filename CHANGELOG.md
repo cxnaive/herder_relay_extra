@@ -5,19 +5,26 @@ project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- Resolve Codex primary conversations from terminal-owned runtime associations: reduce explicit subagent trees, use a unique root directly, and use a matching Herdr report only to break remaining ties. Unresolved sessions suggest trying `--no-daemon` without promising a fix; other agent providers keep their existing behavior.
+- Refresh same-ID conversation caches and indexed rollout locations after resume; switching the selected ID revokes old requests and keeps histories/drafts isolated.
+
+### Removed
+- Codex associated-history and manual-pin overrides, terminal status-line identity parsing and automatic `/status` probing.
+
 ### Added
-- Offer explicitly labelled, read-only associated Codex history when exactly one persisted session is proved and the other connected roots are explicitly unmaterialized; never treat that history as the current writable primary.
+- Read-only session binding diagnostics for paired devices, with a versioned structured payload and an Android viewer for future detailed evidence. Diagnostics never select or confirm a primary session.
 - Read-only current Codex turn status and timing, using bounded metadata-only queries to distinguish running, waiting, finished and interrupted work without loading conversation bodies.
 - Authenticated, controller-only per-Codex-session model/reasoning updates using the live runtime catalog and exact pane identity; read back effective settings and never replay unconfirmed writes.
 - Native Android IP + TCP gateway mode with the existing E2EE protocol, a single public TCP port, protected relay registration and private local one-device invitation creation.
 - Read-only, exact-workspace document downloads in 512 KiB verified chunks (up to 12 MiB per file), enabling native PDF/Markdown/image reviewers without raising transport limits or granting file-write access.
 
 ### Fixed
+- Recognize explicit Codex `--no-daemon` sessions through the TUI’s own live writer locks and exact thread metadata, without requiring a shared app-server or hook report. Retained multiple roots stay unconfirmed; standalone settings and timers never target an unrelated shared backend.
+- Explain an unconfirmed primary on Android instead of treating the new status response as a temporary connection/read failure; never show an old running timer for an unverified target.
 - Accept histories originally created by Codex Desktop after verifying the current native process and exact runtime/store ownership; the historical creator is no longer confused with the current executor.
 - Keep trusted Android build artifacts on the existing Pocket signing certificate so upgrades preserve pairing and drafts; clearly distinguish unsigned and temporary-key test APKs.
 - Keep history pages within a 256 KiB payload budget and allow slow gateway fragments 20 seconds to write (5 seconds for health probes), avoiding whole-link disconnects while paging older tool-heavy conversations.
-- Recover missing Codex session IDs from the local daemon’s TUI endpoint and exact foreground-process socket ownership. Shared or stale endpoints stay unavailable instead of selecting a similarly named conversation.
-- Allow an operator-selected local Codex session to be bound to an exact terminal and live process when Herdr omits its session ID; reject stale, renamed, replaced or ambiguous bindings instead of guessing by directory.
 - Locate resumed Codex threads through the read-only state database and validate the rollout's session metadata. Rotated `<thread-id>_<segment-id>.jsonl` files no longer appear to have no conversation.
 
 ## [Android 0.2.24 / Relay 0.23.5+codexfix.12] - 2026-11-04

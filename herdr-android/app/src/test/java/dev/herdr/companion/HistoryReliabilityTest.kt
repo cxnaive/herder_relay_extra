@@ -28,7 +28,7 @@ class HistoryReliabilityTest {
         state.page(page(listOf("recent"))); state.page(page(listOf("old"), "far"), true); cache.put(binding(), state)
         state.entries["old"]!!.put("text", "modified outside cache")
         val restored = cache.get(binding())!!
-        assertEquals("old", restored.entries["old"]!!.getString("text")); assertEquals("", restored.subscription); assertTrue(restored.loadedOlder)
+        assertEquals("old", restored.entries["old"]!!.getString("text")); assertEquals("", restored.subscription); assertFalse(restored.loadedOlder); assertEquals("", restored.next)
         assertNull(cache.get(binding("other-thread"))); assertNull(cache.get(binding(generation = 2)))
         now = 600001; assertNull(cache.get(binding()))
         cache.put(binding(), state); cache.clear(); assertNull(cache.get(binding()))

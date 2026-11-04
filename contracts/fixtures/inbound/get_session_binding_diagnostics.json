@@ -1,0 +1,14 @@
+{
+  "type": "get_session_binding_diagnostics",
+  "protocol": 3,
+  "request_id": "binding-diag-1",
+  "pane_id": "pane-1",
+  "target": {
+    "server_session_id": "primary",
+    "pane_id": "pane-1",
+    "terminal_id": "terminal-1",
+    "generation": 2,
+    "agent_session_id": "123e4567-e89b-12d3-a456-426614174000",
+    "binding_epoch": 3
+  }
+}

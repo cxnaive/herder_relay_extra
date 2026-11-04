@@ -25,7 +25,7 @@ type codexBindingRegistry struct {
 }
 
 func usableCodexBinding(state string) bool {
-	return state == "verified" || state == "pinned_history" || state == "history_only"
+	return state == "verified"
 }
 
 func (r *codexBindingRegistry) reconcile(agents []*coordinator.AgentState) {
@@ -56,20 +56,16 @@ func (r *codexBindingRegistry) reconcile(agents []*coordinator.AgentState) {
 		old, exists := r.records[a.PaneID]
 		sameTerminal := exists && old.terminal == a.TerminalID && old.server == a.ServerSessionID && old.cwd == a.Cwd
 		sameProcess := sameTerminal && (a.ConversationProcess == "" || a.ConversationProcess == old.process) && (a.BindingStoreID == "" || old.store == "" || a.BindingStoreID == old.store)
-		if !usableCodexBinding(a.BindingState) && sameProcess && old.session != "" {
-			a.Session = old.session
-			a.SessionKind = "id"
-			a.ConversationProcess = old.process
-			a.ConversationSource = old.source
-			a.BindingStoreID = old.store
+		if !usableCodexBinding(a.BindingState) && sameProcess && old.session != "" && old.session == a.Session {
+			if a.BindingStoreID == "" {
+				a.BindingStoreID = old.store
+			}
 			a.BindingVerifiedAt = old.verifiedAt
-			a.BindingRuntime = old.runtime
-			a.Status = old.status
-			if a.BindingState == "verifying" {
+			if a.BindingState == "verifying" && a.BindingReason == "herdr_report_unavailable" {
 				a.BindingState = "stale"
 			}
 		}
-		changed := !exists || !sameTerminal || old.session != a.Session || old.process != a.ConversationProcess || old.store != a.BindingStoreID || old.runtime != a.BindingRuntime || old.state != a.BindingState
+		changed := !exists || !sameTerminal || old.session != a.Session || old.process != a.ConversationProcess || old.store != a.BindingStoreID || old.runtime != a.BindingRuntime || old.state != a.BindingState || old.source != a.ConversationSource
 		if changed {
 			r.sequence++
 			a.BindingEpoch = r.sequence
@@ -115,7 +111,6 @@ func (s *Server) enrichCodexSessions(ctx context.Context, agents []*coordinator.
 	s.codexDiscoveryMu.Lock()
 	defer s.codexDiscoveryMu.Unlock()
 	s.enrichCodexRuntime(ctx, agents)
-	s.enrichCodexBindings(ctx, agents)
 	s.codexBindings.reconcile(agents)
 }
 
@@ -139,7 +134,7 @@ func (s *Server) codexInteractionCurrent(ctx context.Context, in protocol.Inboun
 	if !exists || a.Agent != "codex" || a.BindingState == "" {
 		return true
 	}
-	return a.BindingState == "verified" && s.codexRuntimeCurrent(ctx, a)
+	return a.BindingState == "verified" && s.codexPrimaryCurrent(ctx, a)
 }
 
 // File access proves terminal/workspace identity independently of chat discovery.

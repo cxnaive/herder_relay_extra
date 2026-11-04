@@ -39,11 +39,9 @@ func TestCodexBindingRecoveryKeepsIdentityButRevokesLease(t *testing.T) {
 		t.Fatal("verified binding unavailable")
 	}
 	miss := registryAgent()
-	miss.Session = ""
-	miss.ConversationSource = ""
-	miss.ConversationProcess = ""
+	miss.BindingStoreID = ""
 	miss.BindingState = "verifying"
-	miss.BindingReason = "runtime_unavailable"
+	miss.BindingReason = "herdr_report_unavailable"
 	stale := commitRegistry(&r, s, miss)
 	if stale.BindingState != "stale" || stale.SessionID != first.SessionID || stale.Generation != first.Generation || stale.BindingEpoch == first.BindingEpoch || stale.BindingVerifiedAt != first.BindingVerifiedAt {
 		t.Fatalf("transient failure replaced identity: %+v", stale)
@@ -100,26 +98,26 @@ func TestCodexBindingNeverCarriesHistoryAcrossReplacements(t *testing.T) {
 		})
 	}
 }
-func TestCodexBindingAmbiguityDoesNotSelectAnotherThread(t *testing.T) {
+func TestCodexMissingReportNeverReusesPreviouslyReportedID(t *testing.T) {
 	var r codexBindingRegistry
 	s := registryState()
 	first := commitRegistry(&r, s, registryAgent())
 	a := registryAgent()
 	a.Session = ""
 	a.ConversationSource = ""
-	a.BindingState = "ambiguous"
-	a.BindingReason = "runtime_ambiguous"
+	a.BindingState = "verifying"
+	a.BindingReason = "herdr_session_missing"
 	after := commitRegistry(&r, s, a)
-	if after.SessionID != first.SessionID || after.Generation != first.Generation || r.current(after) {
-		t.Fatal("ambiguity replaced the last verified identity or retained permission")
+	if after.SessionID != "" || after.Generation == first.Generation || r.current(after) {
+		t.Fatal("missing report reused the previous session or retained permission")
 	}
 }
-func TestCodexBindingManualHistoryNeverPermitsMutation(t *testing.T) {
+func TestCodexLegacyManualPinNoLongerAuthorizesReadOrMutation(t *testing.T) {
 	var r codexBindingRegistry
 	s := registryState()
 	a := registryAgent()
 	a.BindingState = "pinned_history"
-	a.ConversationSource = codexBindingSource + "thread"
+	a.ConversationSource = "legacy-pin:" + "thread"
 	pinned := commitRegistry(&r, s, a)
 	server := &Server{state: s}
 	// Runtime proof is deliberately absent: even a valid history pin cannot authorize a write.
@@ -129,8 +127,8 @@ func TestCodexBindingManualHistoryNeverPermitsMutation(t *testing.T) {
 			t.Fatal("manual history authorized", name)
 		}
 	}
-	if !r.current(pinned) {
-		t.Fatal("valid pin lost its independent read scope")
+	if r.current(pinned) {
+		t.Fatal("legacy pin bypassed Herdr report authority")
 	}
 }
 func TestCodexBindingInvalidationIsConcurrentAndDoesNotReviveOldEpoch(t *testing.T) {

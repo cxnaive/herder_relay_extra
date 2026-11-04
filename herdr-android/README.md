@@ -2,6 +2,10 @@
 
 与本仓库电脑 Relay 配套的原生 Android 客户端，不使用 WebView 运行 Agent 界面。
 
+当前源码 `0.2.26` / versionCode `29` 配合 Relay codexfix.14，按 [Codex 终端主会话策略](../docs/primary-session-binding.md) 展示 runtime 唯一主线程，或以匹配的 Herdr 上报消除多主线程歧义；无法确认时提示可尝试 `--no-daemon`，其他 agent 不改变流程；同会话缓存会刷新，换会话撤销旧请求并切换缓存。下载版本及构建来源以下方已发布记录为准。
+
+会话识别完全由 Relay 完成；手机只跟随最终会话 ID。菜单中的“会话绑定诊断”使用[只读诊断接口](../docs/session-binding-diagnostics.md)，展示可扩展 JSON，不查询可操作候选、不分析子代理或确认主会话。
+
 <!-- android-downloads:start -->
 ## 安装
 

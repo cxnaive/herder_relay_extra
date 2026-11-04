@@ -1,95 +1,163 @@
-# Primary Codex session binding
+# Codex terminal-scoped primary session discovery
 
-This implementation targets same-user Linux/WSL Codex TUIs in the existing Herdr inventory. It does not change Gateway registration, pairing identities, encryption, or device roles. No new dependency or Herdr-managed hook is required.
+Relay codexfix.14 / Pocket 0.2.26 applies this policy **only to `agent == codex`**.
+All other providers keep the existing Herdr Relay discovery, session identifiers,
+history parsers, and interaction authorization. No Codex runtime or hook report
+is required for them.
 
-## Evidence, not labels
+## Shared app-server selection order
 
-1. Preserve Herdr's reported `{source, agent, kind, value}` consistently through list/get/snapshot adapters. A report is a candidate, not current-thread authority.
-2. Read `pane.process_info`, then validate native process ownership using `/proc`: user/PID namespace, shell, process group, controlling terminal, parent chain, executable and process birth. Select the outer native Codex, not its Node launcher or tool/delegated descendants. Recheck before publishing a binding.
-3. Query only the native process's configured, allowed Codex store. Each store has an independent timeout; at most four store queries run concurrently. A daemon elsewhere in the home directory does not impose a global requirement on other terminals.
-4. Enumerate runtime associations completely (64 threads per page, 256 total). Reject truncated, duplicated or cyclic inventories and changed primary selections; explicitly proved child lifecycle changes do not invalidate a stable primary. The owned loopback socket and its inode must remain current.
-5. Accept one primary candidate only. Explicit child ancestry must lead to that primary on the same endpoint before a child can be excluded. Unnamed threads, `canAcceptDirectInput`, and missing parent fields do not resolve ambiguity. Fork ancestry alone is not delegation. Metadata reads never request turns or start/resume/focus threads.
-6. Cross-check the selected thread with its provider store and rollout metadata. A conflicting Herdr report is diagnostic only after this independent verification succeeds. Never choose another thread by title, recency or directory similarity.
+1. Resolve the exact Herdr terminal to its outer native Codex TUI process. Verify
+   the foreground process group, tty/session, process ancestry, owner and birth
+   identity. Node launchers and helper/zombie descendants are not extra TUI roots.
+2. For shared mode, read this process's owned loopback listeners and its configured, allowed Codex
+   store. Query the local app-server's loaded-thread metadata and `codex_tui` MCP
+   origin associations. **Only origins owned by this TUI process become candidates**;
+   the daemon's global loaded list is never a terminal's candidate list by itself.
+3. Reduce this terminal's candidates using explicit parent/subagent metadata.
+   Every excluded child must reach a root within the same association, without
+   missing links, cycles or contradictory session-tree metadata. An independently
+   forked conversation remains a root. A single connected root is selected without
+   requiring or trusting Herdr's reported ID.
+4. If multiple roots remain, validate the fresh Herdr report's provider/kind/UUID
+   and match it against those roots. A matching connected root is selected; an ID
+   outside the candidate set, a child ID, a missing report or a malformed report
+   cannot supply a replacement candidate.
+5. If still unresolved, retain no chosen current ID and show a reason. Suggest
+   trying `codex --no-daemon` and checking the Herdr hook where appropriate. This
+   is guidance, **not a guarantee**. Explicit standalone startup uses the separate
+   writer-ownership path below, never this shared-server endpoint.
 
-The existing runtime interface is an association interface, not an authoritative frontend `activeThread` API. Ambiguous or unclassified associations remain unavailable. A future explicit frontend-selection integration would improve coverage; this implementation does not invent that capability or promise every possible TUI session can be discovered automatically.
+Names, terminal titles, creation origin, recent activity, direct-input flags,
+transcript length and whether a conversation has materialized do not choose a
+root. Discovery never sends `/status`, reads a footer ID, installs a dynamic hook,
+attaches a debugger, resumes a thread, or invokes a model/tool. Manual pins and
+associated-history substitutions are not part of this policy.
 
-## One registry; two kinds of change
+In a multiple-root tie, the matching Herdr report is a trusted input, not an
+independent TUI selection getter. If Herdr incorrectly names another otherwise
+valid root in this same candidate set, these checks cannot establish the actual
+TUI selection. The policy must not be described as eliminating that trust boundary.
 
-`codexBindingRegistry` retains the last verified tuple separately from its current availability. It is process-memory state, not persisted authorization.
+## Explicit `--no-daemon` / standalone path
 
-- `generation` is the existing identity revision. A real thread/process/store/terminal replacement invalidates the old identity. The same verified session disappearing temporarily and returning does not advance it.
-- `binding_epoch` is a revocable request lease. Losing proof, changing proof scope, or recovery changes it. Old requests/responses cannot become valid again merely because the same thread was rediscovered. Epochs are initialized independently on Relay restart and remain exactly representable by JSON clients.
-- The encrypted transport's existing connection lifecycle remains separate. No credentials or pairing state are replaced by a binding epoch.
+An explicit `--no-daemon` option on the verified **native TUI** selects this path.
+Arguments after `--`, prompt text, option values, Node wrappers and non-TUI
+subcommands cannot enable it. Unknown startup options are handled conservatively;
+implicit embedded fallback is not inferred just because a shared RPC fails.
 
-The additive `primary_session_binding_v1` capability advertises the state/lease semantics on supported Linux/WSL hosts. Target-bearing clients must echo `binding_epoch`. Android and the bundled web target adapters do so. A client that discards a nonzero epoch is refused rather than silently weakening target validation.
+1. Preserve the terminal, foreground group, owner, PID birth and allowlisted
+   `CODEX_HOME` checks. Do not require a loopback listener or a shared socket.
+2. Read `/proc/<TUI-pid>/fd` and `fdinfo` for this store's
+   `thread-writer-locks/<thread-id>.lock`. Require a live, exclusive, whole-file
+   kernel **FLOCK** owned by that PID, matching the regular file's device/inode.
+   Lock-file existence, another process's locks, read locks, open history files,
+   removed/replaced files and symlinked lock namespaces are not proof. Relay never
+   opens/acquires/releases/deletes these lock files.
+3. Read only exact-ID, contained rollout metadata for those owned threads and
+   reduce explicit parent/subagent trees. Unknown classification, incomplete
+   ancestry, incompatible session IDs, foreign stores and conflicting project
+   metadata fail closed. Independent forks stay roots. A single root can bind
+   without a Herdr report, including a resumed session before its next hook runs.
+4. A new unmaterialized thread waits for its metadata, normally after the first
+   local turn. A lock ID by itself is **not** proof that this is a primary rather
+   than a child. Other open roots cannot be ignored because their history is empty.
+5. **Multiple standalone roots remain unconfirmed even with a matching report.**
+   Original Codex 0.166.0 retained old writer locks after same-process `/new` and
+   `/resume`; Herdr's public `agent_session` does not expose a report timestamp,
+   sequence or process birth. Its retained report can still name the old root
+   before the new SessionStart hook runs. This is deliberately stricter than the
+   shared-mode tie-breaker, not a generic hook-only fallback.
 
-| Binding state | New history reads | Mutations to the current Agent |
-| --- | --- | --- |
-| `verified` | Allowed after current-proof checks | Existing authorization plus fresh proof at dispatch |
-| `verifying` | Not yet available | Denied |
-| `stale` | Existing client cache only, explicitly labelled | Denied |
-| `ambiguous` / `conflict` | No candidate history; old cache retains its old identity | Denied |
-| `history_only` | The single independently verified associated history, explicitly not the current primary | Denied |
-| `pinned_history` | Existing operator-selected history after independent revalidation | Denied |
+Ownership and identity/ancestry metadata are rechecked, including after the final
+metadata read. Process, mode, writer inode, store or selected-ID changes revoke
+old leases. Bound history/send/approval still work; no mobile selection API is
+added. Mode and proof source are included in the existing diagnostic snapshot.
 
-Existing local pin files are retained, not rewritten. Their terminal/process/store/title fences are still checked. Pins are a read-only historical fallback, not proof that sending input to the live terminal would reach that thread. This change does not add a new general-purpose history picker or manage subagent conversations.
+Standalone has no externally queryable settings/turn endpoint in the tested
+version: model changes must be made in the computer TUI. Run status uses Herdr with
+**unknown timing**, after revalidating the binding. Neither operation may query or
+write a same-store shared server just because that socket exists.
 
-## Associated history without a proved primary
+To clear retained multiple roots, the user can normally exit the old TUI and run
+`codex --no-daemon resume <thread-id>`. A session still owned by another backend
+can display an ownership-conflict dialog; Relay does not kill that backend,
+interact with the dialog, fork the conversation or alter Codex Desktop settings.
 
-A connected loaded thread is not necessarily a persisted conversation. On supported
-runtimes, bounded `thread/turns/list` metadata distinguishes readable persisted
-history from the explicit pre-first-user-message unmaterialized response. Unknown
-errors, disconnected associations, incomplete inventories and materialization
-changes across the two observations remain unavailable.
+## Phone/API boundary
 
-For a single process-owned endpoint, exactly one persisted root plus explicitly
-unmaterialized roots may yield `history_only`. The Relay also verifies the real
-rollout, header ID/cwd, canonical provider root and declared runtime path. Pending
-paths must remain absent and inside the same store; a second persisted history or
-any contradictory/unknown evidence is not silently discarded. Names, timestamps,
-`has_user_event` and file absence alone never resolve a primary.
+The phone does not enumerate processes, analyze candidate trees or choose a report.
+It consumes the final `agent_session_id`, `binding_state` and `binding_reason` from
+normal inventory messages. There is no separate manual-confirmation or candidate-
+selection API. The optional [diagnostic snapshot API](session-binding-diagnostics.md) exposes existing inventory metadata as bounded, extensible JSON; it cannot select or confirm a candidate.
 
-Existing independently valid manual history pins take precedence over this automatic
-history hint, but not over a verified live primary.
+Keep normal history/stream/send/approval APIs and the target's `binding_epoch`:
+identity and cache scope can stay the same while an old request lease is revoked.
+`get_agent_run_state` remains for turn status/timing; `get_agent_settings` and
+`set_agent_settings` remain for model/reasoning controls. These features use the
+Relay's resolved exact ID, not a requirement that Herdr report the same ID. Store,
+process and ancestry data are resolved on the computer, not by the Android app.
 
-This is an associated-history view, **not** a writable-primary binding. A legitimate
-new empty thread may be selected in the TUI. Inputs, approvals, settings mutations,
-live subscriptions and completion notifications therefore remain disabled. Each
-read revalidates process/endpoint/store/history scope and the binding lease; loss
-of that scope retains only labelled client cache. Android and web explain this
-state instead of telling a controller to change devices.
+## Validation and lifecycle
 
-`originator` describes the historical creator (for example Codex Desktop), not
-the currently executing process. Native-process proof and exact ownership fences,
-not that creator string, decide whether a runtime association belongs to a pane.
+Runtime association/root metadata is read twice. Child lifecycle changes are
+allowed only if the verified root set remains unchanged. Terminal identity,
+process birth, store and owned listeners are rechecked after discovery. The
+fresh Herdr report must still select the same candidate when needed to break a
+tie; an irrelevant report change does not veto a unique runtime root.
 
-## History, UI and commands
+The selected exact ID is checked against available history ID/project metadata.
+Conflicting metadata fails closed. In shared mode, missing or unmaterialized
+history does not erase identity established by live runtime metadata. Standalone
+requires an available header to classify each owned thread before selecting a root. Historical
+creator names do not establish the current executor.
 
-- Android keeps a selected page across availability-epoch changes when its stable identity is unchanged; cancels old subscriptions/callbacks; retains process-memory history and the existing draft/delivery storage keys. True identity changes still require reopening the target.
-- A first verified binding may open a waiting, previously unbound page only for the same terminal/workspace and the expected identity revision.
-- Android displays a binding status and a metadata-only diagnostic view. It disables sending, approvals and live model settings when the current primary cannot be verified.
-- Cached history is not a source of current write permission. Manual pins do not receive live provisional streams.
-- Workspace/document reads validate their terminal and workspace independently, while preserving existing file-root and device authorization.
-- Queued Agent mutations recheck both the exact target lease and current runtime proof at dispatch. The copy-response command preserves that dispatch context as well.
-- Managed Codex status comes from the verified primary's runtime metadata. Unbound hook status cannot mark a child completion as a primary completion. Historical activity extracts are not reconstructed from a reused pane's current thread.
+History reads and protected conversation operations revalidate the binding.
+Existing device/role authorization and exact terminal request leases remain in
+force; this does not replace them. Workspace/file authorization remains separate
+from Codex conversation identity. Changing terminal, process instance, selected
+ID, runtime endpoint or proof state invalidates old requests and subscriptions.
 
-## Scope and limitations
+## Resume and cache behavior
 
-Linux/WSL kernel ownership checks are the supported discovery path. Other providers and the existing reported-session path on other platforms retain their behavior; this change does not establish equivalent native-Windows, container/cross-namespace, cross-user or macOS discovery support. Unavailable OS/runtime evidence fails closed. Existing fallback/pin code must not be mistaken for a new cross-platform automatic discovery contract.
+- Same selected ID: cached content can display immediately, labelled as cached,
+  while the source location/current tail refreshes. Old pagination cursors,
+  subscriptions and sequence positions are not restored as current.
+- Different or now-unresolved ID: revoke old requests and change/isolate the
+  history and draft scope. Never display one conversation as another.
+- Conflicting metadata: display the error, not cached content as current proof.
+- A transient source failure is not proof that Herdr supplied a bad ID.
 
-No ptrace, process injection, terminal-body matching, full environment logging, automatic thread switching, Gateway redesign, or child-agent UI is introduced. Parent/child relationships that the installed runtime does not expose cannot safely be inferred from names.
+## Failures and platform boundary
 
-## Verification and deployment
+- `runtime_ambiguous_no_report`: multiple roots with no report to break the tie.
+- `reported_session_not_candidate`: report does not match these terminal-scoped roots.
+- `herdr_session_invalid`: malformed/provider-mismatched report needed for a tie.
+- `runtime_ancestry_unavailable`: missing, unclassified or cyclic ancestry.
+- `runtime_metadata_conflict` / `process_project_conflict`: conflicting scope data.
+- `runtime_unavailable` / `runtime_disconnected`: no usable runtime association.
+- `runtime_changed`: terminal/process/association/selection changed during validation.
+- `runtime_platform_unsupported`: process proof is not implemented on that platform.
+- `standalone_runtime_unavailable`: no readable, valid writer ownership proof.
+- `standalone_metadata_unavailable`: owned thread metadata is not readable yet.
+- `standalone_ambiguous`: multiple roots; retained hook reports cannot break this tie.
+- `standalone_ancestry_unavailable` / `standalone_metadata_conflict`: incomplete or
+  conflicting standalone identity/parent/project/store metadata.
 
-Regression coverage includes:
+Process/socket proof currently targets Linux; no root or process injection is used.
+Do not promise that `--no-daemon` repairs malformed metadata or enables unsupported
+platforms. The Relay does not change startup arguments, stop a daemon, restart an
+agent or change Codex Desktop settings automatically.
 
-- report provenance through all Herdr read paths;
-- native/Node launchers, helper and zombie children, nested Codex, wrong TTY/parent/group, and process reuse;
-- complete pagination, unnamed competing threads, explicit child ancestry, metadata mismatch and independent store failures;
-- stable identity across miss/recovery, revoked queued targets, real replacements, manual-read-only bindings, and hook completion isolation;
-- Android cache/draft identity, first discovery, lease-bound callbacks, and non-writable uncertainty states;
-- bundled web target forwarding, route identity versus request leases.
+## Verification and release
 
-Live diagnostics are independent read-only executables. They do not replace the running service or write session bindings. Machine-specific evidence, IDs and transcripts do not belong in public fixtures.
+Synthetic tests cover terminal isolation, unique roots without reports, child
+ancestry, independent forks, multiple-root report matching, incomplete/cyclic
+metadata, changing reports/processes, missing history, lease replacement and the
+non-Codex bypass. Standalone coverage includes real kernel locks, first-turn
+metadata, unrelated shared sockets, child/fork reduction, stale reports, process/
+mode/inode changes, settings isolation and unknown timing. Runtime reads are metadata-only; private live audits never enter
+public fixtures. Same-ID source/cache refresh has separate reader/mobile coverage.
 
-Deploy the updated Android client and Relay together after review; the Relay's bundled web assets must be regenerated with `make web-release`. Old services, pairing files, signing material and release assets remain untouched until a separate deployment/release request.
+Source and published versions are separate. Distribution remains CI-only; this
+change does not deploy or restart Relay, Gateway, Herdr, Codex or the desktop app.

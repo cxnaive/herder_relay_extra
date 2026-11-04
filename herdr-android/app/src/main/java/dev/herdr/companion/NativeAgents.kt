@@ -131,7 +131,7 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
     fun fileAccessChanged(id: String) { if (relay == id) { reviewer?.close(); reviewer = null; conversationImages.clear(); if (active) render() } }
     fun destroy() { pause(); transientToast?.cancel(); speech?.stop(); speech?.shutdown(); conversationImages.close(); conversationCache.clear(); io.shutdown() }
     fun back(): Boolean { if (selected == null) return false; rememberConversation(); saveDraft(); stopStreams(); selected = null; render(); return true }
-    fun open(relayId: String, agent: JSONObject) { rememberConversation(); saveDraft(); stopStreams(); composer = null; relay = relayId; selected = JSONObject(agent.toString()); runPresentation.clear(); terminalHistoryLines = 500; terminalHasMore = true; terminalHistoryMessage = ""; terminalSavedY = 0; terminalFollowing = true; terminalScroll = null; loadingOlderTerminal = false; terminalReadPending = false; expandedToolGroups.clear(); expandedToolItems.clear(); conversationImages.clear(); mode = "conversation"; conversation = conversationCache.get(WorkspaceBinding.fromAgent(relayId, agent)) ?: ConversationState(); resumeOlderAfterReconnect = false; historyMessage = ""; attachments = JSONArray(); content = ""; fingerprint = ""; frame = JSONObject(); uploading = false; uiDraft = vault.read(draftKey()).orEmpty(); if (active) render() }
+    fun open(relayId: String, agent: JSONObject) { rememberConversation(); saveDraft(); stopStreams(); composer = null; relay = relayId; selected = JSONObject(agent.toString()); runPresentation.clear(); terminalHistoryLines = 500; terminalHasMore = true; terminalHistoryMessage = ""; terminalSavedY = 0; terminalFollowing = true; terminalScroll = null; loadingOlderTerminal = false; terminalReadPending = false; expandedToolGroups.clear(); expandedToolItems.clear(); conversationImages.clear(); mode = "conversation"; conversation = if (agent.optString("binding_state") == "conflict") ConversationState() else conversationCache.get(WorkspaceBinding.fromAgent(relayId, agent)) ?: ConversationState(); resumeOlderAfterReconnect = false; historyMessage = ""; attachments = JSONArray(); content = ""; fingerprint = ""; frame = JSONObject(); uploading = false; uiDraft = vault.read(draftKey()).orEmpty(); if (active) render() }
     private fun name(agent: JSONObject) = AgentPresentation.title(agent)
     private fun current(): JSONObject? { val captured = selected ?: return null; val rows = inventory()[relay] ?: return null; return (0 until rows.length()).map { rows.getJSONObject(it) }.find { WorkspaceBinding.fromAgent(relay, it) == WorkspaceBinding.fromAgent(relay, captured) } }
     private fun role(id: String = relay) = engine.snapshot().optJSONObject("auth")?.optJSONObject("relays")?.optJSONObject(id)?.optString("role") ?: "reader"
@@ -146,6 +146,7 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
         main.removeCallbacks(runTicker); runRequest++; runPending = false; runPresentation.invalidate(); updateRunStatus()
         epoch++; historyRequest++; historyPending = false; historyProgress = null; updateHistoryControl(); terminalReadPending = false; loadingOlderTerminal = false; updateTerminalControls()
         selected?.let { engine.send(relay, AgentProtocol.command(relay, it, "unwatch_pane")); if (conversation.subscription.isNotBlank()) engine.send(relay, AgentProtocol.command(relay, it, "unwatch_conversation").put("subscription_id", conversation.subscription)); engine.send(relay, AgentProtocol.command(relay, it, "release_pane_size").put("immediate", true)) }
+        conversation.prepareRefresh()
     }
     fun onEvent(event: JSONObject) {
         val id = event.optString("relayId")
@@ -180,15 +181,22 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
                 if (selected == null) renderList() else if (id == relay) {
                     val captured = selected!!
                     val rows = inventory()[relay] ?: JSONArray()
-                    val updated = (0 until rows.length()).map { rows.getJSONObject(it) }.find { PrimarySessionBinding.sameIdentity(relay, captured, it) || PrimarySessionBinding.initialDiscovery(relay, captured, it) }
-                    if (updated == null) { stopStreams(); stateLabel?.text = "此 Agent 会话已被替换。请返回列表重新打开。"; sendButton?.isEnabled = false }
+                    val updated = (0 until rows.length()).map { rows.getJSONObject(it) }.singleOrNull { PrimarySessionBinding.sameIdentity(relay, captured, it) }
+                    if (updated == null) {
+                        val replacement = (0 until rows.length()).map { rows.getJSONObject(it) }.singleOrNull { PrimarySessionBinding.relayReplacement(relay, captured, it) }
+                        if (replacement != null) { open(relay, replacement); return }
+                        rememberConversation(); saveDraft(); stopStreams(); conversation = ConversationState(); renderConversation()
+                        stateLabel?.text = "此 Agent 会话已被替换。请返回列表重新打开。"; sendButton?.isEnabled = false
+                    }
                     else {
                         val leaseChanged = captured.optLong("binding_epoch") != updated.optLong("binding_epoch")
                         if (leaseChanged) { rememberConversation(); saveDraft(); stopStreams() }
                         if (selected?.optString("status") != updated.optString("status") || selected?.optString("attention_kind") != updated.optString("attention_kind")) {
                             runPresentation.invalidate(); runSignal++; runRefreshAt = 0
                         }
-                        selected = JSONObject(updated.toString()); updateIdentity(); updateInteraction(); updateSendState()
+                        selected = JSONObject(updated.toString())
+                        if (updated.optString("binding_state") == "conflict") { conversation = ConversationState(); renderConversation() }
+                        updateIdentity(); updateInteraction(); updateSendState()
                         if (leaseChanged) startStreams()
                     }
                     updateImageAvailability(); updateRunStatus()
@@ -408,11 +416,11 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
     private fun conversationOptions() {
         val items = if (mode == "conversation") arrayOf("重命名 Agent", "模型 / 思考强度", "在此工作空间新建 Agent", "更早消息", "搜索 / 复制", "刷新", "管理 Agent") else arrayOf("重命名 Agent", "模型 / 思考强度", "在此工作空间新建 Agent", "字号 ＋", "字号 −", "搜索 / 复制", "刷新", "管理 Agent")
         val choices = items + arrayOf(selected?.let { MonitorSettingsUi.muteLabel(context, relay, it) }.orEmpty(), "常驻监控设置") +
-            if (!selected?.optString("binding_state").isNullOrBlank()) arrayOf("会话绑定诊断") else emptyArray()
+            if (selected?.optString("agent") == "codex") arrayOf("会话绑定诊断") else emptyArray()
         AlertDialog.Builder(context).setItems(choices) { _, index -> when (choices[index]) {
             "关闭此 Agent 完成提醒", "开启此 Agent 完成提醒" -> selected?.let { MonitorSettingsUi.toggle(context, relay, it) }
             "常驻监控设置" -> monitoring()
-            "会话绑定诊断" -> selected?.let { agent -> showText("会话绑定诊断", listOf(PrimarySessionBinding.label(agent), "原因：${agent.optString("binding_reason").ifBlank { "无" }}", "终端：${agent.optString("terminal_id")}", "${if (agent.optString("binding_state") in setOf("history_only", "pinned_history")) "历史会话" else "主会话"}：${agent.optString("agent_session_id").take(12)}", "身份代次：${agent.optLong("generation")} · 请求代次：${agent.optLong("binding_epoch")}").joinToString("\n")) }
+            "会话绑定诊断" -> showBindingDiagnostics()
             "重命名 Agent" -> selected?.let { renameAgent(relay, JSONObject(it.toString())) }
             "模型 / 思考强度" -> selected?.let { modelSettings(relay, JSONObject(it.toString())) }
             "在此工作空间新建 Agent" -> selected?.let { launchInWorkspace(relay, it.optString("workspace_id"), AgentPresentation.server(it)) }
@@ -420,6 +428,25 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
             "字号 ＋" -> terminal?.fontSize(1); "字号 −" -> terminal?.fontSize(-1); "管理 Agent" -> manageAgent()
         } }.show()
     }
+    private fun showBindingDiagnostics() {
+        val agent = current() ?: run { toast("会话已变化，请刷新后重试"); return }
+        if (!capability(SessionBindingDiagnostics.CAPABILITY)) {
+            showText("会话绑定诊断", "此 Relay 未提供诊断接口，请升级 Relay 后重试。")
+            return
+        }
+        val owner = epoch
+        request(SessionBindingDiagnostics.ACTION, timeout = 8000) { data, error ->
+            if (!active || owner != epoch) return@request
+            if (error != null || data == null) {
+                showText("会话绑定诊断", error ?: "诊断数据暂不可用，请稍后重试。")
+            } else {
+                val text = runCatching { SessionBindingDiagnostics.render(relay, agent, data) }
+                    .getOrElse { "诊断响应与当前会话不匹配或格式无效，请刷新后重试。" }
+                showText("会话绑定诊断", text)
+            }
+        }
+    }
+
     private fun updateSendState() {
         updateTerminalControls()
         val available = writable() && !inputPending && !uploading && !uncertain && !loadingOlderTerminal

@@ -56,6 +56,27 @@ class AgentRunPresentationTest {
         assertThrows(IllegalArgumentException::class.java) { AgentRunPresentation().accept(sample("done", 1000, true), 0) }
         assertEquals("25:01:01", AgentRunPresentation.duration(90061000)); assertEquals("00:00", AgentRunPresentation.duration(0))
     }
+    @Test fun unconfirmedPrimaryIsNotARetryableTransportFailure() {
+        val p = AgentRunPresentation()
+        val unknown = JSONObject().put("status", "unknown").put("source", "unverified_primary").put("timing", "unknown")
+        p.accept(unknown, 1000)
+        assertEquals("主会话待确认", show(p).headline)
+        assertEquals("", show(p).timer); assertFalse(show(p).spinning)
+        assertFalse(show(p).detail.contains("重试"))
+        assertThrows(IllegalArgumentException::class.java) { p.accept(JSONObject(unknown.toString()).put("status", "working"), 1000) }
+        assertThrows(IllegalArgumentException::class.java) { p.accept(JSONObject(unknown.toString()).put("elapsed_ms", 1), 1000) }
+    }
+    @Test fun losingPrimaryNeverShowsCachedLiveTimingOrFailureBanner() {
+        val p = AgentRunPresentation(); p.accept(sample("working", 12000, true), 1000)
+        val history = JSONObject(agent.toString()).put("binding_state", "verifying")
+        assertEquals("主会话待确认", show(p, exact = history).headline)
+        assertEquals("", show(p, exact = history).timer); assertFalse(show(p, exact = history).spinning)
+        p.clear(); p.failed()
+        assertEquals("主会话待确认", show(p, exact = history).headline)
+        assertEquals("连接中断", show(p, online = false, exact = history).headline)
+        p.accept(sample("idle", 0, false), 2000)
+        assertEquals("空闲", show(p, 2000).headline)
+    }
     companion object {
         fun sample(status: String, elapsed: Long, ticking: Boolean) = JSONObject().put("status", status).put("source", "codex_runtime")
             .put("turn_id", "turn-a").put("timing", "turn_elapsed").put("elapsed_ms", elapsed).put("ticking", ticking).put("observed_at", 1700000000000L)

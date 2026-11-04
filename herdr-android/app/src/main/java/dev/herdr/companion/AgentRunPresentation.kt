@@ -14,7 +14,8 @@ class AgentRunPresentation {
     fun failed() { failedRead = true }
     fun invalidate() { stale = true }
     fun accept(value: JSONObject, monotonicNow: Long) {
-        require(value.optString("status").length <= 64 && value.optString("source") in listOf("codex_runtime", "herdr"))
+        require(value.optString("status").length <= 64 && value.optString("source") in listOf("codex_runtime", "herdr", "unverified_primary"))
+        if (value.optString("source") == "unverified_primary") require(value.optString("status") == "unknown" && !value.optBoolean("ticking") && value.isNull("elapsed_ms"))
         val elapsed = if (value.isNull("elapsed_ms")) null else value.optLong("elapsed_ms", -1)
         require(elapsed == null || elapsed in 0..MAX_DURATION)
         require(!value.optBoolean("ticking") || value.optString("status") in listOf("working", "blocked"))
@@ -28,6 +29,8 @@ class AgentRunPresentation {
         if (!online) return Display("连接中断", last, "无法确认 Agent 是否仍在运行；重连后校准计时", "muted")
         if (!inventoryReady) return Display("正在同步状态", last, "等待电脑确认，不把历史加载当成 Agent 运行", "muted")
         if (agent == null) return Display("会话已结束或被替换", "", "请返回列表重新打开，旧计时已失效", "muted")
+        if (agent.optString("agent") == "codex" && agent.optString("binding_state").isNotBlank() && agent.optString("binding_state") != "verified") return Display("主会话待确认", "", PrimarySessionBinding.label(agent), "muted")
+        if (agent.optString("agent") == "codex" && value?.optString("source") == "unverified_primary") return Display("主会话待确认", "", "未能确认终端对应的 Codex 主会话，不猜选其他线程", "muted")
         if (value != null && (stale || age > FRESH_MS)) return Display("运行状态待确认", last, "等待刷新；不再继续推算运行时长", "muted")
         if (value == null && failedRead && expectsRuntime) return Display("运行状态暂不可用", "", "未取得可靠状态，稍后自动重试或点按刷新", "muted")
         if (value == null && expectsRuntime) return Display("正在确认运行状态", "", "正在读取当前会话，不读取整段历史", "muted")

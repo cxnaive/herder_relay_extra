@@ -1,10 +1,13 @@
 package app
 
 import (
+	"errors"
 	"path/filepath"
 
 	"github.com/0cv/herdr-mobile-relay/internal/herdr"
 )
+
+var errCodexProcessStart = errors.New("Codex process identity unavailable")
 
 func codexForegroundProcess(info *herdr.PaneProcessInfo, pane string) (herdr.PaneProcess, error) {
 	if _, err := foregroundRoot(info, pane); err == nil {

@@ -154,7 +154,7 @@
   });
   const dispatchBlocked = $derived(promptDispatchRestriction(agent, screenPickerActive));
   const noEchoActive = $derived(Boolean(frame?.paneId === agent.pane_id && frame?.noEcho));
-  const inputPlaceholder = $derived(readOnly ? 'Read only' : 'Type a reply…');
+  const inputPlaceholder = $derived(readOnly ? (agent.agent === 'codex' && agent.binding_state && agent.binding_state !== 'verified' ? 'Primary session unverified' : 'Reader access is read only') : 'Type a reply…');
   function matchesSearch(entry: ConversationEntry, needle: string): boolean {
     return `${entry.text} ${(entry.tools || []).map(tool => `${tool.name} ${tool.input || ''} ${tool.output || ''}`).join(' ')}`.toLocaleLowerCase().includes(needle);
   }
