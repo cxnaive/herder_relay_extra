@@ -11,6 +11,7 @@
 - 诊断接口专项 race 通过，覆盖 reader/controller 权限、匿名拒绝、过期目标、未确认状态只读、复杂字段与大小限制。Android 真实 TCP/E2EE UI 测试确认只获取诊断，不读历史、不选择候选、不写入主绑定。
 - app / codexruntime / conversation / coordinator 关键包 race 通过；随后运行模式切换与旧状态回退保护的 app 专项 race 通过。
 - Android `:app:testDebugUnitTest`：311 tests，0 failures，0 errors；测试生成的五张已有 QA 图片已按测试前字节恢复。
+- 追加 13 个 Chromium 真实 Relay 联调用例通过：静态 Codex 截图不能代替 runtime 绑定；未确认时仅显示终端、不开审批/输入。通用表单与不确定投递恢复继续用非 Codex 捕获场景验证，没有放宽生产身份校验。
 - `make web-release` 通过：前端 60 个测试文件、1308 tests，类型检查 0 errors / 0 warnings；`frontend/dist` 与 `web/` 一致，gzip 初始负载 171837 / 172032 bytes（build 486）。
 - 本机只读核对 7 个 Codex 终端：6 个主会话确认成功，历史与运行状态可读；其中多个没有 Herdr 上报。1 个仍为多根且无上报，按规则保留未确认状态，没有猜选。真实 ID/对话不进入仓库测试。
 - 以上为源码测试记录；正式版本及 CI 来源以 README 下载区和 VERSION.json 的发行记录为准。未进行手机真机或完整浏览器/Appium 设备验收；之前的临时状态栏、动态探针和 `/status` 研究不作为本方案能力。

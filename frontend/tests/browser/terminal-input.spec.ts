@@ -145,9 +145,11 @@ test('literal input stays explicit in Terminal through reconnect and target swit
   expect((await mutations()).length).toBe(beforeMode);
 });
 
+// Generic terminal-input behavior uses non-Codex captures. A static Codex screen
+// cannot supply the live binding required for input; attention-relay covers that fence.
 test('Terminal question forms retain an editable draft and keyboard-accessible manual escape', async ({ page }) => {
   await bootController(page);
-  for (const target of ['codex-notes', 'claude-multi-select']) {
+  for (const target of ['claude-later-question', 'claude-multi-select']) {
     await openDialog(page, target);
     const terminal = button(page, 'Terminal view');
     if (await terminal.isVisible()) await terminal.click();
@@ -174,7 +176,7 @@ const manualViews: string[] = ['Terminal'];
 for (const view of manualViews) {
   test(`${view} can leave uncertain delivery without replay or losing the send guard`, async ({ page }) => {
     await bootController(page);
-    const target = view === 'Conversation' ? 'arbitrary-dialog' : 'codex-notes';
+    const target = view === 'Conversation' ? 'arbitrary-dialog' : 'claude-later-question';
     await openDialog(page, target);
     const switchView = button(page, `${view} view`);
     if (await switchView.isVisible()) await switchView.click();
@@ -225,7 +227,7 @@ for (const view of manualViews) {
 for (const view of manualViews) {
   test(`${view} preserves the uncertainty fence across same-target cwd changes`, async ({ page }) => {
     await bootController(page);
-    const target = view === 'Conversation' ? 'arbitrary-dialog' : 'codex-notes';
+    const target = view === 'Conversation' ? 'arbitrary-dialog' : 'claude-later-question';
     await openDialog(page, target);
     const switchView = button(page, `${view} view`);
     if (await switchView.isVisible()) await switchView.click();

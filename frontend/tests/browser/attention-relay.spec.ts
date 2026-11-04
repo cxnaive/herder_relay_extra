@@ -21,10 +21,10 @@ test.afterEach(async ({ page }) => {
 
 interface FakeOperation {
   argv?: string[];
+  params?: { pane_id?: string };
 }
 
-async function operations(): Promise<FakeOperation[]> {
-  const path = process.env.HERDR_ATTENTION_OPERATIONS;
+async function operations(path = process.env.HERDR_ATTENTION_OPERATIONS): Promise<FakeOperation[]> {
   if (!path) throw new Error('HERDR_ATTENTION_OPERATIONS is not configured');
   try {
     const content = await readFile(path, 'utf8');
@@ -81,49 +81,22 @@ test('drives captured attention panes through the real relay', async ({ page }) 
   await expect(page.getByRole('button', { name: 'Enter', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Back' }).click();
 
-  await page.getByRole('button', { name: /Open codex-notes on Captured relay/ }).click();
-  await expect(page.getByRole('group', {
-    name: 'What Everest trip are you planning?',
-  })).toBeVisible();
-  await expect(page.getByRole('radio', { name: 'None of the above' })).toBeChecked();
-  await expect(page.getByRole('textbox', { name: 'Optional notes' })).toHaveValue('And then skiing down');
-  await page.getByRole('button', { name: 'Back' }).click();
-
-  await page.getByRole('button', { name: /Open codex-final-question on Captured relay/ }).click();
-  await expect(page.getByRole('group', {
-    name: 'What should be in the file initially?',
-  })).toBeVisible();
-  await expect(page.getByText('Question 2 of 2')).toBeVisible();
-  await expect(page.getByRole('radio', { name: /Empty file \(Recommended\)/ })).toBeVisible();
-  await expect(page.getByRole('button', { name: '← Previous' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Submit', exact: true })).toBeDisabled();
-  await page.getByRole('button', { name: 'Back' }).click();
-
-  await page.getByRole('button', { name: /Open codex-single-question on Captured relay/ }).click();
-  await expect(page.getByRole('group', {
-    name: 'Please confirm exact file spec now: path/name and initial content.',
-  })).toBeVisible();
-  await expect(page.getByText('Question 1 of 1')).toBeVisible();
-  await expect(page.getByRole('radio', {
-    name: /Use default: \/workspace\/project\/tmp\/tmp_random_note\.txt with empty content/,
-  })).toBeVisible();
-  await expect(page.getByText(
-    'Proceed with a safe default so we can finalize the file-create plan immediately.',
-    { exact: true },
-  )).toBeVisible();
-  await expect(page.getByRole('button', { name: '← Previous' })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Back' }).click();
-
-  await page.getByRole('button', { name: /Open codex-plan-approval on Captured relay/ }).click();
-  await expect(page.getByRole('button', {
-    name: 'Yes, implement this plan Switch to Default and start coding.',
-    exact: true,
-  })).toBeVisible();
-  await expect(page.getByRole('button', {
-    name: 'No, stay in Plan mode Continue planning with the model.',
-    exact: true,
-  })).toBeVisible();
-  await page.getByRole('button', { name: 'Back' }).click();
+  // These are captured screens, not running Codex TUIs: no PID/runtime proof is
+  // supplied. Captured text must not grant approval or input authority. Positive
+  // Codex question rendering/parsing is covered by component and Go parser tests.
+  const unverified = ['codex-notes', 'codex-final-question', 'codex-single-question', 'codex-plan-approval'];
+  for (const pane of unverified) {
+    await page.getByRole('button', { name: `Open ${pane} on Captured relay`, exact: true }).click();
+    await expect(page.getByRole('status').filter({ hasText: 'Codex primary session is unverified' })).toBeVisible();
+    await expect(page.getByRole('log', { name: 'Agent terminal output' })).not.toBeEmpty();
+    await expect(page.locator('.question-form')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Keyboard', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Yes, implement this plan Switch to Default and start coding.', exact: true })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Back' }).click();
+  }
+  expect((await operations()).filter(operation => unverified.includes(operation.argv?.[2] || '') && ['send-keys', 'send-text', 'send-input'].includes(operation.argv?.[1] || ''))).toEqual([]);
+  expect(process.env.HERDR_ATTENTION_INPUT_OPERATIONS).toBeTruthy();
+  expect((await operations(process.env.HERDR_ATTENTION_INPUT_OPERATIONS)).filter(operation => unverified.includes(operation.params?.pane_id || ''))).toEqual([]);
 
   await page.getByRole('button', { name: /Open omp-plan-approval on Captured relay/ }).click();
   await expect(page.getByRole('button', { name: 'Approve and execute', exact: true })).toBeVisible();
