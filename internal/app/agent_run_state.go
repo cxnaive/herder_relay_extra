@@ -30,6 +30,9 @@ func (s *Server) agentRunState(ctx context.Context, in protocol.Inbound) (codexr
 	if agent.Agent != "codex" {
 		return fallback, nil
 	}
+	if agent.BindingState == "history_only" {
+		return codexruntime.RunState{Status: "unknown", Source: "unverified_primary", ObservedAt: time.Now().UnixMilli(), Timing: "unknown"}, nil
+	}
 	select {
 	case runStateSlots <- struct{}{}:
 		defer func() { <-runStateSlots }()

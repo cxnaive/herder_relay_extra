@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { bindingReadOnlyNotice } from '../../src/lib/primary-session-binding';
 import { normalizeFrontendTargetRef, targetRefForAgent, targetRefMatchesAgent, targetIdentityMatchesAgent, targetStoreKey } from '../../src/lib/resource-id';
 
 const agent = { relay_id: 'computer', raw_pane_id: 'pane', server_session_id: 'primary', terminal_id: 'terminal', generation: 3, agent_session_id: 'thread', binding_epoch: 1 };
@@ -18,5 +19,16 @@ describe('primary session lease', () => {
     expect(normalizeFrontendTargetRef({ ...target, binding_epoch: -1 })).toBeNull();
     expect(normalizeFrontendTargetRef({ ...target, binding_epoch: 2 ** 53 })).toBeNull();
     expect(targetRefMatchesAgent({ ...target, binding_epoch: undefined }, agent)).toBe(false);
+  });
+});
+
+describe('read-only session explanation', () => {
+  it('never tells a controller to change devices to operate unconfirmed history', () => {
+    expect(bindingReadOnlyNotice({ binding_state: 'history_only' })).toContain('Associated history only');
+    expect(bindingReadOnlyNotice({ binding_state: 'history_only' })).toContain('unconfirmed');
+    for (const state of ['history_only', 'pinned_history', 'ambiguous', 'stale']) {
+      expect(bindingReadOnlyNotice({ binding_state: state })).not.toContain('controller device');
+    }
+    expect(bindingReadOnlyNotice({ binding_state: 'verified' })).toContain('controller device');
   });
 });

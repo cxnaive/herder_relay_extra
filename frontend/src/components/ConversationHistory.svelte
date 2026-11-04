@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { bindingReadOnlyNotice } from '$lib/primary-session-binding';
   import { onDestroy, onMount, tick, untrack } from 'svelte';
   import PromptComposer from '$components/PromptComposer.svelte';
   import AgentInteraction from '$components/AgentInteraction.svelte';
@@ -153,7 +154,7 @@
   });
   const dispatchBlocked = $derived(promptDispatchRestriction(agent, screenPickerActive));
   const noEchoActive = $derived(Boolean(frame?.paneId === agent.pane_id && frame?.noEcho));
-  const inputPlaceholder = $derived(readOnly ? 'Reader access is read only' : 'Type a reply…');
+  const inputPlaceholder = $derived(readOnly ? 'Read only' : 'Type a reply…');
   function matchesSearch(entry: ConversationEntry, needle: string): boolean {
     return `${entry.text} ${(entry.tools || []).map(tool => `${tool.name} ${tool.input || ''} ${tool.output || ''}`).join(' ')}`.toLocaleLowerCase().includes(needle);
   }
@@ -721,7 +722,7 @@
   </header>
   {#if liveStatusText}<p class="conversation-source-status" role="status">{liveStatusText}</p>{/if}
   {#if readOnly}
-    <p class="conversation-warning" role="status">Reader access is read only. Use a controller device to reply.</p>
+    <p class="conversation-warning" role="status">{bindingReadOnlyNotice(agent)}</p>
   {/if}
   {#if previewVisible && previewHistorical && !authoritative}
     <p class="conversation-warning" role="status">Saved history is shown while current messages are checked.</p>
@@ -875,7 +876,7 @@
         placeholder={inputPlaceholder} onsubmitted={() => { historyController?.refresh(); }} />
     {/key}
     {#if readOnly}
-      <p class="conversation-composer-status" role="status">Reader access is read only. Use a controller device to send input or answer prompts.</p>
+      <p class="conversation-composer-status" role="status">{bindingReadOnlyNotice(agent)}</p>
     {/if}
   </div>
 </main>

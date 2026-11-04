@@ -24,16 +24,19 @@ var errUnavailable = errors.New("Codex runtime identity unavailable or ambiguous
 var threadID = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 type Thread struct {
-	ID             string          `json:"id"`
-	CWD            string          `json:"cwd"`
-	Name           string          `json:"name"`
-	Originator     string          `json:"originator"`
-	SessionID      string          `json:"sessionId"`
-	ParentThreadID string          `json:"parentThreadId"`
-	ForkedFromID   string          `json:"forkedFromId"`
-	Source         json.RawMessage `json:"source"`
-	Status         runtimeStatus   `json:"status"`
-	Unavailable    string          `json:"-"`
+	ID                string          `json:"id"`
+	Path              string          `json:"path"`
+	CWD               string          `json:"cwd"`
+	Name              string          `json:"name"`
+	Originator        string          `json:"originator"`
+	SessionID         string          `json:"sessionId"`
+	ParentThreadID    string          `json:"parentThreadId"`
+	ForkedFromID      string          `json:"forkedFromId"`
+	Source            json.RawMessage `json:"source"`
+	Status            runtimeStatus   `json:"status"`
+	Unavailable       string          `json:"-"`
+	HistoryState      HistoryState    `json:"-"`
+	HistoryCandidates []Thread        `json:"-"`
 }
 
 type rpc struct {
@@ -59,7 +62,11 @@ func (r *rpc) call(ctx context.Context, method string, params, result any) error
 			continue
 		}
 		if len(msg.Error) > 0 && string(msg.Error) != "null" {
-			return errUnavailable
+			var failure rpcError
+			if json.Unmarshal(msg.Error, &failure) != nil {
+				return errUnavailable
+			}
+			return &failure
 		}
 		if len(msg.Result) == 0 {
 			return errUnavailable
@@ -155,6 +162,7 @@ func (r *rpc) associations(ctx context.Context) (map[string][]association, error
 
 // Discover resolves origins with exactly one connected loaded thread. An empty
 // Thread marks an ambiguous/unusable origin, including across configured daemons.
+// Such an origin may expose separately checked history candidates, never a primary ID.
 func Discover(ctx context.Context, socket string, wanted map[string]bool) (map[string]Thread, error) {
 	transport := &http.Transport{Proxy: nil, DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 		return (&net.Dialer{}).DialContext(ctx, "unix", socket)
@@ -203,7 +211,11 @@ func Discover(ctx context.Context, socket string, wanted map[string]bool) (map[s
 			// A proven child starting or ending does not replace its primary.
 			result[origin] = current
 		case before.ID == "" && current.ID == "":
-			result[origin] = current
+			if sameHistoryCandidates(before.HistoryCandidates, current.HistoryCandidates) {
+				result[origin] = current
+			} else {
+				result[origin] = Thread{Unavailable: "runtime_changed"}
+			}
 		default:
 			result[origin] = Thread{Unavailable: "runtime_changed"}
 		}
@@ -229,7 +241,11 @@ func (r *rpc) primaryForOrigin(ctx context.Context, ids []association) Thread {
 		}
 		metadata[id.ID] = response.Thread
 	}
-	return primaryThread(ids, metadata)
+	primary := primaryThread(ids, metadata)
+	if primary.Unavailable == "runtime_ambiguous" {
+		primary.HistoryCandidates = r.ambiguousHistoryCandidates(ctx, ids, metadata)
+	}
+	return primary
 }
 
 // Only explicit delegation relationships exclude a thread. Names, activity,
@@ -311,7 +327,7 @@ func primaryThread(ids []association, metadata map[string]Thread) Thread {
 	if !connected {
 		return unavailable("runtime_disconnected")
 	}
-	if root.Originator != "codex-tui" || root.CWD == "" || (root.SessionID != "" && root.SessionID != root.ID) {
+	if root.CWD == "" || (root.SessionID != "" && root.SessionID != root.ID) {
 		return unavailable("runtime_metadata_conflict")
 	}
 	return root

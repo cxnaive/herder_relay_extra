@@ -24,7 +24,9 @@ type codexBindingRegistry struct {
 	sequence uint64
 }
 
-func usableCodexBinding(state string) bool { return state == "verified" || state == "pinned_history" }
+func usableCodexBinding(state string) bool {
+	return state == "verified" || state == "pinned_history" || state == "history_only"
+}
 
 func (r *codexBindingRegistry) reconcile(agents []*coordinator.AgentState) {
 	r.mu.Lock()

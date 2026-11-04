@@ -30,6 +30,11 @@ export class ConversationLiveReader {
   get observing(): boolean { return Boolean(this.identity && this.abort); }
 
   observe(agent: Agent, page: ConversationPage): void {
+    if (agent.binding_state && agent.binding_state !== 'verified') {
+      this.stop();
+      this.options.onState('unavailable', []);
+      return;
+    }
     if (!this.active || !page.available || page.state !== 'ready' || !page.capabilities || !page.sourceRevision || !page.subscriptionId) return;
     const identity = `${conversationIdentity(agent)}:${page.sourceRevision}:${page.subscriptionId}`;
     if (identity === this.identity && this.abort && (page.sequence || 0) <= this.sequence) return;

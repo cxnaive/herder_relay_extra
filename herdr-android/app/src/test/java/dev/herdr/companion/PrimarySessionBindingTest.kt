@@ -56,4 +56,16 @@ class PrimarySessionBindingTest {
         assertFalse(PrimarySessionBinding.live(agent(state = "pinned_history")))
         assertTrue(PrimarySessionBinding.writable(agent()))
     }
+    @Test fun associatedHistoryIsReadableButNeverCurrentWritableOrLive() {
+        val history = agent(state = "history_only")
+        assertTrue(PrimarySessionBinding.readable(history))
+        assertFalse(PrimarySessionBinding.writable(history))
+        assertFalse(PrimarySessionBinding.live(history))
+        assertTrue(PrimarySessionBinding.label(history).contains("关联历史"))
+        assertTrue(PrimarySessionBinding.label(history).contains("主会话未确认"))
+        assertTrue(PrimarySessionBinding.sameIdentity("computer", agent(), history))
+        val waiting = agent(state = "ambiguous").put("agent_session_id", "")
+        assertTrue(PrimarySessionBinding.initialDiscovery("computer", waiting, history.put("generation", 4)))
+        assertFalse(PrimarySessionBinding.initialDiscovery("computer", waiting, history.put("terminal_id", "other")))
+    }
 }

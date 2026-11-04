@@ -122,3 +122,20 @@ describe('conversation live reducer', () => {
     h.reader.stop();
   });
 });
+
+describe('unconfirmed associated history', () => {
+  it('never subscribes to live updates and revokes a previous live subscription', async () => {
+    const h = harness();
+    const verified = { ...agent, agent: 'codex', binding_state: 'verified' };
+    h.reader.observe(verified, page);
+    expect(h.request).toHaveBeenCalledOnce();
+    h.reader.observe({ ...verified, binding_state: 'history_only' }, page);
+    expect(h.reader.observing).toBe(false);
+    expect(h.unsubscribe).toHaveBeenCalledWith(verified, 'sub-1');
+    await h.batch({ entries: [entry('stale-live')] });
+    expect(h.apply).not.toHaveBeenCalled();
+    expect(h.onState).toHaveBeenLastCalledWith('unavailable', []);
+    h.reader.observe({ ...verified, binding_state: 'history_only' }, page);
+    expect(h.request).toHaveBeenCalledOnce();
+  });
+});

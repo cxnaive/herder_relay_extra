@@ -2315,7 +2315,7 @@ func (s *Server) handleConversationHistory(client *transport.ClientConn, inbound
 	}
 	var page conversation.BrowsePage
 	var historyErr error
-	if inbound.Observe && agent.BindingState != "pinned_history" && supportsConversationActivity(agent.Agent) {
+	if inbound.Observe && (agent.BindingState == "" || agent.BindingState == "verified") && supportsConversationActivity(agent.Agent) {
 		page, historyErr = s.conversationFeedPage(client, inbound, agent)
 	} else {
 		page, historyErr = browser.ReadPage(client.Context(), conversation.BrowseRequest{

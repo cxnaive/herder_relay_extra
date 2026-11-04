@@ -20,6 +20,7 @@ import (
 )
 
 const codexRuntimeSource = "codex-tui-runtime:"
+const codexHistorySource = "codex-associated-history:"
 
 type codexRuntimeProbe struct {
 	binding   codexSessionBinding
@@ -66,7 +67,7 @@ func codexRuntimeCandidate(probe codexRuntimeProbe, candidates map[string][]code
 		selected, origin = rows[0], addr
 	}
 	t := selected.thread
-	if origin == "" || !codexBindingID.MatchString(t.ID) || t.Originator != "codex-tui" || t.CWD != probe.binding.CWD || t.Delegated() {
+	if origin == "" || !codexBindingID.MatchString(t.ID) || t.CWD != probe.binding.CWD || t.Delegated() {
 		return codexRuntimeThread{}, "", false
 	}
 	return selected, origin, true
@@ -170,6 +171,11 @@ func (s *Server) observeCodexRuntime(ctx context.Context, agents []*coordinator.
 			}
 		}
 		chosen, origin, ok := codexRuntimeCandidate(probe, candidates)
+		historyOnly := false
+		if !ok {
+			chosen, origin, ok = s.codexAssociatedHistoryCandidate(probe, r.threads)
+			historyOnly = ok
+		}
 		if !ok {
 			obs.reason = reason
 			out[pane] = obs
@@ -177,7 +183,11 @@ func (s *Server) observeCodexRuntime(ctx context.Context, agents []*coordinator.
 		}
 		b := probe.binding
 		b.SessionID = chosen.thread.ID
+		b.HistoryOnly = historyOnly
 		b.Status = chosen.thread.AgentStatus()
+		if historyOnly {
+			b.Status = "unknown"
+		}
 		b.RuntimeInstance = r.instance
 		check, cancel := context.WithTimeout(ctx, time.Second)
 		valid := verifyCodexProcessBinding(check, s.herdrC, b, codexProcessStart, codexRuntimeBindingMatches)
@@ -268,8 +278,13 @@ func (s *Server) enrichCodexRuntime(ctx context.Context, agents []*coordinator.A
 		a.BindingRuntime = b.RuntimeInstance
 		a.BindingState = "verified"
 		a.BindingReason = ""
+		if b.HistoryOnly {
+			a.ConversationSource = codexHistorySource + b.SessionID
+			a.BindingState = "history_only"
+			a.BindingReason = "associated_history_primary_unconfirmed"
+		}
 		a.BindingVerifiedAt = time.Now().UnixMilli()
-		if reported.Value != "" && (reported.Value != b.SessionID || reported.Kind != "id" || (reported.Agent != "" && reported.Agent != "codex")) {
+		if !b.HistoryOnly && reported.Value != "" && (reported.Value != b.SessionID || reported.Kind != "id" || (reported.Agent != "" && reported.Agent != "codex")) {
 			a.BindingReason = "reported_session_conflict"
 		}
 		a.Status = b.Status
@@ -283,11 +298,11 @@ func (s *Server) codexRuntimeCurrent(ctx context.Context, agent *coordinator.Age
 	if agent.Agent != "codex" {
 		return true
 	}
-	if !codexProcessProofSupported() && agent.BindingState == "" && !strings.HasPrefix(agent.ConversationSource, codexRuntimeSource) {
+	if !codexProcessProofSupported() && agent.BindingState == "" && !strings.HasPrefix(agent.ConversationSource, codexRuntimeSource) && !strings.HasPrefix(agent.ConversationSource, codexHistorySource) {
 		return true
 	}
 
-	if agent.BindingState != "" && agent.BindingState != "verified" && agent.BindingState != "pinned_history" {
+	if agent.BindingState != "" && !usableCodexBinding(agent.BindingState) {
 		return false
 	}
 	if !s.codexBindings.current(agent) {
@@ -299,14 +314,16 @@ func (s *Server) codexRuntimeCurrent(ctx context.Context, agent *coordinator.Age
 	if strings.HasPrefix(agent.ConversationSource, codexBindingSource) {
 		return true
 	}
-	if !strings.HasPrefix(agent.ConversationSource, codexRuntimeSource) {
+	if !strings.HasPrefix(agent.ConversationSource, codexRuntimeSource) && !strings.HasPrefix(agent.ConversationSource, codexHistorySource) {
 		if s.home != "" && s.herdrC != nil {
 			return false
 		}
 		return s.conversationM == nil || agent.SessionID == "" || s.conversationM.CodexSessionProjectMatches(agent.Cwd, agent.SessionID)
 	}
 	b, ok := s.resolveCodexRuntime(ctx, []*coordinator.AgentState{agent})[agent.PaneID]
-	valid := ok && b.SessionID == agent.SessionID && b.ProcessStart == agent.ConversationProcess && (agent.BindingRuntime == "" || agent.BindingRuntime == b.RuntimeInstance) && (agent.BindingStoreID == "" || agent.BindingStoreID == codexStoreID(b.Root))
+	valid := ok && b.HistoryOnly == (agent.BindingState == "history_only") &&
+		strings.HasPrefix(agent.ConversationSource, codexHistorySource) == b.HistoryOnly &&
+		b.SessionID == agent.SessionID && b.ProcessStart == agent.ConversationProcess && (agent.BindingRuntime == "" || agent.BindingRuntime == b.RuntimeInstance) && (agent.BindingStoreID == "" || agent.BindingStoreID == codexStoreID(b.Root))
 	if !valid {
 		s.codexBindings.invalidate(agent)
 		if s.poller != nil {

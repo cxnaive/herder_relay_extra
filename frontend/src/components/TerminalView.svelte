@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { bindingReadOnlyNotice } from '$lib/primary-session-binding';
   import { onDestroy, onMount, tick, untrack } from 'svelte';
   import PromptComposer from '$components/PromptComposer.svelte';
   import TerminalKeys, { type QueuedKeyCommand } from '$components/TerminalKeys.svelte';
@@ -1549,7 +1550,7 @@
   aria-label={`${questionMode ? 'Questions' : 'Terminal'} for ${agent.project || agent.name || agent.agent || 'agent'}`}
 >
   {#if readOnly}
-    <p class="key-feedback" role="status">Reader access is read only. Use a controller device to send input or answer prompts.</p>
+    <p class="key-feedback" role="status">{bindingReadOnlyNotice(agent)}</p>
   {/if}
   {#if questionMode && interaction && !manualInput}
     <AgentInteraction {agent} {readOnly} responding={responding.has(agent.pane_id)} blocked={inputBlocked} />

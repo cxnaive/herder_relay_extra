@@ -29,9 +29,39 @@ The additive `primary_session_binding_v1` capability advertises the state/lease 
 | `verifying` | Not yet available | Denied |
 | `stale` | Existing client cache only, explicitly labelled | Denied |
 | `ambiguous` / `conflict` | No candidate history; old cache retains its old identity | Denied |
+| `history_only` | The single independently verified associated history, explicitly not the current primary | Denied |
 | `pinned_history` | Existing operator-selected history after independent revalidation | Denied |
 
 Existing local pin files are retained, not rewritten. Their terminal/process/store/title fences are still checked. Pins are a read-only historical fallback, not proof that sending input to the live terminal would reach that thread. This change does not add a new general-purpose history picker or manage subagent conversations.
+
+## Associated history without a proved primary
+
+A connected loaded thread is not necessarily a persisted conversation. On supported
+runtimes, bounded `thread/turns/list` metadata distinguishes readable persisted
+history from the explicit pre-first-user-message unmaterialized response. Unknown
+errors, disconnected associations, incomplete inventories and materialization
+changes across the two observations remain unavailable.
+
+For a single process-owned endpoint, exactly one persisted root plus explicitly
+unmaterialized roots may yield `history_only`. The Relay also verifies the real
+rollout, header ID/cwd, canonical provider root and declared runtime path. Pending
+paths must remain absent and inside the same store; a second persisted history or
+any contradictory/unknown evidence is not silently discarded. Names, timestamps,
+`has_user_event` and file absence alone never resolve a primary.
+
+Existing independently valid manual history pins take precedence over this automatic
+history hint, but not over a verified live primary.
+
+This is an associated-history view, **not** a writable-primary binding. A legitimate
+new empty thread may be selected in the TUI. Inputs, approvals, settings mutations,
+live subscriptions and completion notifications therefore remain disabled. Each
+read revalidates process/endpoint/store/history scope and the binding lease; loss
+of that scope retains only labelled client cache. Android and web explain this
+state instead of telling a controller to change devices.
+
+`originator` describes the historical creator (for example Codex Desktop), not
+the currently executing process. Native-process proof and exact ownership fences,
+not that creator string, decide whether a runtime association belongs to a pane.
 
 ## History, UI and commands
 

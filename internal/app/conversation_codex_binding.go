@@ -19,6 +19,7 @@ import (
 // search. They are fenced to one terminal, foreground process and OS boot.
 type codexSessionBinding struct {
 	Root            string `json:"-"`
+	HistoryOnly     bool   `json:"-"`
 	Status          string `json:"-"`
 	RuntimeInstance string `json:"-"`
 	PaneID          string `json:"pane_id"`
@@ -118,6 +119,12 @@ func verifyCodexProcessBinding(ctx context.Context, reader codexBindingReader, b
 	return err == nil && after == start && ctx.Err() == nil
 }
 
+// An explicit valid history pin takes precedence over an automatic history hint,
+// but never overrides a verified live primary.
+func codexHistoryMayUsePin(agent *coordinator.AgentState) bool {
+	return strings.TrimSpace(agent.Session) == "" || agent.BindingState == "history_only"
+}
+
 func (s *Server) enrichCodexBindings(ctx context.Context, agents []*coordinator.AgentState) {
 	if s.cfg == nil {
 		return
@@ -129,7 +136,7 @@ func (s *Server) enrichCodexBindings(ctx context.Context, agents []*coordinator.
 	check, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	for _, agent := range agents {
-		if agent.Agent != "codex" || strings.TrimSpace(agent.Session) != "" || (agent.ServerSessionID != "" && agent.ServerSessionID != "primary") {
+		if agent.Agent != "codex" || !codexHistoryMayUsePin(agent) || (agent.ServerSessionID != "" && agent.ServerSessionID != "primary") {
 			continue
 		}
 		for _, b := range bindings {

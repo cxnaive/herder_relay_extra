@@ -25,6 +25,9 @@ const originA = "http://127.0.0.1:46223"
 const originB = "http://127.0.0.1:46224"
 
 type fixture struct {
+	unmaterialized   map[string]bool
+	historyError     bool
+	materializes     bool
 	childAppears     bool
 	metadata         map[string]Thread
 	paginated        bool
@@ -131,6 +134,24 @@ func runtimeServer(t *testing.T, f fixture) string {
 				result = map[string]any{"data": rows, "nextCursor": nil}
 				if f.statusError {
 					failure = map[string]any{"code": -1, "message": "unavailable"}
+				}
+			case "thread/turns/list":
+				var p struct {
+					ThreadID      string `json:"threadId"`
+					ItemsView     string `json:"itemsView"`
+					SortDirection string `json:"sortDirection"`
+					Limit         int    `json:"limit"`
+				}
+				if json.Unmarshal(q.Params, &p) != nil || p.ItemsView != "notLoaded" || p.SortDirection != "desc" || p.Limit != 1 {
+					t.Error("history availability must request bounded metadata only")
+					return
+				}
+				result = map[string]any{"data": []any{map[string]any{"itemsView": "notLoaded"}}}
+				if f.unmaterialized[p.ThreadID] && !(f.materializes && scans > 1) {
+					failure = map[string]any{"code": -32600, "message": fmt.Sprintf("thread %s is not materialized yet; thread/turns/list is unavailable before first user message", p.ThreadID)}
+				}
+				if f.historyError {
+					failure = map[string]any{"code": -32600, "message": "some unrelated failure"}
 				}
 			case "thread/read":
 				var p struct {
@@ -290,5 +311,56 @@ func TestDiscoverChildLifecycleDoesNotInvalidateStablePrimary(t *testing.T) {
 	rows, err = Discover(t.Context(), runtimeServer(t, f), map[string]bool{originA: true})
 	if err == nil && rows[originA].ID != "" {
 		t.Fatal("new unrelated thread was ignored")
+	}
+}
+
+func TestDiscoverDesktopHistoryAndUnmaterializedRootStayNonWritable(t *testing.T) {
+	a := Thread{ID: idA, SessionID: idA, CWD: "/project", Path: "/store/a.jsonl", Originator: "Codex Desktop"}
+	b := Thread{ID: idB, SessionID: idB, CWD: "/project", Path: "/store/b.jsonl", Originator: "codex-tui"}
+	f := fixture{ids: []string{idA, idB}, origins: map[string]string{idA: originA, idB: originA}, metadata: map[string]Thread{idA: a, idB: b}, unmaterialized: map[string]bool{idB: true}}
+	rows, err := Discover(t.Context(), runtimeServer(t, f), map[string]bool{originA: true})
+	got := rows[originA]
+	if err != nil || got.ID != "" || got.Unavailable != "runtime_ambiguous" || len(got.HistoryCandidates) != 2 {
+		t.Fatal("history availability either lost or promoted to a primary", got, err)
+	}
+	if got.HistoryCandidates[0].HistoryState != HistoryPersisted || got.HistoryCandidates[1].HistoryState != HistoryUnmaterialized {
+		t.Fatal("materialization states not preserved", got)
+	}
+	for _, field := range []string{"unknown error", "materializes during lookup", "disconnected"} {
+		changed := f
+		switch field {
+		case "unknown error":
+			changed.historyError = true
+		case "materializes during lookup":
+			changed.materializes = true
+		case "disconnected":
+			changed.disconnected = true
+		}
+		rows, err := Discover(t.Context(), runtimeServer(t, changed), map[string]bool{originA: true})
+		if err == nil && (rows[originA].ID != "" || len(rows[originA].HistoryCandidates) != 0) {
+			t.Fatal("unstable/unknown history became readable", field, rows[originA])
+		}
+	}
+}
+
+func TestDiscoverDoesNotUseCreationOriginAsCurrentExecutor(t *testing.T) {
+	for _, originator := range []string{"Codex Desktop", "codex-tui", ""} {
+		f := fixture{ids: []string{idA}, origins: map[string]string{idA: originA}, metadata: map[string]Thread{idA: {ID: idA, CWD: "/project", Originator: originator}}}
+		rows, err := Discover(t.Context(), runtimeServer(t, f), map[string]bool{originA: true})
+		if err != nil || rows[originA].ID != idA {
+			t.Fatal("historical creator rejected", originator, err)
+		}
+	}
+}
+
+func TestUnmaterializedErrorIsSpecificToTheRequestedThread(t *testing.T) {
+	good := &rpcError{Code: -32600, Message: fmt.Sprintf("thread %s is not materialized yet; thread/turns/list is unavailable before first user message", idA)}
+	if !unmaterializedHistory(good, idA) {
+		t.Fatal("documented unmaterialized response rejected")
+	}
+	for _, err := range []error{nil, errUnavailable, &rpcError{Code: -1, Message: good.Message}, &rpcError{Code: -32600, Message: "missing file"}, good} {
+		if unmaterializedHistory(err, idB) {
+			t.Fatal("unknown/other-thread error accepted")
+		}
 	}
 }

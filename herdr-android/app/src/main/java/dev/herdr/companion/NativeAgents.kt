@@ -412,7 +412,7 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
         AlertDialog.Builder(context).setItems(choices) { _, index -> when (choices[index]) {
             "关闭此 Agent 完成提醒", "开启此 Agent 完成提醒" -> selected?.let { MonitorSettingsUi.toggle(context, relay, it) }
             "常驻监控设置" -> monitoring()
-            "会话绑定诊断" -> selected?.let { agent -> showText("会话绑定诊断", listOf(PrimarySessionBinding.label(agent), "原因：${agent.optString("binding_reason").ifBlank { "无" }}", "终端：${agent.optString("terminal_id")}", "主会话：${agent.optString("agent_session_id").take(12)}", "身份代次：${agent.optLong("generation")} · 请求代次：${agent.optLong("binding_epoch")}").joinToString("\n")) }
+            "会话绑定诊断" -> selected?.let { agent -> showText("会话绑定诊断", listOf(PrimarySessionBinding.label(agent), "原因：${agent.optString("binding_reason").ifBlank { "无" }}", "终端：${agent.optString("terminal_id")}", "${if (agent.optString("binding_state") in setOf("history_only", "pinned_history")) "历史会话" else "主会话"}：${agent.optString("agent_session_id").take(12)}", "身份代次：${agent.optLong("generation")} · 请求代次：${agent.optLong("binding_epoch")}").joinToString("\n")) }
             "重命名 Agent" -> selected?.let { renameAgent(relay, JSONObject(it.toString())) }
             "模型 / 思考强度" -> selected?.let { modelSettings(relay, JSONObject(it.toString())) }
             "在此工作空间新建 Agent" -> selected?.let { launchInWorkspace(relay, it.optString("workspace_id"), AgentPresentation.server(it)) }

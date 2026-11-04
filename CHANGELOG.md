@@ -6,12 +6,14 @@ project follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Offer explicitly labelled, read-only associated Codex history when exactly one persisted session is proved and the other connected roots are explicitly unmaterialized; never treat that history as the current writable primary.
 - Read-only current Codex turn status and timing, using bounded metadata-only queries to distinguish running, waiting, finished and interrupted work without loading conversation bodies.
 - Authenticated, controller-only per-Codex-session model/reasoning updates using the live runtime catalog and exact pane identity; read back effective settings and never replay unconfirmed writes.
 - Native Android IP + TCP gateway mode with the existing E2EE protocol, a single public TCP port, protected relay registration and private local one-device invitation creation.
 - Read-only, exact-workspace document downloads in 512 KiB verified chunks (up to 12 MiB per file), enabling native PDF/Markdown/image reviewers without raising transport limits or granting file-write access.
 
 ### Fixed
+- Accept histories originally created by Codex Desktop after verifying the current native process and exact runtime/store ownership; the historical creator is no longer confused with the current executor.
 - Keep trusted Android build artifacts on the existing Pocket signing certificate so upgrades preserve pairing and drafts; clearly distinguish unsigned and temporary-key test APKs.
 - Keep history pages within a 256 KiB payload budget and allow slow gateway fragments 20 seconds to write (5 seconds for health probes), avoiding whole-link disconnects while paging older tool-heavy conversations.
 - Recover missing Codex session IDs from the local daemon’s TUI endpoint and exact foreground-process socket ownership. Shared or stale endpoints stay unavailable instead of selecting a similarly named conversation.
