@@ -111,7 +111,7 @@ go test -p 1 ./...
 go vet ./...
 ```
 
-Android 构建需要 JDK 21、Android SDK 35 / Build Tools 35.0.0：
+Android 构建需要 JDK 21、Android SDK 35 / Build Tools 35.0.0；Gradle Wrapper 固定为 8.14.6：
 
 ```bash
 cd herdr-android

@@ -1,5 +1,15 @@
 # 验证记录 · Android 0.2.23 / Relay codexfix.11
 
+## 构建工具链更新 · Gradle 8.14.6
+
+2026-11-04：从 Gradle 8.13 升至 8.14.6 维护补丁版，不修改 AGP 8.13.0、Kotlin 2.2.20、JDK 21、应用版本或签名。
+
+- 用 Gradle Wrapper 任务重新生成启动脚本和 wrapper JAR；分发 ZIP 与生成的 JAR 均通过 Gradle 官方 SHA-256 校验，保持 URL 校验及 60 秒网络超时。
+- 通用 Debug APK 的 `testDebugUnitTest assembleDebug assembleDebugAndroidTest lintDebug` 通过；**275 项测试，0 失败/错误/跳过**；lint **0 errors / 64 warnings**。
+- CI 的 `-PsplitApks=true testDebugUnitTest assembleDebug assembleRelease assembleDebugAndroidTest lintDebug` 同样通过。三种 ABI 的 Debug/Release 共 6 个 APK 全部收集、重新签名、验证成功，证书与既有安装一致。
+- `setup-gradle` 会把所有前一个大版本（包括仍维护的 8.14.6）标为 out-of-date，因而信息级 notice 仍可出现；未关闭检查。迁移 Gradle 9.x 需另行核对 Kotlin/AGP 兼容性。
+- 不替换此前已交付的 0.2.23 文件，不发布 Release，不重启 Relay/Gateway/Herdr/Agent。
+
 ## 0.2.23 · 电脑与工作空间两级折叠（本地构建）
 
 验证完成于 2026-11-04（Asia/Shanghai）；尚未发布 Release。

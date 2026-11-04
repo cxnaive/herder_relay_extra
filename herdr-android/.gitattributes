@@ -1,5 +1,7 @@
 app/src/main/assets/agent/** -text
 gradlew text eol=lf
+# Preserve the generated Windows launcher’s CRLF without whitespace warnings.
+gradlew.bat whitespace=cr-at-eol
 *.sh text eol=lf
 *.patch -text
 *.zip -text

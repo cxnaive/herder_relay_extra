@@ -66,6 +66,17 @@ Neither contains a private key or password.
 
 ## Local build and tests
 
+The wrapper is pinned to **Gradle 8.14.6** with its official distribution SHA-256.
+This keeps the build on the maintained 8.x patch line while retaining Android
+Gradle Plugin 8.13.0, Kotlin Gradle Plugin 2.2.20, and JDK 21. The wrapper JAR and
+launch scripts are generated together, not just the distribution URL.
+
+`setup-gradle` classifies every previous-major release as “out of date”, including
+maintained 8.14.x patches. Its informational notice can therefore remain with
+8.14.6; this is not a build failure. Moving to Gradle 9.x is a separate plugin
+compatibility migration, not a reason to disable that notice or blindly set
+`gradle-version: current` in CI.
+
 A normal local `assembleDebug` still produces the universal `app-debug.apk`.
 CI opts into per-ABI builds explicitly:
 

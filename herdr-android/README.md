@@ -43,7 +43,7 @@ Android 9（API 28）及以上。发布 APK 使用原有调试签名，可覆盖
 
 ## 构建
 
-要求 JDK 21、Android SDK Platform 35、Build Tools 35.0.0。Gradle Wrapper（8.13）及依赖已固定；首次构建需要网络下载依赖。
+要求 JDK 21、Android SDK Platform 35、Build Tools 35.0.0。Gradle Wrapper（8.14.6）及依赖已固定；首次构建需要网络下载依赖。
 
 ```bash
 cd herdr-android

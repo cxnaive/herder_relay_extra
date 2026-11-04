@@ -52,7 +52,8 @@ jobs:
   race:
     name: Go race detector
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Leave room for setup and the remaining serial packages, not only conversation.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -61,7 +62,9 @@ jobs:
         with:
           go-version: 1.27.3
           cache: true
-      - run: go test -race -p 1 ./...
+      # The large conversation fixtures can exceed Go's default 10m package timeout
+      # under race instrumentation. Keep all tests and their own deadlines enabled.
+      - run: go test -race -p 1 -timeout=20m ./...
 
   shell:
     name: Shell and production paths
