@@ -9,7 +9,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"reflect"
 	"regexp"
 	"sort"
 	"strconv"
@@ -18,16 +17,23 @@ import (
 	"github.com/coder/websocket/wsjson"
 )
 
-const maxThreads = 64
+const maxThreads = 256
+const threadPageSize = 64
 
 var errUnavailable = errors.New("Codex runtime identity unavailable or ambiguous")
 var threadID = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 type Thread struct {
-	ID         string `json:"id"`
-	CWD        string `json:"cwd"`
-	Name       string `json:"name"`
-	Originator string `json:"originator"`
+	ID             string          `json:"id"`
+	CWD            string          `json:"cwd"`
+	Name           string          `json:"name"`
+	Originator     string          `json:"originator"`
+	SessionID      string          `json:"sessionId"`
+	ParentThreadID string          `json:"parentThreadId"`
+	ForkedFromID   string          `json:"forkedFromId"`
+	Source         json.RawMessage `json:"source"`
+	Status         runtimeStatus   `json:"status"`
+	Unavailable    string          `json:"-"`
 }
 
 type rpc struct {
@@ -80,20 +86,38 @@ type association struct {
 }
 
 func (r *rpc) associations(ctx context.Context) (map[string][]association, error) {
-	var list struct {
-		Data       []string `json:"data"`
-		NextCursor *string  `json:"nextCursor"`
-	}
-	if err := r.call(ctx, "thread/loaded/list", map[string]any{"limit": maxThreads}, &list); err != nil {
-		return nil, err
-	}
-	// Never choose a unique match from a partial inventory.
-	if list.Data == nil || list.NextCursor != nil || len(list.Data) > maxThreads {
-		return nil, errUnavailable
+
+	ids := []string{}
+	cursor := ""
+	cursors := map[string]bool{}
+	for {
+		var list struct {
+			Data       []string `json:"data"`
+			NextCursor *string  `json:"nextCursor"`
+		}
+		params := map[string]any{"limit": threadPageSize}
+		if cursor != "" {
+			params["cursor"] = cursor
+		}
+		if err := r.call(ctx, "thread/loaded/list", params, &list); err != nil {
+			return nil, err
+		}
+		if list.Data == nil || len(list.Data) > threadPageSize || len(ids)+len(list.Data) > maxThreads {
+			return nil, errUnavailable
+		}
+		ids = append(ids, list.Data...)
+		if list.NextCursor == nil {
+			break
+		}
+		cursor = *list.NextCursor
+		if cursor == "" || cursors[cursor] || len(ids) >= maxThreads {
+			return nil, errUnavailable
+		}
+		cursors[cursor] = true
 	}
 	seen := map[string]bool{}
 	origins := map[string][]association{}
-	for _, id := range list.Data {
+	for _, id := range ids {
 		if !threadID.MatchString(id) || seen[id] {
 			return nil, errUnavailable
 		}
@@ -159,28 +183,152 @@ func Discover(ctx context.Context, socket string, wanted map[string]bool) (map[s
 		if !wanted[origin] {
 			continue
 		}
-		result[origin] = Thread{}
-		if len(ids) != 1 || !ids[0].Connected {
-			continue
-		}
-		var response struct {
-			Thread Thread `json:"thread"`
-		}
-		if err = r.call(ctx, "thread/read", map[string]any{"threadId": ids[0].ID, "includeTurns": false}, &response); err != nil {
-			return nil, err
-		}
-		t := response.Thread
-		if t.ID != ids[0].ID || t.Originator != "codex-tui" || t.CWD == "" || t.Name == "" {
-			continue
-		}
-		result[origin] = t
+
+		result[origin] = r.primaryForOrigin(ctx, ids)
 	}
+
 	after, err := r.associations(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if !reflect.DeepEqual(origins, after) {
-		return nil, errUnavailable
+
+	for origin := range wanted {
+		before, known := result[origin]
+		if !known && len(after[origin]) == 0 {
+			continue
+		}
+		current := r.primaryForOrigin(ctx, after[origin])
+		switch {
+		case before.ID != "" && current.ID == before.ID && current.CWD == before.CWD:
+			// A proven child starting or ending does not replace its primary.
+			result[origin] = current
+		case before.ID == "" && current.ID == "":
+			result[origin] = current
+		default:
+			result[origin] = Thread{Unavailable: "runtime_changed"}
+		}
 	}
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
 	return result, nil
+}
+
+func (r *rpc) primaryForOrigin(ctx context.Context, ids []association) Thread {
+	if len(ids) == 0 {
+		return Thread{Unavailable: "runtime_unavailable"}
+	}
+	metadata := map[string]Thread{}
+	for _, id := range ids {
+		var response struct {
+			Thread Thread `json:"thread"`
+		}
+		if r.call(ctx, "thread/read", map[string]any{"threadId": id.ID, "includeTurns": false}, &response) != nil || response.Thread.ID != id.ID {
+			return Thread{Unavailable: "runtime_metadata_conflict"}
+		}
+		metadata[id.ID] = response.Thread
+	}
+	return primaryThread(ids, metadata)
+}
+
+// Only explicit delegation relationships exclude a thread. Names, activity,
+// direct-input capability and missing parent metadata never select a root.
+func (t Thread) ParentID() string {
+	if t.ParentThreadID != "" {
+		return t.ParentThreadID
+	}
+	var source map[string]json.RawMessage
+	if json.Unmarshal(t.Source, &source) != nil {
+		return ""
+	}
+	for _, key := range []string{"subAgent", "subagent", "sub_agent"} {
+		var child struct {
+			Spawn struct {
+				Parent string `json:"parent_thread_id"`
+			} `json:"thread_spawn"`
+		}
+		if json.Unmarshal(source[key], &child) == nil && child.Spawn.Parent != "" {
+			return child.Spawn.Parent
+		}
+	}
+	return ""
+}
+func (t Thread) Delegated() bool {
+	if t.ParentID() != "" {
+		return true
+	}
+	var source string
+	if json.Unmarshal(t.Source, &source) == nil {
+		return source == "subagent" || source == "subAgent" || source == "sub_agent"
+	}
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(t.Source, &fields) == nil {
+		for key := range fields {
+			if key == "subagent" || key == "subAgent" || key == "sub_agent" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func primaryThread(ids []association, metadata map[string]Thread) Thread {
+	unavailable := func(reason string) Thread { return Thread{Unavailable: reason} }
+	var root Thread
+	connected := false
+	for _, id := range ids {
+		t, ok := metadata[id.ID]
+		if !ok {
+			return unavailable("runtime_metadata_conflict")
+		}
+		if t.Delegated() {
+			continue
+		}
+		if root.ID != "" {
+			return unavailable("runtime_ambiguous")
+		}
+		root = t
+		connected = id.Connected
+	}
+	if root.ID == "" {
+		return unavailable("primary_thread_unconfirmed")
+	}
+	// Every excluded candidate must have a complete, acyclic ancestry to this
+	// root on the same endpoint. An unrelated or unclassified thread is ambiguous.
+	for _, id := range ids {
+		current := id.ID
+		seen := map[string]bool{}
+		for current != root.ID {
+			t, ok := metadata[current]
+			if !ok || seen[current] || !t.Delegated() {
+				return unavailable("runtime_ambiguous")
+			}
+			seen[current] = true
+			current = t.ParentID()
+		}
+	}
+	if !connected {
+		return unavailable("runtime_disconnected")
+	}
+	if root.Originator != "codex-tui" || root.CWD == "" || (root.SessionID != "" && root.SessionID != root.ID) {
+		return unavailable("runtime_metadata_conflict")
+	}
+	return root
+}
+
+func (t Thread) AgentStatus() string {
+	switch t.Status.Type {
+	case "idle":
+		return "idle"
+	case "active":
+		for _, flag := range t.Status.Flags {
+			if flag == "waitingOnApproval" || flag == "waitingOnUserInput" {
+				return "blocked"
+			}
+		}
+		return "working"
+	default:
+		return ""
+	}
 }

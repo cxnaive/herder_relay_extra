@@ -147,5 +147,6 @@ export function parsePushOpenTarget(value: unknown, relayId: string): FrontendTa
     terminal_id: target.terminal_id,
     generation: target.generation,
     agent_session_id: target.agent_session_id,
+    binding_epoch: target.binding_epoch,
   });
 }

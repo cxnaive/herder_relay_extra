@@ -42,6 +42,7 @@ for component in relay gateway; do
     cp "$templates"/*.sh "$templates"/*.service "$templates/relay.env.example" "$STAGE/"
     if [ "$component" = relay ]; then
         cp "$templates/init-config.py" "$STAGE/"
+        cp docs/primary-session-binding.md "$STAGE/PRIMARY-SESSION-BINDING.md"
         # Copy the committed web bundle verbatim; native Android does not use it.
         cp -R web "$STAGE/web"
     fi

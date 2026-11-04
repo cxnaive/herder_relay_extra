@@ -27,13 +27,17 @@
 
 当前可配套使用的 **Relay 源码 + 原生 Android App 源码**。APK 及编译好的 Linux Relay/Gateway 通过本仓库的 **GitHub Releases** 发布，不存放在 Git 仓库目录中。
 
-| 组件 | 版本 | 位置 |
+| 组件 | 当前源码版本 | 位置 |
 | --- | --- | --- |
-| 电脑 Relay | `0.23.5+codexfix.11` | 仓库根目录，`cmd/herdr-mobile-relay` |
+| 电脑 Relay | `0.23.5+codexfix.12` | 仓库根目录，`cmd/herdr-mobile-relay` |
 | 原生 TCP Gateway | `0.23.5+codexfix.6` | `cmd/herdr-gateway`，`deploy/native-tcp/` |
-| Herdr Pocket Android | `0.2.23` / versionCode `26` | `herdr-android/` |
+| Herdr Pocket Android | `0.2.24` / versionCode `27` | `herdr-android/` |
 
 本次按当前可用源码快照替换此前根目录的 0.24.0 文件扩展实现，不把两条不同基线混为同一版本。组件对应关系及源码来源见 [VERSION.json](VERSION.json)。旧内容仍可从 Git 历史查看。
+
+当前源码准备发布 **Android 0.2.24 / Relay codexfix.12**：验证终端主进程、独占 runtime 与会话存储，不再信任错误的 Herdr session ID；暂时失去证据时保留原会话缓存和草稿，但禁止不确定的输入。旧 APK 不支持新的绑定租约，需配套更新；Gateway codexfix.6 不变。[发现机制与边界](docs/primary-session-binding.md)。
+
+下方下载仍指向已发布版本；`VERSION.json` 的 `android_release` / `native_release` 独立记录已发布产物，不代表当前源码已经发布。
 
 ## 下载 Android APK
 
@@ -71,10 +75,11 @@
 
 ## CI 构建与固定签名
 
-Actions 的 `build-artifacts` 提供三平台 Relay/Gateway 和三种 ABI 的 Android 构建。
+Actions 的 `build-artifacts` 提供 Linux/macOS × amd64/arm64 的 Relay/Gateway 二进制、经启动/配对冒烟验证的 Linux amd64 完整部署包，以及三种 ABI 的 Android 构建。
 现有主分支 `feat/android-file-companion` 的可信构建通过独立签名任务使用原有 Pocket 证书，
 产物为 `android-apks-signed`；PR/其他分支仅提供 `android-apks-ci`，不能当作现有 App 的覆盖安装包。
-产物保留一天，不自动发布或替换 Release。详见[构建、签名与密钥管理](docs/native-ci.md)。
+服务端产物保留 14 天，Android 产物保留一天；不自动发布或替换 Release。
+部署 Linux amd64 优先下载 `native-bundles-linux_amd64`（含 Web、配置/systemd 模板、说明与校验和）；`native-binaries-*` 仅含可执行文件。详见[构建、签名与密钥管理](docs/native-ci.md)。
 
 ## 下载 Relay / Gateway 与部署指南
 
@@ -111,7 +116,7 @@ Actions 的 `build-artifacts` 提供三平台 Relay/Gateway 和三种 ABI 的 An
 ```bash
 mkdir -p bin
 CGO_ENABLED=0 go build -trimpath \
-  -ldflags '-s -w -X main.version=0.23.5+codexfix.11 -X main.revision=source-build' \
+  -ldflags '-s -w -X main.version=0.23.5+codexfix.12 -X main.revision=source-build' \
   -o bin/herdr-mobile-relay ./cmd/herdr-mobile-relay
 CGO_ENABLED=0 go build -trimpath \
   -ldflags '-s -w -X main.version=0.23.5+codexfix.6 -X main.revision=source-build' \

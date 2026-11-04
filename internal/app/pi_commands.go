@@ -16,7 +16,7 @@ var piDiscoverySlots = make(chan struct{}, 8)
 func sameSlashTarget(before, after *coordinator.AgentState) bool {
 	return before != nil && after != nil && before.PaneID == after.PaneID &&
 		before.ServerSessionID == after.ServerSessionID && before.TerminalID == after.TerminalID &&
-		before.Generation == after.Generation && before.SessionID == after.SessionID &&
+		before.Generation == after.Generation && before.SessionID == after.SessionID && before.BindingEpoch == after.BindingEpoch &&
 		before.Cwd == after.Cwd && before.Agent == after.Agent
 }
 

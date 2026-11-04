@@ -31,7 +31,7 @@ func (s *Server) handleWorkspaceDirectory(ctx context.Context, client *transport
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	agent, exists := s.state.Agent(inbound.PaneID)
-	if !exists || !s.conversationSelectionCurrent(ctx, agent) {
+	if !exists || !s.workspaceSelectionCurrent(ctx, agent) {
 		fail("Agent session changed; reopen its workspace")
 		return
 	}
@@ -53,7 +53,7 @@ func (s *Server) handleWorkspaceDirectory(ctx context.Context, client *transport
 	current, exists := s.state.Agent(inbound.PaneID)
 	action, _ := protocol.ClassifyAction(inbound.Type)
 	_, currentScopeErr := s.fileReadRoot(client, inbound, cwd)
-	if currentScopeErr != nil || ctx.Err() != nil || !exists || !sameConversationTuple(agent, current) || current.Cwd != agent.Cwd || validateExactPaneTarget(s.state, inbound, true) != nil || !s.conversationSelectionCurrent(ctx, current) || s.authorizeDeviceAction(client, action, inbound.DeviceID) != nil {
+	if currentScopeErr != nil || ctx.Err() != nil || !exists || !sameConversationTuple(agent, current) || current.Cwd != agent.Cwd || validateExactPaneTarget(s.state, inbound, true) != nil || !s.workspaceSelectionCurrent(ctx, current) || s.authorizeDeviceAction(client, action, inbound.DeviceID) != nil {
 		fail("Agent workspace or authorization changed during directory read")
 		return
 	}

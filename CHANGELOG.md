@@ -6,6 +6,7 @@ project follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Show verified, temporarily unavailable, ambiguous, conflicting and manually selected Codex history states on Android. Manual history bindings remain read-only; terminal/workspace reads keep their own identity checks.
 - Give each computer a local name when pairing and rename it from its device card, including while offline, without changing the relay, pairing, connections, or saved group expansion state.
 - Read-only current Codex turn status and timing, using bounded metadata-only queries to distinguish running, waiting, finished and interrupted work without loading conversation bodies.
 - Authenticated, controller-only per-Codex-session model/reasoning updates using the live runtime catalog and exact pane identity; read back effective settings and never replay unconfirmed writes.
@@ -13,6 +14,9 @@ project follows [Semantic Versioning](https://semver.org/).
 - Read-only, exact-workspace document downloads in 512 KiB verified chunks (up to 12 MiB per file), enabling native PDF/Markdown/image reviewers without raising transport limits or granting file-write access.
 
 ### Fixed
+- Verify Codex session ownership against the terminal's native process, its own runtime endpoint and provider store instead of trusting stale Herdr reports or matching conversation titles. Node launchers, helper/zombie processes and proven delegated children no longer displace the primary Agent.
+- Preserve the last verified session, cached reading state and drafts across temporary discovery failures, while revoking in-flight requests and blocking uncertain input. Restoring the same session no longer looks like replacing the Agent.
+- Keep recorded Codex activity extracts attached to their original event instead of filling them from whichever session later occupies the same pane.
 - Keep trusted Android build artifacts on the existing Pocket signing certificate so upgrades preserve pairing and drafts; clearly distinguish unsigned and temporary-key test APKs.
 - Keep history pages within a 256 KiB payload budget and allow slow gateway fragments 20 seconds to write (5 seconds for health probes), avoiding whole-link disconnects while paging older tool-heavy conversations.
 - Recover missing Codex session IDs from the local daemon’s TUI endpoint and exact foreground-process socket ownership. Shared or stale endpoints stay unavailable instead of selecting a similarly named conversation.

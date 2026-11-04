@@ -30,6 +30,7 @@ function normalizedTarget(value: unknown, frontend = false): TargetRef | Fronten
     || !isResourceId(candidate.pane_id)
     || !isResourceId(candidate.terminal_id)
     || !validGeneration(candidate.generation)
+    || candidate.binding_epoch !== undefined && !validGeneration(candidate.binding_epoch)
     || candidate.agent_session_id !== undefined
       && candidate.agent_session_id !== ''
       && !validAgentSessionId(candidate.agent_session_id)) return null;
@@ -39,6 +40,7 @@ function normalizedTarget(value: unknown, frontend = false): TargetRef | Fronten
     pane_id: candidate.pane_id,
     terminal_id: candidate.terminal_id,
     generation: candidate.generation,
+    ...(candidate.binding_epoch !== undefined ? { binding_epoch: candidate.binding_epoch } : {}),
     ...(candidate.agent_session_id ? { agent_session_id: candidate.agent_session_id } : {}),
   } as TargetRef | FrontendTargetRef;
 }
@@ -58,10 +60,11 @@ export function targetRefForAgent(agent: Partial<Agent>): FrontendTargetRef | nu
     pane_id: agent.raw_pane_id,
     terminal_id: agent.terminal_id,
     generation: agent.generation,
+    binding_epoch: agent.binding_epoch,
     agent_session_id: agent.agent_session_id,
   });
 }
-export function targetRefMatchesAgent(target: FrontendTargetRef, agent: Partial<Agent>): boolean {
+export function targetIdentityMatchesAgent(target: FrontendTargetRef, agent: Partial<Agent>): boolean {
   const normalized = normalizeFrontendTargetRef(target);
   const current = targetRefForAgent(agent);
   return Boolean(normalized
@@ -72,6 +75,11 @@ export function targetRefMatchesAgent(target: FrontendTargetRef, agent: Partial<
     && normalized.terminal_id === current.terminal_id
     && normalized.generation === current.generation
     && (normalized.agent_session_id || '') === (current.agent_session_id || ''));
+}
+
+export function targetRefMatchesAgent(target: FrontendTargetRef, agent: Partial<Agent>): boolean {
+  return targetIdentityMatchesAgent(target, agent)
+    && (target.binding_epoch || 0) === (agent.binding_epoch || 0);
 }
 
 export function targetStoreKey(target: FrontendTargetRef): string | null {

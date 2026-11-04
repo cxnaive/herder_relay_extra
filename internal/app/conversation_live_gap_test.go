@@ -20,7 +20,7 @@ func TestRecordedFeedRecoversCommentaryAndImageCallsAcrossLargeRawResults(t *tes
 	message := func(text string) map[string]any {
 		return map[string]any{"type": "response_item", "payload": map[string]any{"type": "message", "role": "assistant", "content": []map[string]any{{"type": "output_text", "text": text}}}}
 	}
-	writeInvariantRows(t, path, message("fixture first"))
+	writeInvariantRows(t, path, map[string]any{"type": "session_meta", "payload": map[string]any{"id": session, "cwd": "/fixture"}}, message("fixture first"))
 	server := testServer()
 	if server.conversationB != nil {
 		server.conversationB.Close()
@@ -31,6 +31,10 @@ func TestRecordedFeedRecoversCommentaryAndImageCallsAcrossLargeRawResults(t *tes
 		t.Fatal(err)
 	}
 	defer browser.Close()
+	// This fixture exercises recorded-file streaming, not a live terminal binding.
+	server.herdrC.Close()
+	server.herdrC = nil
+	server.home = home
 	server.conversationM = reader
 	server.conversationB = browser
 	server.state.CommitInventory([]*coordinator.AgentState{{PaneID: "fixture-pane", Agent: "codex", Cwd: "/fixture", SessionID: session, AgentSessionID: session, TerminalID: "fixture-terminal", ServerSessionID: "primary", Status: "working"}}, server.state.RevisionCounter())

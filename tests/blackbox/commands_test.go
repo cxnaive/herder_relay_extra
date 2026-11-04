@@ -301,9 +301,10 @@ func TestReadQoderHistoryRespectsRequestedLines(t *testing.T) {
 }
 
 func TestHiddenPromptRouteKeepsTheSecretOutOfTextAndScrollback(t *testing.T) {
+	// This provider-neutral terminal fixture does not claim a live Codex binding.
 	scenario, err := json.Marshal(map[string]any{
 		"panes": []map[string]any{{
-			"pane_id": "pane-1", "agent": "codex", "name": "test",
+			"pane_id": "pane-1", "agent": "fixture", "name": "test",
 			"agent_status": "idle", "tab_id": "tab-1",
 			"workspace_id": "ws-1", "cwd": "/tmp", "revision": 1,
 		}},
@@ -441,11 +442,12 @@ func TestReadAndAnswerStructuredQuestion(t *testing.T) {
 }
 
 func TestNavigateStructuredQuestionTwice(t *testing.T) {
-	firstView := "Question 1/2 (1 unanswered)\nChoose the first value\n\n❯ 1. Alpha\n  2. Beta\n  3. None of the above\n\ntab to add notes | enter to submit answer | ←/→ to navigate questions"
-	secondView := "Question 2/2 (1 unanswered)\nChoose the second value\n\n❯ 1. Gamma\n  2. Delta\n  3. None of the above\n\ntab to add notes | enter to submit all | ←/→ to navigate questions"
+	firstView := "\x1b[48;2;55;55;55m First \x1b[0m ☐ Second ✓ Submit →\nChoose the first value\n❯ 1. Alpha\n2. Beta\n3. Type something.\n4. Chat about this\nEnter to select · ↑/↓ to navigate · Esc to cancel"
+	secondView := "☐ First \x1b[48;2;55;55;55m Second \x1b[0m ✓ Submit →\nChoose the second value\n❯ 1. Gamma\n2. Delta\n3. Type something.\n4. Chat about this\nEnter to select · ↑/↓ to navigate · Esc to cancel"
+	// This provider-neutral terminal fixture does not claim a live Codex binding.
 	scenario, err := json.Marshal(map[string]any{
 		"panes": []map[string]any{{
-			"pane_id": "pane-1", "agent": "codex", "name": "test",
+			"pane_id": "pane-1", "agent": "claude", "name": "test",
 			"agent_status": "blocked", "tab_id": "tab-1",
 			"workspace_id": "ws-1", "cwd": "/tmp", "revision": 1,
 		}},
@@ -569,5 +571,36 @@ func readJSON(t *testing.T, conn *websocket.Conn, ctx context.Context, timeout t
 			continue
 		}
 		return msg
+	}
+}
+
+func TestUnverifiedCodexMutationsNeverReachTheTerminal(t *testing.T) {
+	scenario := `{"panes":[{"pane_id":"pane-1","agent":"codex","name":"fixture","agent_status":"idle","tab_id":"tab-1","workspace_id":"ws-1","cwd":"/tmp","revision":1}],"tabs":[{"tab_id":"tab-1","workspace_id":"ws-1","cwd":"/tmp"}]}`
+	env := setupEnvWithScenario(t, scenario)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	conn, _, err := websocket.Dial(ctx, env.wsURL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.CloseNow()
+	for _, action := range []string{"submit_prompt", "send_keys", "send_secret", "navigate_question", "set_agent_settings", "copy_agent_response"} {
+		request, _ := json.Marshal(map[string]any{"type": action, "protocol": 3, "request_id": action, "pane_id": "pane-1", "text": "fixture input", "keys": []string{"Enter"}, "direction": "previous"})
+		if err := conn.Write(ctx, websocket.MessageText, request); err != nil {
+			t.Fatal(err)
+		}
+		reply := readJSON(t, conn, ctx, 5*time.Second)
+		failure, ok := reply["error"].(map[string]any)
+		expected := "agent_identity_unavailable"
+		// The existing authenticated-settings policy is checked before identity.
+		if action == "set_agent_settings" {
+			expected = "reader_denied"
+		}
+		if !ok || failure["code"] != expected {
+			t.Fatalf("unverified %s not refused: %v", action, reply)
+		}
+	}
+	if countFakeOperations(t, env.operationsLog, "pane", "send-keys") != 0 || countFakeOperations(t, env.operationsLog, "pane", "send-text") != 0 || countFakeOperations(t, env.operationsLog, "agent", "prompt") != 0 {
+		t.Fatal("unverified input reached Herdr")
 	}
 }

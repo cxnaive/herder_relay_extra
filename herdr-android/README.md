@@ -1,8 +1,10 @@
-# Herdr Pocket · Android 0.2.23
+# Herdr Pocket · Android 0.2.24（源码）
 
 与本仓库根目录的 **Relay 0.23.5+codexfix.11** 配套的原生 Android 客户端，不使用 WebView 运行 Agent 界面。
 
 ## 安装
+
+**当前源码：0.2.24 / versionCode 27**，沿用既有签名；新增主会话验证、失联时保留缓存/草稿及只读诊断。需配套 Relay codexfix.12，Gateway 不变；此说明不代表新 Release 已发布。
 
 **0.2.23 已发布到 `android-v0.2.23`**（2026-11-04）：新增「电脑 → 工作空间 → Agent」两级展开/折叠，默认展开并记住本机状态；搜索临时展开匹配项，清空后恢复。折叠后保留数量、路径和新建 Agent 入口，不影响连接和后台提醒。[分组使用说明](AGENT-GROUPS.md)。
 

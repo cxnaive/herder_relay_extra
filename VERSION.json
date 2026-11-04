@@ -2,29 +2,15 @@
   "repository": "cxnaive/herder_relay_extra",
   "snapshot_date": "2026-11-04",
   "android": {
-    "version": "0.2.23",
-    "version_code": 26,
+    "version": "0.2.24",
+    "version_code": 27,
     "source_path": "herdr-android",
-    "release_tag": "android-v0.2.23",
-    "artifact": "Herdr-Pocket-0.2.23-release-arm64-v8a.apk",
     "reference_upstream_revision": "09b52781399114a7576d40fcdf91ccefd7686be6",
     "signature": "debug",
-    "signing_certificate_sha256": "fe1ddf4d04f46d45168d53ca25dd2b379f242b6cd9b23169c9717258cf5232b9",
-    "release_source_commit": "2789f9165741e3249f983a2e1c95dfa82177f5d8",
-    "release_build_run": 41778780951,
-    "release_artifacts": [
-      "BUILD-INFO.json",
-      "Herdr-Pocket-0.2.23-debug-arm64-v8a.apk",
-      "Herdr-Pocket-0.2.23-debug-armeabi-v7a.apk",
-      "Herdr-Pocket-0.2.23-debug-x86_64.apk",
-      "Herdr-Pocket-0.2.23-release-arm64-v8a.apk",
-      "Herdr-Pocket-0.2.23-release-armeabi-v7a.apk",
-      "Herdr-Pocket-0.2.23-release-x86_64.apk",
-      "SHA256SUMS.txt"
-    ]
+    "signing_certificate_sha256": "fe1ddf4d04f46d45168d53ca25dd2b379f242b6cd9b23169c9717258cf5232b9"
   },
   "relay": {
-    "version": "0.23.5+codexfix.11",
+    "version": "0.23.5+codexfix.12",
     "source_path": ".",
     "upstream_version": "0.23.5",
     "upstream_revision": "27054011fd8137d5f9702cc9e718aff1bd73443d"
@@ -43,5 +29,23 @@
     "relay_artifact": "herdr-mobile-relay_0.23.5-codexfix.11_linux_amd64.tar.gz",
     "gateway_artifact": "herdr-gateway_0.23.5-codexfix.6_linux_amd64.tar.gz",
     "checksums": "SHA256SUMS.txt"
+  },
+  "android_release": {
+    "version": "0.2.23",
+    "version_code": 26,
+    "release_tag": "android-v0.2.23",
+    "artifact": "Herdr-Pocket-0.2.23-release-arm64-v8a.apk",
+    "release_source_commit": "2789f9165741e3249f983a2e1c95dfa82177f5d8",
+    "release_build_run": 41778780951,
+    "release_artifacts": [
+      "BUILD-INFO.json",
+      "Herdr-Pocket-0.2.23-debug-arm64-v8a.apk",
+      "Herdr-Pocket-0.2.23-debug-armeabi-v7a.apk",
+      "Herdr-Pocket-0.2.23-debug-x86_64.apk",
+      "Herdr-Pocket-0.2.23-release-arm64-v8a.apk",
+      "Herdr-Pocket-0.2.23-release-armeabi-v7a.apk",
+      "Herdr-Pocket-0.2.23-release-x86_64.apk",
+      "SHA256SUMS.txt"
+    ]
   }
 }

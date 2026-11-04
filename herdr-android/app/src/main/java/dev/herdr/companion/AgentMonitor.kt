@@ -72,7 +72,7 @@ class AgentMonitor(
             else -> "监控 ${audible.size} 个 Agent · ${all.size - audible.size} 个已静音 · 已加密连接"
         })
         if (inFlight) { schedule(1000); return }
-        val target = audible.filter { shared.ready(it.relay) && (next[it.key] ?: 0) <= now }.minByOrNull { next[it.key] ?: 0 }
+        val target = audible.filter { PrimarySessionBinding.live(it.agent) && shared.ready(it.relay) && (next[it.key] ?: 0) <= now }.minByOrNull { next[it.key] ?: 0 }
         if (target == null) { schedule(1000); return }
         val capabilities = shared.configs[target.relay]?.optJSONArray("capabilities")
         val runtime = capabilities?.let { (0 until it.length()).any { i -> it.optString(i) == "agent_run_state_v1" } } == true

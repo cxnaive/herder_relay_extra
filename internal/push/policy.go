@@ -35,6 +35,7 @@ const (
 )
 
 type PushEventKey struct {
+	BindingEpoch        uint64   `json:"binding_epoch,omitempty"`
 	DeviceID            string   `json:"device_id"`
 	ServerSessionID     string   `json:"server_session_id"`
 	PaneID              string   `json:"pane_id"`
@@ -85,6 +86,7 @@ func (k PushEventKey) Target() protocol.TargetRef {
 		TerminalID:      k.TerminalID,
 		Generation:      k.Generation,
 		AgentSessionID:  k.AgentSessionID,
+		BindingEpoch:    k.BindingEpoch,
 	}
 }
 
@@ -93,7 +95,7 @@ func sameTarget(a, b protocol.TargetRef) bool {
 		a.PaneID == b.PaneID &&
 		a.TerminalID == b.TerminalID &&
 		a.Generation == b.Generation &&
-		a.AgentSessionID == b.AgentSessionID
+		a.AgentSessionID == b.AgentSessionID && a.BindingEpoch == b.BindingEpoch
 }
 
 type DevicePolicy struct {

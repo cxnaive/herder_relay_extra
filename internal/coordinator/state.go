@@ -16,6 +16,14 @@ import (
 )
 
 type AgentState struct {
+	BindingRuntime    string             `json:"-"`
+	ReportedSession   herdr.AgentSession `json:"-"`
+	BindingState      string             `json:"binding_state,omitempty"`
+	BindingReason     string             `json:"binding_reason,omitempty"`
+	BindingEpoch      uint64             `json:"binding_epoch,omitempty"`
+	BindingVerifiedAt int64              `json:"binding_verified_at,omitempty"`
+	BindingStoreID    string             `json:"binding_store_id,omitempty"`
+
 	PaneID                       string                 `json:"pane_id"`
 	RawPaneID                    string                 `json:"raw_pane_id"`
 	TerminalID                   string                 `json:"terminal_id"`
@@ -440,8 +448,10 @@ func (s *State) commitTopologyLocked(agents []*AgentState, baseRev int64) {
 			continue
 		}
 		cp := *incoming
-		cp.Status = existing.Status
-		if existing.Status == "blocked" {
+		if incoming.BindingState == "" {
+			cp.Status = existing.Status
+		}
+		if existing.Status == "blocked" && incoming.BindingState == "" {
 			copyBlockedDetails(&cp, existing)
 		}
 		topology[index] = &cp
@@ -538,7 +548,7 @@ func (s *State) commitInventoryLocked(agents []*AgentState, baseRev int64) {
 
 		// If an event landed during this poll (revision advanced past baseRev),
 		// preserve the event's authoritative status.
-		if exists && s.revision[incoming.PaneID] > baseRev && incoming.Status != existing.Status {
+		if exists && incoming.BindingState == "" && s.revision[incoming.PaneID] > baseRev && incoming.Status != existing.Status {
 			cp.Status = existing.Status
 			if existing.Status == "blocked" {
 				copyBlockedDetails(&cp, existing)
@@ -547,7 +557,7 @@ func (s *State) commitInventoryLocked(agents []*AgentState, baseRev int64) {
 
 		pendingTimestamp := false
 		if pending, ok := s.pendingEvents[incoming.PaneID]; ok {
-			if time.Now().Before(pending.expiresAt) &&
+			if incoming.BindingState == "" && time.Now().Before(pending.expiresAt) &&
 				eventIdentityMatches(incoming, pending.tabID, pending.workspaceID) {
 				cp.Status = pending.status
 				cp.UpdatedAt = pending.updatedAt
@@ -652,7 +662,8 @@ func paneSessionReplaced(existing, incoming *AgentState) bool {
 	if existing == nil || incoming == nil {
 		return false
 	}
-	if existing.ConversationProcess != incoming.ConversationProcess || existing.ConversationSource != incoming.ConversationSource {
+	initialProof := existing.BindingState != "" && incoming.BindingState != "" && existing.SessionID == "" && existing.ConversationProcess == "" && existing.TerminalID != "" && existing.TerminalID == incoming.TerminalID && existing.Cwd == incoming.Cwd
+	if (!initialProof && existing.ConversationProcess != incoming.ConversationProcess) || (!initialProof && existing.BindingStoreID != incoming.BindingStoreID) || (existing.ConversationSource != incoming.ConversationSource && (existing.BindingState == "" || incoming.BindingState == "")) {
 		return true
 	}
 	for _, identity := range [][2]string{
@@ -703,6 +714,9 @@ func (s *State) CommitEventForSession(
 			updatedAt:   updatedAt,
 			expiresAt:   time.Now().Add(30 * time.Second),
 		}
+		return false
+	}
+	if agent.Agent == "codex" && agent.BindingState != "" {
 		return false
 	}
 	if !eventIdentityMatches(agent, tabID, workspaceID) {

@@ -76,12 +76,14 @@ type speechRequest struct {
 }
 
 type Server struct {
-	cfg      *config.Config
-	version  string
-	revision string
-	hostname string
-	home     string
-	logger   *slog.Logger
+	codexBindings    codexBindingRegistry
+	codexDiscoveryMu sync.Mutex
+	cfg              *config.Config
+	version          string
+	revision         string
+	hostname         string
+	home             string
+	logger           *slog.Logger
 
 	state          *coordinator.State
 	hub            *transport.Hub
@@ -376,7 +378,7 @@ func validateExactPaneTarget(state *coordinator.State, inbound protocol.Inbound,
 	if inbound.PaneID == "" {
 		return nil
 	}
-	if inbound.Type == "unwatch_pane" || inbound.Type == "release_pane_size" || inbound.Type == "cancel_speech" {
+	if inbound.Type == "unwatch_pane" || inbound.Type == "unwatch_conversation" || inbound.Type == "release_pane_size" || inbound.Type == "cancel_speech" {
 		if target != nil && target.PaneID != inbound.PaneID {
 			apiErr := protocol.NewApiError(protocol.ErrorInvalidRequest, map[string]any{"field": "target.pane_id"})
 			return &apiErr
@@ -410,7 +412,7 @@ func validateExactPaneTarget(state *coordinator.State, inbound protocol.Inbound,
 	if target.ServerSessionID != serverSessionID ||
 		target.TerminalID == "" || target.TerminalID != agent.TerminalID ||
 		target.Generation != agent.Generation ||
-		target.AgentSessionID != agent.SessionID {
+		target.AgentSessionID != agent.SessionID || target.BindingEpoch != agent.BindingEpoch {
 		apiErr := protocol.NewApiError(protocol.ErrorInvalidRequest, map[string]any{"field": "target"})
 		return &apiErr
 	}
@@ -519,7 +521,8 @@ func (s *Server) pushTargetCurrent(target protocol.TargetRef) bool {
 	return ok &&
 		agent.TerminalID == target.TerminalID &&
 		agent.SessionID == target.AgentSessionID &&
-		agent.Generation == target.Generation
+		agent.Generation == target.Generation && agent.BindingEpoch == target.BindingEpoch &&
+		(agent.BindingState == "" || agent.BindingState == "verified")
 }
 
 func projectContextForAgent(agent *coordinator.AgentState) conversation.ProjectContext {
@@ -554,8 +557,17 @@ func (s *Server) resolveAgentSessionName(agent *coordinator.AgentState) {
 	// so only a field set before that round trip reaches the phone - and the
 	// phone must echo it back for exact-target validation to ever pass.
 	agent.AgentSessionID = sessionID
-	agent.ConversationHistoryAvailable = sessionID != "" && conversation.Supported(agent.Agent)
+	agent.ConversationHistoryAvailable = sessionID != "" && conversation.Supported(agent.Agent) && (agent.BindingState == "" || usableCodexBinding(agent.BindingState))
 	if sessionID == "" {
+		return
+	}
+	if agent.BindingState != "" && !usableCodexBinding(agent.BindingState) {
+		if s.state != nil {
+			if previous, ok := s.state.Agent(agent.PaneID); ok && previous.TerminalID == agent.TerminalID && previous.SessionID == sessionID {
+				agent.SessionName = previous.SessionName
+				agent.Session = previous.Session
+			}
+		}
 		return
 	}
 	title := ""
@@ -726,6 +738,11 @@ func (s *Server) Run(ctx context.Context) error {
 			s.hub.Send(client, protocol.ErrorResponse(inbound.RequestID, *targetErr))
 			return
 		}
+		if !s.codexInteractionCurrent(client.Context(), inbound, scope.Action) {
+			admitted()
+			s.hub.Send(client, protocol.ErrorResponse(inbound.RequestID, protocol.NewApiError("agent_identity_unavailable", nil)))
+			return
+		}
 		action := scope.Action.Operation
 		coordinated := scope.Action.Coordinated
 		auditedWrite := scope.Action.Audited
@@ -744,6 +761,9 @@ func (s *Server) Run(ctx context.Context) error {
 				return errors.New("device is no longer authorized")
 			}
 			if validateExactPaneTarget(s.state, inbound, authenticated) != nil {
+				return coordinator.ErrPaneReplaced
+			}
+			if !s.codexInteractionCurrent(client.Context(), inbound, scope.Action) {
 				return coordinator.ErrPaneReplaced
 			}
 			return nil
@@ -1124,7 +1144,7 @@ func (s *Server) Run(ctx context.Context) error {
 		case "copy_agent_response":
 			requestID, _ := msg["request_id"].(string)
 			paneID, _ := msg["pane_id"].(string)
-			s.copyAgentResponse(client, requestID, paneID)
+			s.copyAgentResponse(commandCtx, client, requestID, paneID)
 		case "cancel_speech":
 			speechRequestID, _ := msg["speech_request_id"].(string)
 			s.cancelSpeech(client.ID(), speechRequestID)
@@ -1339,8 +1359,7 @@ func (s *Server) Run(ctx context.Context) error {
 
 	s.poller.SetEnrich(func(ctx context.Context, agents []*coordinator.AgentState) {
 		s.enrichKimiSessions(ctx, agents)
-		s.enrichCodexRuntime(ctx, agents)
-		s.enrichCodexBindings(ctx, agents)
+		s.enrichCodexSessions(ctx, agents)
 		for _, a := range agents {
 			s.resolveAgentSessionName(a)
 			if a.Status != "blocked" {
@@ -1558,6 +1577,9 @@ func (s *Server) effectiveCapabilities() []string {
 func (s *Server) effectiveCapabilitiesFor(herdrStatus herdr.ServerStatus) []string {
 	capabilities := append([]string(nil), protocol.Capabilities...)
 	capabilities = append(capabilities, "pi_prompt_unconfirmed")
+	if codexProcessProofSupported() {
+		capabilities = append(capabilities, "primary_session_binding_v1")
+	}
 	// Never the legacy pane_size_lease names: apps up to 0.22.7 lease
 	// automatically when they see them.
 	if s.paneSizeM.Available() {
@@ -1678,6 +1700,7 @@ func (s *Server) reconcileRecoveredPush(ctx context.Context, agents []*coordinat
 				PaneID:              agent.PaneID,
 				TerminalID:          agent.TerminalID,
 				AgentSessionID:      agent.SessionID,
+				BindingEpoch:        agent.BindingEpoch,
 				Generation:          agent.Generation,
 				EventID:             agent.BlockedEventID,
 				InteractionRevision: s.state.AttentionRevision(agent.PaneID),
@@ -1700,7 +1723,7 @@ func (s *Server) publishAgentPush(
 	category push.Category,
 	preview push.PreviewMode,
 ) {
-	if s.pushM == nil || agent == nil || agent.TerminalID == "" || eventID == "" {
+	if s.pushM == nil || agent == nil || agent.TerminalID == "" || eventID == "" || (agent.BindingState != "" && agent.BindingState != "verified") {
 		return
 	}
 	key := push.PushEventKey{
@@ -1708,6 +1731,7 @@ func (s *Server) publishAgentPush(
 		PaneID:              agent.PaneID,
 		TerminalID:          agent.TerminalID,
 		AgentSessionID:      agent.SessionID,
+		BindingEpoch:        agent.BindingEpoch,
 		Generation:          agent.Generation,
 		EventID:             eventID,
 		InteractionRevision: revision,
@@ -1734,6 +1758,17 @@ func (s *Server) handleTransition(
 		transitionAt = observedAt[0]
 	}
 	agentState, agentExists := s.state.Agent(paneID)
+	if agentExists && agentState.Agent == "codex" && agentState.BindingState != "" {
+		if agentState.BindingState != "verified" || !s.codexBindings.current(agentState) {
+			return
+		}
+		check, cancel := context.WithTimeout(parent, 3*time.Second)
+		b, ok := s.resolveCodexRuntime(check, []*coordinator.AgentState{agentState})[paneID]
+		cancel()
+		if !ok || b.SessionID != agentState.SessionID || b.ProcessStart != agentState.ConversationProcess || b.Status != status {
+			return
+		}
+	}
 	var session string
 	var sessionID string
 	conversationAgent := agent
@@ -1761,6 +1796,9 @@ func (s *Server) handleTransition(
 		paneGeneration = uint64(generation)
 	}
 	transitionCurrent := func() bool {
+		if agentExists && agentState.BindingState != "" && !s.codexBindings.current(agentState) {
+			return false
+		}
 		if status == "blocked" {
 			return s.state.BlockedTransitionCurrent(paneID, blockedEventID, paneGeneration)
 		}
@@ -2277,7 +2315,7 @@ func (s *Server) handleConversationHistory(client *transport.ClientConn, inbound
 	}
 	var page conversation.BrowsePage
 	var historyErr error
-	if inbound.Observe && supportsConversationActivity(agent.Agent) {
+	if inbound.Observe && agent.BindingState != "pinned_history" && supportsConversationActivity(agent.Agent) {
 		page, historyErr = s.conversationFeedPage(client, inbound, agent)
 	} else {
 		page, historyErr = browser.ReadPage(client.Context(), conversation.BrowseRequest{
@@ -2326,6 +2364,23 @@ func (s *Server) latestConversationResponse(agent, cwd, sessionID string, contex
 }
 
 func (s *Server) captureFinishedPane(ctx context.Context, paneID, agent, cwd, sessionID string, contexts ...conversation.ProjectContext) string {
+	if agent == "codex" {
+		current, exists := s.state.Agent(paneID)
+		if exists && current.BindingState != "" {
+			if current.SessionID != sessionID || current.Cwd != cwd {
+				return ""
+			}
+			page, err := s.readAgentConversation(ctx, current, 1)
+			if err != nil || !page.Available || len(page.Entries) == 0 {
+				return ""
+			}
+			entry := page.Entries[len(page.Entries)-1]
+			if entry.Role == "assistant" {
+				return entry.Text
+			}
+			return ""
+		}
+	}
 	if conversation.IsKimi(agent) {
 		current, exists := s.state.Agent(paneID)
 		if !exists || current.Agent != agent || current.SessionID != sessionID || current.Cwd != cwd || s.conversationM == nil {
@@ -2379,6 +2434,7 @@ func sameConversationTuple(left, right *coordinator.AgentState) bool {
 		left.SessionID == right.SessionID &&
 		left.ConversationProcess == right.ConversationProcess &&
 		left.ConversationSource == right.ConversationSource &&
+		left.BindingEpoch == right.BindingEpoch && left.BindingStoreID == right.BindingStoreID &&
 		left.ConversationReason == right.ConversationReason &&
 		left.ConversationInferred == right.ConversationInferred
 }
@@ -2507,7 +2563,7 @@ func (s *Server) pruneUploads(ctx context.Context) {
 	}
 }
 
-func (s *Server) copyAgentResponse(client *transport.ClientConn, requestID, paneID string) {
+func (s *Server) copyAgentResponse(parent context.Context, client *transport.ClientConn, requestID, paneID string) {
 	if paneID == "" {
 		s.sendCommandResult(client, requestID, "copy_agent_response", false, "failed", "Agent is required", paneID, nil)
 		return
@@ -2539,7 +2595,7 @@ func (s *Server) copyAgentResponse(client *transport.ClientConn, requestID, pane
 	}
 	s.copyMu.Lock()
 	defer s.copyMu.Unlock()
-	ctx, cancel := context.WithTimeout(client.Context(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
 	defer cancel()
 	runCopy := s.copyRunner
 	if runCopy == nil {
@@ -2560,7 +2616,8 @@ func (s *Server) copyAgentResponse(client *transport.ClientConn, requestID, pane
 		s.sendCommandResult(client, requestID, "copy_agent_response", false, "failed", copyResponseError(err), paneID, nil)
 		return
 	}
-	if s.state.Generation(paneID) != generation {
+	current, exists := s.state.Agent(paneID)
+	if s.state.Generation(paneID) != generation || !exists || (agent.BindingState != "" && (!sameConversationTuple(agent, current) || !s.codexRuntimeCurrent(ctx, current))) {
 		s.sendCommandResult(client, requestID, "copy_agent_response", false, "failed", "The agent pane was replaced while the response was being copied", paneID, nil)
 		return
 	}
@@ -3828,6 +3885,11 @@ func (s *Server) broadcastCommitted(message any) {
 		if current, exists := s.state.Agent(paneID); exists {
 			envelope["terminal_id"] = current.TerminalID
 			envelope["agent_session_id"] = current.SessionID
+			envelope["binding_epoch"] = current.BindingEpoch
+			envelope["binding_state"] = current.BindingState
+			envelope["binding_reason"] = current.BindingReason
+			envelope["binding_verified_at"] = current.BindingVerifiedAt
+			envelope["binding_store_id"] = current.BindingStoreID
 		}
 		s.hub.BroadcastPrepared(message, func() {
 			s.stateViewMu.Lock()
@@ -4100,6 +4162,11 @@ func (s *Server) enrichActivityResponses(entries []activity.Entry) []activity.En
 			continue
 		}
 		agentName := strings.TrimSpace(entry.Agent)
+		// Activity is historical: a reused pane cannot supply another thread's
+		// response. Codex extracts are captured while the primary binding is verified.
+		if agentName == "codex" || (agents[entry.PaneID] != nil && agents[entry.PaneID].Agent == "codex") {
+			continue
+		}
 		sessionID := strings.TrimSpace(entry.Session)
 		project := conversation.ProjectContext{}
 		if current := agents[entry.PaneID]; current != nil {

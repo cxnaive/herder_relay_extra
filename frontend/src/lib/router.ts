@@ -2,7 +2,7 @@ import { get, writable, type Readable } from 'svelte/store';
 import { shouldDeferPairingConnection, shouldRetainSetupFragment } from './config';
 import { clientPaneId } from './agents';
 import { parseNotificationTarget } from './protocol';
-import { decodeTargetRoute, encodeTargetRoute, targetRefForAgent, targetRefMatchesAgent } from './resource-id';
+import { decodeTargetRoute, encodeTargetRoute, targetRefForAgent, targetIdentityMatchesAgent } from './resource-id';
 import type { Agent, FrontendTargetRef, NotificationTarget } from './types';
 
 export type ViewState =
@@ -172,7 +172,7 @@ export function followInitialAgentSession(agents: Readable<Agent[]>): () => void
       && before.conversation_inferred_owner === after.conversation_inferred_owner
       && before.agent_session_id !== after.agent_session_id;
     if ((!initialDiscovery && !inferredKimiHistory) || before.agent !== after.agent
-      || !targetRefMatchesAgent(view.target, before)
+      || !targetIdentityMatchesAgent(view.target, before)
       || after.generation !== view.target.generation + 1) return;
     const target = targetRefForAgent(after);
     if (!target || target.relay_id !== view.target.relay_id

@@ -16,6 +16,7 @@ const (
 )
 
 type TargetRef struct {
+	BindingEpoch    uint64 `json:"binding_epoch,omitempty"`
 	ServerSessionID string `json:"server_session_id"`
 	PaneID          string `json:"pane_id"`
 	TerminalID      string `json:"terminal_id"`

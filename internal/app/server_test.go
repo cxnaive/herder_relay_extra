@@ -2158,7 +2158,7 @@ func openCopyTestClient(t *testing.T, s *Server) *websocket.Conn {
 		}
 		requestID, _ := message["request_id"].(string)
 		paneID, _ := message["pane_id"].(string)
-		s.copyAgentResponse(client, requestID, paneID)
+		s.copyAgentResponse(client.Context(), client, requestID, paneID)
 	})
 	server := httptest.NewServer(http.HandlerFunc(s.hub.HandleWebSocket))
 	conn, _, err := websocket.Dial(context.Background(), "ws"+strings.TrimPrefix(server.URL, "http"), nil)

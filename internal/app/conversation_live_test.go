@@ -77,6 +77,7 @@ func TestRecordedConversationFeedPublishesOnlyChangedEntries(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer browser.Close()
+	server.home = home
 	server.conversationM = reader
 	server.conversationB = browser
 	server.state.CommitInventory([]*coordinator.AgentState{{PaneID: "fixture-pane", Agent: "claude", Cwd: "/fixture", SessionID: session, AgentSessionID: session, TerminalID: "fixture-terminal", ServerSessionID: "primary", Status: "working"}}, server.state.RevisionCounter())
@@ -147,7 +148,7 @@ func TestRecordedConversationFeedContinuationAndDiagnostics(t *testing.T) {
 			if scenario == "corrupt" {
 				provider = "codex"
 				path = filepath.Join(home, ".codex", "sessions", "2026", "10", "18", "rollout-"+session+".jsonl")
-				writeInvariantRows(t, path, map[string]any{"type": "response_item", "payload": map[string]any{"type": "message", "role": "assistant", "content": []map[string]any{{"type": "output_text", "text": "seed"}}}})
+				writeInvariantRows(t, path, map[string]any{"type": "session_meta", "payload": map[string]any{"id": session, "cwd": "/fixture"}}, map[string]any{"type": "response_item", "payload": map[string]any{"type": "message", "role": "assistant", "content": []map[string]any{{"type": "output_text", "text": "seed"}}}})
 			} else {
 				writeInvariantRows(t, path, map[string]any{"type": "assistant", "uuid": "a1", "message": map[string]any{"content": "seed"}})
 			}
@@ -168,6 +169,11 @@ func TestRecordedConversationFeedContinuationAndDiagnostics(t *testing.T) {
 				browser.Close()
 			}
 			defer server.herdrC.Close()
+			// This test covers recorded-file streaming, not live process discovery.
+			if provider == "codex" {
+				server.herdrC = nil
+			}
+			server.home = home
 			server.conversationM, server.conversationB = reader, browser
 			server.state.CommitInventory([]*coordinator.AgentState{{PaneID: "fixture-pane", Agent: provider, Cwd: "/fixture", SessionID: session, AgentSessionID: session, TerminalID: "fixture-terminal", ServerSessionID: "primary", Status: "working"}}, server.state.RevisionCounter())
 			agent, _ := server.state.Agent("fixture-pane")

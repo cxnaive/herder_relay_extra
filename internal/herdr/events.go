@@ -97,22 +97,19 @@ type SnapshotPane struct {
 }
 
 type SnapshotAgent struct {
-	PaneID         string `json:"pane_id"`
-	TerminalID     string `json:"terminal_id"`
-	WorkspaceID    string `json:"workspace_id"`
-	TabID          string `json:"tab_id"`
-	Focused        bool   `json:"focused"`
-	Name           string `json:"name"`
-	Agent          string `json:"agent"`
-	Status         string `json:"agent_status"`
-	Cwd            string `json:"cwd"`
-	ForegroundCwd  string `json:"foreground_cwd"`
-	Revision       int    `json:"revision"`
-	StateChangeSeq int64  `json:"state_change_seq"`
-	AgentSession   struct {
-		Value string `json:"value"`
-		Kind  string `json:"kind"`
-	} `json:"agent_session"`
+	PaneID         string       `json:"pane_id"`
+	TerminalID     string       `json:"terminal_id"`
+	WorkspaceID    string       `json:"workspace_id"`
+	TabID          string       `json:"tab_id"`
+	Focused        bool         `json:"focused"`
+	Name           string       `json:"name"`
+	Agent          string       `json:"agent"`
+	Status         string       `json:"agent_status"`
+	Cwd            string       `json:"cwd"`
+	ForegroundCwd  string       `json:"foreground_cwd"`
+	Revision       int          `json:"revision"`
+	StateChangeSeq int64        `json:"state_change_seq"`
+	AgentSession   AgentSession `json:"agent_session"`
 }
 
 type TopologySnapshot struct {
@@ -935,8 +932,7 @@ func (c *SessionCache) applyAgent(agent SnapshotAgent) {
 	pane.Revision = agent.Revision
 	pane.StateChangeSeq = agent.StateChangeSeq
 	pane.Session = agent.AgentSession.Value
-	pane.SessionRaw.Value = agent.AgentSession.Value
-	pane.SessionRaw.Kind = agent.AgentSession.Kind
+	pane.SessionRaw = agent.AgentSession
 	c.panes[pane.ID] = pane
 }
 

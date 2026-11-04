@@ -4,6 +4,7 @@ export type RelayStatus = 'connecting' | 'connected' | 'disconnected';
 export type AttentionKind = 'approval' | 'question' | 'chat' | 'unknown';
 
 export interface TargetRef {
+  binding_epoch?: number;
   server_session_id: string;
   pane_id: string;
   terminal_id: string;
@@ -304,6 +305,9 @@ export interface Agent {
   terminal_id?: string;
   generation?: number;
   agent_session_id?: string;
+  binding_epoch?: number;
+  binding_state?: string;
+  binding_reason?: string;
   conversation_history_available?: boolean;
   conversation_inferred_owner?: string;
   tab_id?: string;

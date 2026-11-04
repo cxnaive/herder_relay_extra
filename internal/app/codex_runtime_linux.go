@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 )
 
 func codexProcessListeners(pid int) (map[string]string, error) {
@@ -73,4 +74,12 @@ func codexListenersAt(proc string, pid int) (map[string]string, error) {
 		result[origin] = fields[9]
 	}
 	return result, scanner.Err()
+}
+
+func codexSocketIdentity(info os.FileInfo) string {
+	st, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return ""
+	}
+	return fmt.Sprintf("%d:%d:%d:%d", st.Dev, st.Ino, st.Ctim.Sec, st.Ctim.Nsec)
 }

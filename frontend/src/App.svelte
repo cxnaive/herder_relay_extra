@@ -37,7 +37,7 @@
   import { initializeSpeech, stopSpeech } from '$lib/speech';
   import { initializePush, notificationsEnabled, pushOptedIn, showPageNotification } from '$lib/push';
   import { parsePushOpenTarget, RELAY_PROTOCOL_VERSION } from '$lib/protocol';
-  import { targetRefForAgent, targetRefMatchesAgent } from '$lib/resource-id';
+  import { targetRefForAgent, targetIdentityMatchesAgent } from '$lib/resource-id';
   import {
     closeCurrentView,
     currentView,
@@ -100,10 +100,11 @@
     if (view.view !== 'terminal' && view.view !== 'history') return null;
     const agent = $agents.find((candidate) => candidate.pane_id === view.paneId) || null;
     if (!agent || !view.target) return agent;
-    return targetRefMatchesAgent(view.target, agent) ? agent : null;
+    return targetIdentityMatchesAgent(view.target, agent) ? agent : null;
   });
   const activeReadOnly = $derived(Boolean(
-    activeAgent && relayStore.deviceCredential(activeAgent.relay_id)?.role === 'reader',
+    activeAgent && (relayStore.deviceCredential(activeAgent.relay_id)?.role === 'reader'
+      || Boolean(activeAgent.binding_state && activeAgent.binding_state !== 'verified')),
   ));
   const readOnlyRelayIds = $derived.by(() => {
     void $connections;
@@ -483,7 +484,7 @@
       if (get(currentView) !== openingRoute) return;
       const liveAgent = get(agents).find((candidate) => candidate.pane_id === openingRoute.paneId);
       if (!liveAgent || !openingRoute.target) return;
-      if (!targetRefMatchesAgent(openingRoute.target, liveAgent)) return;
+      if (!targetIdentityMatchesAgent(openingRoute.target, liveAgent)) return;
       replaceView({ view: 'terminal', paneId: openingRoute.paneId, target: openingRoute.target });
     };
   }
@@ -525,7 +526,7 @@
       const target = parsePushOpenTarget(result.data?.target, relayId);
       if (!target) throw new Error('Invalid notification target');
       const findAgent = () => get(relayStore.agents).find(agent =>
-        agent.relay_id === relayId && targetRefMatchesAgent(target, agent),
+        agent.relay_id === relayId && targetIdentityMatchesAgent(target, agent),
       );
       let agent = findAgent();
       const deadline = Date.now() + 5_000;

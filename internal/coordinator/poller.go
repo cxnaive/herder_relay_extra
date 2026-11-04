@@ -228,6 +228,7 @@ func (p *Poller) agentsFromTopology(panes []herdr.Pane, tabs []herdr.Tab) []*Age
 			Host:            p.hostname,
 			Session:         pane.Session,
 			SessionKind:     pane.SessionRaw.Kind,
+			ReportedSession: pane.SessionRaw,
 			ActivitySeq:     pane.StateChangeSeq,
 			PaneRevision:    pane.Revision,
 			ScrollMaxOffset: pane.Scroll.MaxOffsetFromBottom,

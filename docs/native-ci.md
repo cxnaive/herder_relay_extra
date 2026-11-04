@@ -1,9 +1,35 @@
 # Native build CI and Android signing
 
-The `build-artifacts` workflow builds Relay/Gateway for Linux amd64, Linux arm64,
-and macOS arm64, and Herdr Pocket for `armeabi-v7a`, `arm64-v8a`, and `x86_64`.
-It does not create tags or publish/replace GitHub Releases. Actions artifacts
-expire after **one day**, like the repository's other CI artifacts.
+The `build-artifacts` workflow runs on pushes, pull requests and manual dispatch.
+It builds Relay/Gateway for Linux and macOS, each on amd64 and arm64, and Herdr
+Pocket for `armeabi-v7a`, `arm64-v8a`, and `x86_64`. It does not deploy services,
+create tags or publish/replace GitHub Releases. Native artifacts expire after
+**14 days**; Android artifacts retain their existing **one-day** lifetime.
+
+## Relay / Gateway artifacts
+
+- `native-bundles-linux_amd64`: installable Relay and Gateway tarballs plus
+  `SHA256SUMS.txt`, produced by `scripts/package-native-release.sh`. Includes the
+  Relay web bundle, config/systemd templates, initialization tools, deployment
+  notes and per-component `BUILD-INFO.json` with source revision and binary hash.
+- Before upload, `scripts/check-native-release.py` checks checksums, static ELF
+  binaries, build metadata and starts both components in an isolated loopback
+  smoke test, including pairing. It never touches a live Relay, Gateway or Herdr.
+- `native-binaries-linux_amd64`, `native-binaries-linux_arm64`,
+  `native-binaries-darwin_amd64`, `native-binaries-darwin_arm64`: zip files of the
+  two executables, build metadata and hashes only. They are **not** complete
+  deployment bundles. Linux/WSL alone advertises primary-session-binding V1;
+  macOS builds do not imply equivalent process-proof support.
+
+Download these from **Actions → build-artifacts → successful run → Artifacts**.
+Use the exact commit you intend to deploy. For a fresh Linux amd64 installation,
+prefer the full bundle and follow `docs/native-deployment.md`. Preserve existing
+configuration and pairing data on upgrades. A green artifact job is not a claim
+that all repository checks have passed.
+
+`VERSION.json` records source versions separately from the previously published
+`android_release` and `native_release` provenance. A source version bump does not
+create a Release or rewrite historical asset names.
 
 ## Promoting CI output to a GitHub Release
 

@@ -212,6 +212,14 @@ func NewClient(bin, socketPath string) *Client {
 	return client
 }
 
+// AgentSession is a reported reference, not proof of the terminal's current thread.
+type AgentSession struct {
+	Source string `json:"source"`
+	Agent  string `json:"agent"`
+	Kind   string `json:"kind"`
+	Value  string `json:"value"`
+}
+
 type Pane struct {
 	TerminalTitle         string `json:"terminal_title,omitempty"`
 	TerminalTitleStripped string `json:"terminal_title_stripped,omitempty"`
@@ -231,12 +239,9 @@ type Pane struct {
 	Scroll                struct {
 		MaxOffsetFromBottom int `json:"max_offset_from_bottom"`
 	} `json:"scroll"`
-	ForegroundCwd string `json:"foreground_cwd"`
-	Session       string `json:"-"`
-	SessionRaw    struct {
-		Value string `json:"value"`
-		Kind  string `json:"kind"`
-	} `json:"agent_session"`
+	ForegroundCwd string       `json:"foreground_cwd"`
+	Session       string       `json:"-"`
+	SessionRaw    AgentSession `json:"agent_session"`
 }
 
 type Workspace struct {
@@ -358,6 +363,7 @@ type AgentInfo struct {
 
 type PaneProcess struct {
 	PID     int      `json:"pid"`
+	Argv0   string   `json:"argv0"`
 	Name    string   `json:"name"`
 	Cwd     string   `json:"cwd"`
 	Cmdline string   `json:"cmdline"`
@@ -365,6 +371,7 @@ type PaneProcess struct {
 }
 
 type PaneProcessInfo struct {
+	TTY                      string        `json:"tty"`
 	PaneID                   string        `json:"pane_id"`
 	ShellPID                 int           `json:"shell_pid"`
 	ForegroundProcessGroupID int           `json:"foreground_process_group_id"`
@@ -651,6 +658,7 @@ func (c *Client) PaneGet(ctx context.Context, paneID string) (*Pane, error) {
 	if result.Pane == nil {
 		return nil, errors.New("herdr pane get: pane.get response has no pane")
 	}
+	result.Pane.Session = result.Pane.SessionRaw.Value
 	return result.Pane, nil
 }
 

@@ -5,10 +5,12 @@ package codexruntime
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -23,6 +25,12 @@ const originA = "http://127.0.0.1:46223"
 const originB = "http://127.0.0.1:46224"
 
 type fixture struct {
+	childAppears     bool
+	metadata         map[string]Thread
+	paginated        bool
+	unnamed          bool
+	delegated        bool
+	sessionMismatch  bool
 	ids              []string
 	origins          map[string]string
 	disconnected     bool
@@ -79,7 +87,23 @@ func runtimeServer(t *testing.T, f fixture) string {
 				if f.truncated {
 					next = "more"
 				}
-				result = map[string]any{"data": f.ids, "nextCursor": next}
+				ids := f.ids
+				if f.childAppears && scans > 1 {
+					ids = append(append([]string{}, ids...), idB)
+				}
+				if f.paginated {
+					var params struct {
+						Cursor string `json:"cursor"`
+					}
+					_ = json.Unmarshal(q.Params, &params)
+					offset, _ := strconv.Atoi(params.Cursor)
+					end := min(len(f.ids), offset+threadPageSize)
+					ids = f.ids[offset:end]
+					if end < len(f.ids) {
+						next = strconv.Itoa(end)
+					}
+				}
+				result = map[string]any{"data": ids, "nextCursor": next}
 			case "mcpServerStatus/list":
 				var p struct {
 					ThreadID   string `json:"threadId"`
@@ -123,7 +147,20 @@ func runtimeServer(t *testing.T, f fixture) string {
 				if f.metadataMismatch {
 					id = idB
 				}
-				result = map[string]any{"thread": Thread{ID: id, CWD: "/work/project", Name: "Same title", Originator: "codex-tui"}}
+				thread := Thread{ID: id, SessionID: id, CWD: "/work/project", Name: "Same title", Originator: "codex-tui"}
+				if f.unnamed {
+					thread.Name = ""
+				}
+				if f.delegated {
+					thread.Source = json.RawMessage(`{"subAgent":{"thread_spawn":{"parent_thread_id":"parent"}}}`)
+				}
+				if f.sessionMismatch {
+					thread.SessionID = idB
+				}
+				if custom, ok := f.metadata[p.ThreadID]; ok {
+					thread = custom
+				}
+				result = map[string]any{"thread": thread}
 			default:
 				t.Errorf("forbidden runtime mutation/tool call: %s", q.Method)
 				return
@@ -185,5 +222,73 @@ func TestLocalOriginRefusesRemoteAndMalformedAddresses(t *testing.T) {
 		if LocalOrigin(s) {
 			t.Errorf("unsafe origin accepted: %s", s)
 		}
+	}
+}
+
+func TestDiscoverCompletesPagesAndNeverDropsUnnamedCandidates(t *testing.T) {
+	ids := []string{idA}
+	origins := map[string]string{idA: originA}
+	for i := 0; i < 65; i++ {
+		id := fmt.Sprintf("123e4567-e89b-12d3-a456-%012d", i)
+		ids = append(ids, id)
+		origins[id] = originB
+	}
+	f := fixture{ids: ids, origins: origins, paginated: true, unnamed: true}
+	rows, err := Discover(t.Context(), runtimeServer(t, f), map[string]bool{originA: true})
+	if err != nil || rows[originA].ID != idA {
+		t.Fatal("complete paginated association rejected", err)
+	}
+	origins[ids[len(ids)-1]] = originA
+	rows, err = Discover(t.Context(), runtimeServer(t, f), map[string]bool{originA: true})
+	if err == nil && rows[originA].ID != "" {
+		t.Fatal("second-page unnamed candidate was ignored")
+	}
+}
+func TestDiscoverRejectsDelegationAndSessionFieldMismatch(t *testing.T) {
+	for _, f := range []fixture{{ids: []string{idA}, origins: map[string]string{idA: originA}, delegated: true}, {ids: []string{idA}, origins: map[string]string{idA: originA}, sessionMismatch: true}} {
+		rows, err := Discover(t.Context(), runtimeServer(t, f), map[string]bool{originA: true})
+		if err == nil && rows[originA].ID != "" {
+			t.Fatal("invalid primary metadata accepted")
+		}
+	}
+}
+
+func TestDiscoverProvedChildDoesNotDisplaceOrFinishPrimary(t *testing.T) {
+	root := Thread{ID: idA, SessionID: idA, CWD: "/project", Originator: "codex-tui", Status: runtimeStatus{Type: "active"}}
+	child := Thread{ID: idB, SessionID: idB, CWD: "/project", Originator: "codex-tui", ParentThreadID: idA, Status: runtimeStatus{Type: "idle"}}
+	f := fixture{ids: []string{idA, idB}, origins: map[string]string{idA: originA, idB: originA}, metadata: map[string]Thread{idA: root, idB: child}}
+	rows, err := Discover(t.Context(), runtimeServer(t, f), map[string]bool{originA: true})
+	if err != nil || rows[originA].ID != idA || rows[originA].AgentStatus() != "working" {
+		t.Fatal("child changed primary identity/status", err)
+	}
+	child.ParentThreadID = ""
+	child.Source = json.RawMessage(`{"subAgent":{"thread_spawn":{"parent_thread_id":"` + idA + `"}}}`)
+	f.metadata = map[string]Thread{idA: root, idB: child}
+	rows, err = Discover(t.Context(), runtimeServer(t, f), map[string]bool{originA: true})
+	if err != nil || rows[originA].ID != idA {
+		t.Fatal("explicit source ancestry ignored", err)
+	}
+	child.Source = json.RawMessage(`"subagent"`)
+	f.metadata = map[string]Thread{idA: root, idB: child}
+	rows, err = Discover(t.Context(), runtimeServer(t, f), map[string]bool{originA: true})
+	if err == nil && rows[originA].ID != "" {
+		t.Fatal("unclassified child was silently ignored")
+	}
+}
+
+func TestDiscoverChildLifecycleDoesNotInvalidateStablePrimary(t *testing.T) {
+	root := Thread{ID: idA, CWD: "/project", Originator: "codex-tui", Status: runtimeStatus{Type: "active"}}
+	child := Thread{ID: idB, CWD: "/project", ParentThreadID: idA}
+	f := fixture{ids: []string{idA}, origins: map[string]string{idA: originA, idB: originA}, metadata: map[string]Thread{idA: root, idB: child}, childAppears: true}
+	rows, err := Discover(t.Context(), runtimeServer(t, f), map[string]bool{originA: true})
+	if err != nil || rows[originA].ID != idA {
+		t.Fatal("proven child churn invalidated primary", err)
+	}
+	child.ParentThreadID = ""
+	child.Originator = "codex-tui"
+	f.metadata = map[string]Thread{idA: root, idB: child}
+	rows, err = Discover(t.Context(), runtimeServer(t, f), map[string]bool{originA: true})
+	if err == nil && rows[originA].ID != "" {
+		t.Fatal("new unrelated thread was ignored")
 	}
 }

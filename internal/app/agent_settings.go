@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/0cv/herdr-mobile-relay/internal/codexruntime"
@@ -66,7 +67,7 @@ func (s *Server) handleAgentSettings(ctx context.Context, client *transport.Clie
 // codexRuntimeTarget resolves only the exact live pane's configured local daemon.
 func (s *Server) codexRuntimeTarget(ctx context.Context, in protocol.Inbound) (string, string, string, func() error, error) {
 	agent, ok := s.state.Agent(in.PaneID)
-	if !ok || agent.Agent != "codex" || agent.SessionID == "" || in.Target == nil || s.conversationM == nil || s.herdrC == nil {
+	if !ok || agent.Agent != "codex" || agent.SessionID == "" || (agent.BindingState != "" && agent.BindingState != "verified") || in.Target == nil || s.conversationM == nil || s.herdrC == nil {
 		return "", "", "", nil, codexruntime.ErrSettingsUnavailable
 	}
 	guard := func() error {
@@ -84,7 +85,7 @@ func (s *Server) codexRuntimeTarget(ctx context.Context, in protocol.Inbound) (s
 		if err != nil || pane == nil || pane.TerminalID != agent.TerminalID || pane.Agent != "codex" || pane.Cwd != agent.Cwd {
 			return coordinator.ErrPaneReplaced
 		}
-		if pane.Session != "" && pane.Session != agent.SessionID {
+		if !strings.HasPrefix(current.ConversationSource, codexRuntimeSource) && pane.Session != "" && pane.Session != agent.SessionID {
 			return coordinator.ErrPaneReplaced
 		}
 		return nil
