@@ -29,13 +29,13 @@
 
 ## 2. 下载、校验、解压
 
-服务端 Release：**`native-v0.23.5-codexfix.14`**，附件：
+服务端 Release：**`native-v0.23.5-codexfix.15`**，附件：
 
-- `herdr-mobile-relay_0.23.5-codexfix.14_linux_amd64.tar.gz`
+- `herdr-mobile-relay_0.23.5-codexfix.15_linux_amd64.tar.gz`
 - `herdr-gateway_0.23.5-codexfix.6_linux_amd64.tar.gz`
 - `SHA256SUMS.txt`
 
-APK 使用配套 Release **`android-v0.2.27`**，普通 ARM64 手机选择 `Herdr-Pocket-0.2.27-release-arm64-v8a.apk`。旧 APK 不支持 codexfix.12 的绑定租约，必须配套更新；已有 Gateway codexfix.6 不变。Android Release 保持为 Latest；服务端版本不等于 Android 版本。
+APK 使用配套 Release **`android-v0.2.28`**，普通 ARM64 手机选择 `Herdr-Pocket-0.2.28-release-arm64-v8a.apk`。旧 APK 不支持 codexfix.12 的绑定租约，必须配套更新；已有 Gateway codexfix.6 不变。Android Release 保持为 Latest；服务端版本不等于 Android 版本。
 
 在电脑的空目录中下载（也可直接在 GitHub Releases 页面点附件）。先确认两台 Linux 机器的 `uname -m` 都是 `x86_64`：
 
@@ -43,15 +43,15 @@ APK 使用配套 Release **`android-v0.2.27`**，普通 ARM64 手机选择 `Herd
 set -eu
 mkdir -p "$HOME/Downloads/herdr-native"
 cd "$HOME/Downloads/herdr-native"
-base=https://github.com/cxnaive/herder_relay_extra/releases/download/native-v0.23.5-codexfix.14
-for name in herdr-mobile-relay_0.23.5-codexfix.14_linux_amd64.tar.gz \
+base=https://github.com/cxnaive/herder_relay_extra/releases/download/native-v0.23.5-codexfix.15
+for name in herdr-mobile-relay_0.23.5-codexfix.15_linux_amd64.tar.gz \
             herdr-gateway_0.23.5-codexfix.6_linux_amd64.tar.gz SHA256SUMS.txt; do
   curl -fL --retry 4 --connect-timeout 15 --max-time 600 --continue-at - \
     "$base/$name" -o "$name"
 done
 sha256sum -c SHA256SUMS.txt
 # 只有两个归档都显示 OK 才继续。
-tar -xzf herdr-mobile-relay_0.23.5-codexfix.14_linux_amd64.tar.gz
+tar -xzf herdr-mobile-relay_0.23.5-codexfix.15_linux_amd64.tar.gz
 tar -xzf herdr-gateway_0.23.5-codexfix.6_linux_amd64.tar.gz
 ```
 
@@ -64,7 +64,7 @@ tar -xzf herdr-gateway_0.23.5-codexfix.6_linux_amd64.tar.gz
 **如果已有 Relay，跳到第 7 节。不要生成新主密钥、删除设备库或再启动一个相同端口的 Relay。** 先检查 `systemctl --user status herdr-mobile-relay.service` 和本机端口占用。
 
 ```sh
-cd "$HOME/Downloads/herdr-native/herdr-mobile-relay_0.23.5-codexfix.14_linux_amd64"
+cd "$HOME/Downloads/herdr-native/herdr-mobile-relay_0.23.5-codexfix.15_linux_amd64"
 command -v herdr
 # 203.0.113.10 只是文档保留地址，必须换成你的公网 IP。
 python3 ./init-config.py --gateway tcp://203.0.113.10:8377
@@ -148,7 +148,7 @@ PY
 ```sh
 set -eu
 base="$HOME/.local/share/herdr-pocket-relay"
-release=herdr-mobile-relay_0.23.5-codexfix.14_linux_amd64
+release=herdr-mobile-relay_0.23.5-codexfix.15_linux_amd64
 mkdir -p "$base/releases" "$HOME/.config/systemd/user"
 # 若目标已存在，先检查，不要嵌套覆盖另一次安装。
 test ! -e "$base/releases/$release"

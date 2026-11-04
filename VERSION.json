@@ -22,31 +22,31 @@
   },
   "prior_repository_head": "d07403b246a2220c3447dcd84084d7d717140361",
   "native_release": {
-    "tag": "native-v0.23.5-codexfix.14",
+    "tag": "native-v0.23.5-codexfix.15",
     "targets": [
       "linux/amd64"
     ],
-    "relay_artifact": "herdr-mobile-relay_0.23.5-codexfix.14_linux_amd64.tar.gz",
+    "relay_artifact": "herdr-mobile-relay_0.23.5-codexfix.15_linux_amd64.tar.gz",
     "gateway_artifact": "herdr-gateway_0.23.5-codexfix.6_linux_amd64.tar.gz",
     "checksums": "SHA256SUMS.txt",
-    "release_source_commit": "3d343b1d5021d2fb089fc19342dbceb234ee70f4",
-    "release_build_run": 41895522095
+    "release_source_commit": "07d8f53cbbe82005a84b3aa5044a2195a6341a72",
+    "release_build_run": 41909289840
   },
   "android_release": {
-    "version": "0.2.27",
-    "version_code": 30,
-    "release_tag": "android-v0.2.27",
-    "artifact": "Herdr-Pocket-0.2.27-release-arm64-v8a.apk",
-    "release_source_commit": "9c0d8e264216f5fe8c52a9bf129cfad05e10cca3",
-    "release_build_run": 41902832600,
+    "version": "0.2.28",
+    "version_code": 31,
+    "release_tag": "android-v0.2.28",
+    "artifact": "Herdr-Pocket-0.2.28-release-arm64-v8a.apk",
+    "release_source_commit": "07d8f53cbbe82005a84b3aa5044a2195a6341a72",
+    "release_build_run": 41909289840,
     "release_artifacts": [
       "BUILD-INFO.json",
-      "Herdr-Pocket-0.2.27-debug-arm64-v8a.apk",
-      "Herdr-Pocket-0.2.27-debug-armeabi-v7a.apk",
-      "Herdr-Pocket-0.2.27-debug-x86_64.apk",
-      "Herdr-Pocket-0.2.27-release-arm64-v8a.apk",
-      "Herdr-Pocket-0.2.27-release-armeabi-v7a.apk",
-      "Herdr-Pocket-0.2.27-release-x86_64.apk",
+      "Herdr-Pocket-0.2.28-debug-arm64-v8a.apk",
+      "Herdr-Pocket-0.2.28-debug-armeabi-v7a.apk",
+      "Herdr-Pocket-0.2.28-debug-x86_64.apk",
+      "Herdr-Pocket-0.2.28-release-arm64-v8a.apk",
+      "Herdr-Pocket-0.2.28-release-armeabi-v7a.apk",
+      "Herdr-Pocket-0.2.28-release-x86_64.apk",
       "SHA256SUMS.txt"
     ]
   }
