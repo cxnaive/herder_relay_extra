@@ -1,4 +1,5 @@
 import { readdir, readFile } from 'node:fs/promises';
+import { statSync } from 'node:fs';
 import { join } from 'node:path';
 import { compositeIssues } from './support/composite';
 
@@ -17,7 +18,10 @@ async function main(): Promise<void> {
   const root = process.argv[2] || '.github/actions';
   const files = await actionFiles(root);
   const issues = [];
-  for (const filename of files) issues.push(...compositeIssues(await readFile(filename, 'utf8'), filename));
+  const scriptExists = (path: string): boolean => {
+    try { return statSync(path).isFile(); } catch { return false; }
+  };
+  for (const filename of files) issues.push(...compositeIssues(await readFile(filename, 'utf8'), filename, scriptExists));
   if (issues.length) {
     for (const issue of issues) process.stderr.write(`${issue.filename}:${issue.line}: ${issue.message}\n`);
     process.exitCode = 1;

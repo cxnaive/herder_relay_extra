@@ -21,7 +21,7 @@ function yamlRuntime(): YAMLRuntime | undefined {
   return (globalThis as unknown as { Bun?: YAMLRuntime }).Bun;
 }
 
-export function compositeIssues(source: string, filename = 'action.yml'): PolicyIssue[] {
+export function compositeIssues(source: string, filename = 'action.yml', scriptExists?: (path: string) => boolean): PolicyIssue[] {
   const runtime = yamlRuntime();
   if (!runtime) return [{ filename, line: 1, message: 'YAML parser is unavailable' }];
   let document: unknown;
@@ -50,6 +50,20 @@ export function compositeIssues(source: string, filename = 'action.yml'): Policy
     runOccurrence += 1;
     if (typeof stepRecord.shell !== 'string' || stepRecord.shell.trim() === '') {
       issues.push({ filename, line, message: 'composite run step is missing shell' });
+    }
+    if (scriptExists && typeof stepRecord.run === 'string') {
+      // Validate literal repository script entrypoints before provisioning devices.
+      const scripts = new Set<string>();
+      for (const command of stepRecord.run.split(/\r?\n/u)) {
+        if (command.trimStart().startsWith('#')) continue;
+        const launcher = /(?:^|[\s;&|])(?:node|bun|bash|sh|python3?)\s+(?:--[\w=-]+\s+)*["']?((?:\.\/)?(?:tests|scripts)\/[A-Za-z0-9_./-]+\.(?:ts|[cm]?js|sh|py))(?=$|[\s"';&|)])/gu;
+        for (const match of command.matchAll(launcher)) scripts.add(match[1]!.replace(/^\.\//u, ''));
+      }
+      for (const path of scripts) {
+        if (path.split('/').includes('..') || !scriptExists(path)) {
+          issues.push({ filename, line, message: `composite run references a missing repository script: ${path}` });
+        }
+      }
     }
   }
   return issues;

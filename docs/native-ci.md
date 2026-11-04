@@ -78,6 +78,27 @@ job downloads APKs from the same run and then:
 certificate fingerprint. `SHA256SUMS.txt` covers the APKs and that manifest.
 Neither contains a private key or password.
 
+## Mobile device CI source consistency
+
+The web/PWA device lane uses a separate Appium harness under `tests/mobile/`.
+Its launchers, pinned producer manifests, runtime helpers, evidence readers and
+unit registry must match `.github/actions/mobile-device-run/action.yml`; copying
+an older source snapshot must not leave newer workflows pointing at missing files.
+
+The November 4, 2026 failures in check run `41785144588` were setup failures:
+the Android emulator lifetime observer and the iOS Appium integration had been
+removed while the composite action still invoked them. The compatible harness
+is restored from `d07403b246a2220c3447dcd84084d7d717140361`, the source revision of
+the unchanged device workflow. The fork's `0.23.4` / `0.23.3` upgrade baselines,
+default-branch triggers and fixed-signing isolation checks are retained.
+
+`make mobile-composite-check` now also checks literal repository script
+entrypoints in composite run steps, including both platform branches. Missing
+scripts fail the common host check before emulator/simulator provisioning.
+This does not skip the device tests, weaken product assertions or turn failed
+qualification into success. Local fixture/installer checks do not replace the
+hosted Android and iOS upgrade runs.
+
 ## Local build and tests
 
 The wrapper is pinned to **Gradle 8.14.6** with its official distribution SHA-256.
