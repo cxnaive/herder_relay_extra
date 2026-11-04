@@ -3,8 +3,9 @@
 The `build-artifacts` workflow runs on pushes, pull requests and manual dispatch.
 It builds Relay/Gateway for Linux and macOS, each on amd64 and arm64, and Herdr
 Pocket for `armeabi-v7a`, `arm64-v8a`, and `x86_64`. It does not deploy services,
-create tags or publish/replace GitHub Releases. Native artifacts expire after
-**14 days**; Android artifacts retain their existing **one-day** lifetime.
+create tags or publish/replace GitHub Releases. All Actions artifacts expire after **one day**, following the repository-wide
+retention policy. Download successful build output before it expires; published
+Release assets are independent of Actions retention.
 
 ## Relay / Gateway artifacts
 

@@ -78,7 +78,7 @@
 Actions 的 `build-artifacts` 提供 Linux/macOS × amd64/arm64 的 Relay/Gateway 二进制、经启动/配对冒烟验证的 Linux amd64 完整部署包，以及三种 ABI 的 Android 构建。
 现有主分支 `feat/android-file-companion` 的可信构建通过独立签名任务使用原有 Pocket 证书，
 产物为 `android-apks-signed`；PR/其他分支仅提供 `android-apks-ci`，不能当作现有 App 的覆盖安装包。
-服务端产物保留 14 天，Android 产物保留一天；不自动发布或替换 Release。
+Actions 产物统一保留一天；不自动发布或替换 Release。
 部署 Linux amd64 优先下载 `native-bundles-linux_amd64`（含 Web、配置/systemd 模板、说明与校验和）；`native-binaries-*` 仅含可执行文件。详见[构建、签名与密钥管理](docs/native-ci.md)。
 
 ## 下载 Relay / Gateway 与部署指南

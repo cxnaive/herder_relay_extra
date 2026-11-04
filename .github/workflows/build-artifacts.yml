@@ -99,7 +99,7 @@ jobs:
           name: native-binaries-${{ matrix.target }}
           path: dist/herdr-native-binaries_${{ matrix.target }}.zip
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 1
 
   native-bundles:
     name: Native Linux amd64 bundles and smoke test
@@ -126,7 +126,7 @@ jobs:
           name: native-bundles-linux_amd64
           path: dist/native-linux_amd64/
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 1
 
   android-apk:
     name: Android Debug and Release APKs
