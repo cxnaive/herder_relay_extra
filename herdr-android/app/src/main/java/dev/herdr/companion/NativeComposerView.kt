@@ -60,6 +60,10 @@ internal class AgentIcon(private val icon: String, private val color: Int) : Dra
 internal class NativeComposerView(context: Context, terminal: Boolean, draft: String,
     onDraft: (String) -> Unit, onAttach: () -> Unit, onCommands: () -> Unit,
     onInputOptions: () -> Unit, onSend: () -> Unit) : LinearLayout(context) {
+    private companion object {
+        const val TEXT_INPUT = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+        const val SECRET_INPUT = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+    }
     data class Attachment(val name: String, val bytes: Long)
     val editor = EditText(context)
     val sendButton = AgentStyle.iconButton(context, "send", if (terminal) "输入文本" else "发送", onSend)
@@ -82,7 +86,7 @@ internal class NativeComposerView(context: Context, terminal: Boolean, draft: St
             setPadding(dp(10), dp(8), dp(10), dp(4))
             minLines = 1; maxLines = if (terminal) 4 else 5
             minimumHeight = dp(44)
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+            inputType = TEXT_INPUT
             setText(draft)
             addTextChangedListener(object : android.text.TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -113,6 +117,16 @@ internal class NativeComposerView(context: Context, terminal: Boolean, draft: St
         }
         actions.addView(sendButton, LayoutParams(dp(48), dp(48)))
         addView(actions, LayoutParams(-1, dp(48)))
+    }
+    fun setSecretInput(secret: Boolean) {
+        val type = if (secret) SECRET_INPUT else TEXT_INPUT
+        // TextView.setInputType restarts the IME even when the type is unchanged.
+        // Output frames must leave the active editor and composing text alone.
+        if (editor.inputType == type) return
+        val start = editor.selectionStart
+        val end = editor.selectionEnd
+        editor.inputType = type
+        if (start >= 0 && end >= 0) editor.setSelection(start.coerceAtMost(editor.length()), end.coerceAtMost(editor.length()))
     }
     fun setAvailability(canSend: Boolean, canAttach: Boolean) {
         sendButton.isEnabled = canSend; sendButton.alpha = if (canSend) 1f else .35f

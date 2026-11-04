@@ -11,7 +11,6 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.provider.OpenableColumns
-import android.text.InputType
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -404,6 +403,7 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
         val panel = NativeComposerView(context, mode == "terminal", uiDraft,
             { uiDraft = it; updateSendState() }, { if (writable()) pickAttachment() else toast("当前设备只读或未连接") },
             ::slashCommands, ::inputMenu, ::sendText)
+        panel.setSecretInput(mode == "terminal" && frame.optBoolean("no_echo"))
         composerPanel = panel; composer = panel.editor; sendButton = panel.sendButton
         layout.addView(panel, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
         updateAttachments()
@@ -789,8 +789,8 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
             engine.send(relay,AgentProtocol.command(relay,agent,"pane_applied").put("content_fingerprint",fingerprint))
             if(type=="pane_content") watchTerminal()
         }
-        if(frame.optBoolean("no_echo")) { composer?.inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD;stateLabel?.text="终端要求隐私输入，内容不会保存为草稿" }
-        else composer?.inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+        composerPanel?.setSecretInput(frame.optBoolean("no_echo"))
+        if(frame.optBoolean("no_echo")) stateLabel?.text="终端要求隐私输入，内容不会保存为草稿"
         updateSendState()
     }
     private fun updateInteraction() {

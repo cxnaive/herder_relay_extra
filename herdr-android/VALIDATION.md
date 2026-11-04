@@ -1,5 +1,14 @@
 # 验证记录
 
+## 0.2.27 · 终端刷新与输入法编辑
+
+2026-11-05：仅修改 App 输入框配置，Relay/Gateway 不变。修复前的专项回归在 Android API 28/35 均确认连续 6 帧普通快照触发 6 次 `restartInput`，增量和密码快照也会重复重启输入法；修复后普通输出刷新不重设 `inputType`，仅隐私模式实际改变时配置。
+
+- Android 全量 JVM/Robolectric 测试 323 项通过（0 failures / errors）；`lintDebug` 通过，0 errors。五张测试生成的既有 QA 截图已按测试前字节恢复。
+- 12 项专项测试通过：初次快照、连续快照/增量、中文 composing text、光标选择、同 ID 绑定代次变化、库存刷新、断线、陈旧目标/失败响应/unchanged 忽略、密码模式保持与不落草稿、新会话草稿隔离。
+- 使用 Robolectric 观察真实 `TextView.setInputType` → `InputMethodManager.restartInput` 调用，未模拟删除文本，未把测试当作用户手机输入法的真机验收。
+- 未放宽发送、审批或主会话确认规则。普通终端刷新只影响显示，不改本地编辑状态。
+
 ## 0.2.26 / codexfix.14 · Codex runtime 主线程与缓存刷新
 
 2026-11-05：当前源码仅对 Codex 使用终端 runtime 候选、明确父子关系和共享模式下匹配 Herdr 上报确认主线程；其他 agent 沿用原有发现和操作流程。没有动态 hook、`/status`、自动修改启动方式或重启生产 agent。手机已移除 `initialDiscovery` 特殊分支，不提供候选选择/确认接口，只跟随 Relay 最终 ID 并保持请求代次隔离。新增 `get_session_binding_diagnostics` 只读快照接口，支持未确认会话诊断与可扩展 `details`，不会重新发现或改绑；模型设置与运行状态接口已改用最终绑定，不要求 Herdr 上报相同 ID。

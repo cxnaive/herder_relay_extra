@@ -2,8 +2,8 @@
   "repository": "cxnaive/herder_relay_extra",
   "snapshot_date": "2026-11-05",
   "android": {
-    "version": "0.2.26",
-    "version_code": 29,
+    "version": "0.2.27",
+    "version_code": 30,
     "source_path": "herdr-android",
     "reference_upstream_revision": "09b52781399114a7576d40fcdf91ccefd7686be6",
     "signature": "debug",

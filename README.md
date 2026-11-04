@@ -31,7 +31,7 @@
 | --- | --- | --- |
 | 电脑 Relay | `0.23.5+codexfix.14` | 仓库根目录，`cmd/herdr-mobile-relay` |
 | 原生 TCP Gateway | `0.23.5+codexfix.6` | `cmd/herdr-gateway`，`deploy/native-tcp/` |
-| Herdr Pocket Android | `0.2.26` / versionCode `29` | `herdr-android/` |
+| Herdr Pocket Android | `0.2.27` / versionCode `30` | `herdr-android/` |
 
 本次按当前可用源码快照替换此前根目录的 0.24.0 文件扩展实现，不把两条不同基线混为同一版本。组件对应关系及源码来源见 [VERSION.json](VERSION.json)。旧内容仍可从 Git 历史查看。
 
@@ -40,6 +40,8 @@
 当前源码仅对 **Codex** 使用终端范围内的 runtime 主会话发现：先排除有明确父子关系的子代理，主线程唯一时直接采用；共享模式仍有多个主线程时，只用匹配候选的 Herdr 上报 ID 消除歧义。无法确认时不猜选，提示可尝试 `codex --no-daemon` 并检查 hook（不保证修复）。其他 agent 保持原有 Herdr Relay 流程；不执行 `/status`、动态 hook 或修改 Codex。相同 ID 刷新缓存，不同 ID 撤销旧请求并隔离历史，详见[会话身份与缓存边界](docs/primary-session-binding.md)。
 
 **`--no-daemon` 已有独立关联路径**：只读验证该 TUI 进程实际持有的会话写锁及精确 ID 元数据，不查询共享后台。主线程唯一即可绑定，不依赖 hook；新会话可能要等首轮输入落下元数据。若 `/new`、`/resume` 后仍持有多个主线程，旧 hook 上报不作消歧依据，保持未确认。独立模式模型设置请在电脑端操作，运行计时不冒用共享后台；其他 agent 不受影响。
+
+Pocket `0.2.27` 修复终端输出刷新打断手机输入法编辑：普通快照/增量不再重设输入框类型，保留拼音编辑状态、光标与草稿；密码输入仍单独处理。本次只更新 App，Relay codexfix.14 / Gateway codexfix.6 不变。
 
 “会话绑定诊断”通过[独立只读接口](docs/session-binding-diagnostics.md)提供带版本的可扩展 JSON；手机不查询可操作候选、不分析子代理或确认主会话，也不会自动上传诊断。
 
