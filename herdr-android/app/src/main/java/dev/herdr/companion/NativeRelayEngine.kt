@@ -26,7 +26,7 @@ class RelayEngine(private val context: Context, private val vault: Vault, privat
     init { main.post { listener(JSONObject().put("type", "ready")) } }
     @Synchronized fun snapshot(): JSONObject = JSONObject(state.toString())
     @Synchronized private fun authentication(id: String): JSONObject? = state.optJSONObject("auth")?.optJSONObject("relays")?.optJSONObject(id)?.let { JSONObject(it.toString()) }
-    @Synchronized private fun persist() { vault.write("state", state.toString()); emit(JSONObject().put("type", "persist").put("state", JSONObject(state.toString()))) }
+    @Synchronized private fun persist(next: JSONObject = state) { vault.write("state", next.toString()); state = next; emit(JSONObject().put("type", "persist").put("state", JSONObject(state.toString()))) }
     private fun emit(event: JSONObject) { main.post { if (!destroyed) { handle(event); listener(event) } } }
     private fun handle(event: JSONObject) {
         if (event.optString("type") == "status" && event.getString("status") == "closed") failPending(event.getString("relayId"), "连接中断，执行结果未确认；请核对后再操作")
@@ -71,14 +71,17 @@ class RelayEngine(private val context: Context, private val vault: Vault, privat
     fun call(method: String, vararg args: Any) {
         when (method) {
             "pair" -> serial.execute { try {
+                val name = ComputerName.validate(args.getOrNull(1) as? String ?: "")
                 val parsed = PairingLink.parse(args[0] as String)
+                parsed.relay.put("label", name)
                 synchronized(this) {
-                    val relays = state.optJSONArray("relays") ?: JSONArray().also { state.put("relays", it) }; relays.put(parsed.relay)
-                    val auth = state.optJSONObject("auth") ?: JSONObject().put("version", 1).put("relays", JSONObject()).also { state.put("auth", it) }
-                    auth.getJSONObject("relays").put(parsed.relay.getString("id"), parsed.invitation); persist()
+                    val next = snapshot()
+                    val relays = next.optJSONArray("relays") ?: JSONArray().also { next.put("relays", it) }; relays.put(parsed.relay)
+                    val auth = next.optJSONObject("auth") ?: JSONObject().put("version", 1).put("relays", JSONObject()).also { next.put("auth", it) }
+                    auth.getJSONObject("relays").put(parsed.relay.getString("id"), parsed.invitation); persist(next)
                 }
                 emit(JSONObject().put("type", "paired").put("relay", parsed.relay)); main.post { connectAll() }
-            } catch (error: Exception) { emit(JSONObject().put("type", "failure").put("message", error.message ?: "配对链接无效")) } }
+            } catch (_: Exception) { emit(JSONObject().put("type", "failure").put("message", "无法添加电脑，请检查名称、邀请有效期和本机存储后重试")) } }
             "send" -> send(args[0] as String, args[1] as JSONObject)
             "reconnect" -> { pause(); resume() }
             "pause" -> pause()
@@ -88,6 +91,18 @@ class RelayEngine(private val context: Context, private val vault: Vault, privat
                 emit(JSONObject().put("type", "removed").put("relayId", id))
             }
         }
+    }
+    @Synchronized fun renameComputer(id: String, value: String) {
+        check(!destroyed) { "连接引擎已关闭" }
+        val name = ComputerName.validate(value)
+        val next = snapshot()
+        val relays = next.optJSONArray("relays") ?: JSONArray()
+        val relay = (0 until relays.length()).map { relays.getJSONObject(it) }.find { it.optString("id") == id }
+        requireNotNull(relay) { "这台电脑已被移除，请返回设备列表" }
+        if (relay.optString("label") == name) return
+        relay.put("label", name)
+        persist(next)
+        emit(JSONObject().put("type", "renamed").put("relayId", id).put("label", name))
     }
     fun send(relay: String, payload: JSONObject) {
         val link = connections[relay]

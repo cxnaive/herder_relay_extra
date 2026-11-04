@@ -149,6 +149,10 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
     fun onEvent(event: JSONObject) {
         val id = event.optString("relayId")
         if (event.optString("type") == "monitor_state") { updateMonitorControls(); return }
+        if (event.optString("type") == "renamed") {
+            if (active && selected == null) renderList() else if (id == relay) updateIdentity()
+            return
+        }
         if (event.optString("type") == "status") {
             if (event.optString("status") == "connected") online += id else online -= id
             if (id == relay && selected != null) {

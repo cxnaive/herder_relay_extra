@@ -1,5 +1,15 @@
 # 验证记录 · Android 0.2.23 / Relay codexfix.11
 
+## 未发布改动 · 电脑本机命名
+
+2026-11-04：配对前确认电脑名称，设备卡片支持仅本机重命名；不修改已有 Release、应用版本号、Relay/Gateway、签名或设备授权。
+
+- 新增 17 项名称校验、引擎及原生界面测试；全量 **292 项 JVM/Robolectric 测试全部通过，0 失败/错误/跳过**。
+- `testDebugUnitTest assembleDebug assembleRelease assembleDebugAndroidTest lintDebug` 离线构建通过；lint **0 errors / 64 warnings**。测试 APK 仅构建，未声称已执行仪器/真机测试。
+- 真实 TCP framing + E2EE 的合成 Relay 测试验证：在线改名不重连，已有请求可完成，连接地址、路由身份和凭据不变；离线及只读身份可改名。保存失败保留原状态，已移除的电脑不能由旧对话框重新创建。
+- 界面回归覆盖配对预填/必填/取消、粘贴与分享入口、同名电脑隔离、标题/搜索更新、保留折叠与对话草稿；窄屏 1.3 倍字体检查并修正设备操作按钮的固定高度裁字。
+- 新界面合成预览位于 `app/build/reports/computer-naming/`，已检查命名、重命名和窄屏大字体设备页；未修改 README 的 1×4 截图或旧版 QA 图。无真实设备配对、部署或权限修改。
+
 ## 0.2.23 GitHub Release 发布
 
 2026-11-04：`android-v0.2.23` 已发布，标签指向源码提交 `2789f9165741e3249f983a2e1c95dfa82177f5d8`。

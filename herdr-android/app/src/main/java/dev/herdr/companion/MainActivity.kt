@@ -224,6 +224,7 @@ class MainActivity : ComponentActivity() {
             "paired" -> { relayId = event.getJSONObject("relay").getString("id"); render(); toast("已添加，正在进行加密配对…") }
             "enrolled" -> { toast("设备配对成功"); if (tab == "devices") render() }
             "removed" -> { readRelays(); relayId = relays.optJSONObject(0)?.optString("id").orEmpty(); selectedAgent = null; render() }
+            "renamed" -> { readRelays(); updateHeader(); if (tab == "devices") { content.removeAllViews(); renderDevices() } }
             "status" -> {
                 val id = event.getString("relayId"); statuses[id] = event.getString("status"); updateHeader()
                 if (tab == "devices") render()
@@ -317,15 +318,24 @@ class MainActivity : ComponentActivity() {
         for (i in 0 until relays.length()) {
             val relay = relays.getJSONObject(i); val id = relay.getString("id")
             val card = card()
-            card.addView(label(relay.optString("label", "我的电脑"), 18, ink, true))
+            val nameRow = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+            nameRow.addView(label(relay.optString("label", "我的电脑"), 18, ink, true).apply {
+                maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END
+            }, LinearLayout.LayoutParams(0, -2, 1f))
+            nameRow.addView(AgentStyle.button(this, "重命名", subtle = true) {
+                ComputerNameDialog.show(this, "重命名电脑", relay.optString("label"), "保存") { name ->
+                    engine.renameComputer(id, name); toast("名称已保存，仅在本机生效")
+                }
+            }.apply { contentDescription = "重命名电脑：${relay.optString("label")}" }, LinearLayout.LayoutParams(-2, dp(48)))
+            card.addView(nameRow)
             card.addView(label(when (statuses[id]) { "connected" -> "已连接 · 端到端加密"; "connecting" -> "正在连接…"; else -> "未连接 · 可重新连接或重新配对" }, 12, if (statuses[id] == "connected") accent else muted).space(0, 5, 0, 12))
-            val row = LinearLayout(this)
-            row.addView(AgentStyle.button(this, "查看 Agents", subtle = true) { relayId = id; selectedAgent = null; tab = "agents"; render() }, LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(4); marginStart = dp(4) })
-            row.addView(AgentStyle.button(this, "重连", subtle = true) { engine.call("reconnect") }, LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(4); marginStart = dp(4) })
+            val row = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+            row.addView(AgentStyle.button(this, "查看 Agents", subtle = true) { relayId = id; selectedAgent = null; tab = "agents"; render() }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = dp(4); marginStart = dp(4) })
+            row.addView(AgentStyle.button(this, "重连", subtle = true) { engine.call("reconnect") }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = dp(4); marginStart = dp(4) })
             row.addView(AgentStyle.button(this, "移除", subtle = true) {
                 AlertDialog.Builder(this).setTitle("从本机移除设备？").setMessage("这会清除本机的连接凭据。电脑端的设备授权可在 Agent 工作台的设置中撤销。")
                     .setPositiveButton("移除") { _, _ -> engine.call("remove", id) }.setNegativeButton("取消", null).show()
-            }, LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(4); marginStart = dp(4) })
+            }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = dp(4); marginStart = dp(4) })
             card.addView(row)
             if (capabilities[id]?.contains("filesystem_read_opt_in_v1") == true) card.addView(button(if (id in unrestrictedFiles) "工作区外文件访问：已开启 ⚠" else "工作区外文件访问：关闭") { fileAccessDialog(id) })
             body.addView(card.space(0, 0, 0, 12))
@@ -369,14 +379,17 @@ class MainActivity : ComponentActivity() {
     }
     private fun confirmPair(value: String) {
         if (!engine.ready) { sharedLink = value; toast("连接引擎正在启动"); return }
-        val uri = runCatching { Uri.parse(value.trim()) }.getOrNull()
-        if (uri?.scheme !in listOf("https", "herdr-tcp") || uri?.host.isNullOrBlank()) { toast("请输入完整的 HTTPS 或 herdr-tcp 配对链接"); return }
+        val parsed = try { PairingLink.parse(value) } catch (_: Exception) { toast("配对链接无效或已过期，请从可信电脑重新生成邀请"); return }
+        val uri = Uri.parse(value.trim())
         val params = Uri.parse("https://invitation.invalid/?" + uri.encodedFragment.orEmpty())
         val destination = (params.getQueryParameter("relay") ?: params.getQueryParameter("gateways"))
             ?.split(',')?.mapNotNull { runCatching { Uri.parse(it).host }.getOrNull() }?.joinToString("、") ?: uri.host
         // Never display or log invitation fragments: they contain the one-use secret.
-        AlertDialog.Builder(this).setTitle("连接这台电脑？").setMessage("连接地址：$destination" + (if (uri.scheme == "herdr-tcp") "\n原生 TCP · 应用层端到端加密（无 HTTPS）" else "") + "\n请确认二维码或链接来自你信任的电脑。")
-            .setPositiveButton("配对") { _, _ -> engine.call("pair", value.trim()) }.setNegativeButton("取消", null).show()
+        val suggestedName = if (params.getQueryParameter("label").isNullOrBlank()) "" else parsed.relay.optString("label")
+        ComputerNameDialog.show(this, "连接这台电脑？", suggestedName, "配对",
+            "连接地址：$destination" + (if (uri.scheme == "herdr-tcp") "\n原生 TCP · 应用层端到端加密（无 HTTPS）" else "") + "\n请确认二维码或链接来自你信任的电脑。") { name ->
+            engine.call("pair", value.trim(), name)
+        }
     }
     private fun renderAgents() {
         if (relays.length() == 0) { emptyState("还没有连接电脑", "先添加设备，即可查看原生对话、终端和审批。", "添加设备") { changeTab("devices") }; return }
