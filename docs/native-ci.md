@@ -40,6 +40,19 @@ build is necessary. Preserve the CI bytes, manifest,
 and checksums, and point the release tag at that run's exact source commit.
 Never substitute `android-apks-ci` or an unrelated run's artifacts.
 
+`android-v0.2.24` and `native-v0.23.5-codexfix.12` were promoted from successful
+run `41811754288`, commit `e5efde31c469eb51a109428b2e2a8cec25fe29cd`.
+The Android release preserves all six signed APKs, BUILD-INFO and checksums;
+the native release preserves the full Linux amd64 Relay/Gateway archives and
+checksums. Archive digests and all release asset digests were checked before
+publication. Android remains Latest; Gateway stays at codexfix.6.
+
+This is the component-specific `android-*` / `native-*` release lane, not an
+upstream `v*` plugin promotion. Its package format is not a compatible input to
+`tests/mobile/baselines.json`; the existing upstream web upgrade baselines are
+unchanged. Successful component builds do not certify the whole `check` workflow
+or Android/iOS Appium upgrade acceptance. See `herdr-android/VALIDATION.md`.
+
 `android-v0.2.23` was promoted from run `41778780951`, commit
 `2789f9165741e3249f983a2e1c95dfa82177f5d8`. It includes all six APKs plus
 `BUILD-INFO.json` and `SHA256SUMS.txt`. The Release attachments remain available

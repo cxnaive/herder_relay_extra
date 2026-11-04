@@ -1,6 +1,19 @@
-# 验证记录 · Android 0.2.23 / Relay codexfix.11
+# 验证记录 · Android 0.2.24 / Relay codexfix.12
 
-## 未发布改动 · 电脑本机命名
+## 0.2.24 / codexfix.12 GitHub Releases
+
+2026-11-04：`android-v0.2.24` 与 `native-v0.23.5-codexfix.12` 已发布，两个标签均指向 `e5efde31c469eb51a109428b2e2a8cec25fe29cd`；Android 为 Latest，旧 Release/标签/附件保留。
+
+- 直接提升成功的 `build-artifacts` run `41811754288`：Android 使用 `android-apks-signed` 的六个 APK、BUILD-INFO 和校验文件；Relay/Gateway 使用 `native-bundles-linux_amd64` 的两个完整归档及校验文件。没有重新编译、重签或混入本地 dirty 二进制。
+- 核对两个 Actions ZIP 的官方 digest、所有文件 SHA-256、精确源码提交；六个 APK 的应用 ID `dev.herdr.companion`、versionName 0.2.24、versionCode 27、对应 ABI 和原有证书均一致。上传后再核对 GitHub Release 资产大小及 digest。
+- CI 的 Android 测试/lint/Debug+Release 构建/固定签名通过；本地 297 项 JVM/Robolectric 测试、lint 通过。服务端归档在 CI 和发布前均通过静态 ELF、配置保护、隔离启动、Gateway 注册及配对冒烟测试。
+- 同一 Relay 应用代码的本地 Go 全套 tests/race/vet 通过，Web 1302 项测试通过；四个 Linux/macOS 架构编译通过。发布动作不重启任何服务；两边 Relay 在此前已部署 codexfix.12 并通过健康/注册检查。
+- 验证边界：最新提交的完整 `check` 没有新的全绿结果。前一提交 `bf2b48d` 的 check run `41810930954` 被 14 天产物保留期规则拦截；当前提交改为仓库要求的一天并通过本地 `make mobile-ci-common-check` 及相关单元测试。没有修改或跳过网页/PWA 设备断言，不宣称 Android/iOS Appium 升级、通知锁屏或用户手机真机验收通过。
+- 另有 8 个 Chromium/WebKit attention/terminal-question 浏览器用例失败：旧 Codex 模拟 pane 没有主进程/runtime 证明，被新策略拒绝。仍需补齐 fixture 并重跑这些场景；本次不宣称它们已经通过，也没有降低验证要求以消除失败。
+- 新发现协议需要配套 App/Relay；Gateway codexfix.6 无需升级。确实无法消除歧义的会话仍不可用；旧的手动历史绑定保持只读，不等于可操作的当前主会话。
+
+
+## 0.2.24 发布前验证 · 电脑本机命名
 
 2026-11-04：配对前确认电脑名称，设备卡片支持仅本机重命名；不修改已有 Release、应用版本号、Relay/Gateway、签名或设备授权。
 

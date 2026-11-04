@@ -35,23 +35,23 @@
 
 本次按当前可用源码快照替换此前根目录的 0.24.0 文件扩展实现，不把两条不同基线混为同一版本。组件对应关系及源码来源见 [VERSION.json](VERSION.json)。旧内容仍可从 Git 历史查看。
 
-当前源码准备发布 **Android 0.2.24 / Relay codexfix.12**：验证终端主进程、独占 runtime 与会话存储，不再信任错误的 Herdr session ID；暂时失去证据时保留原会话缓存和草稿，但禁止不确定的输入。旧 APK 不支持新的绑定租约，需配套更新；Gateway codexfix.6 不变。[发现机制与边界](docs/primary-session-binding.md)。
+已发布配套版本 **Android 0.2.24 / Relay codexfix.12**：验证终端主进程、独占 runtime 与会话存储，不再信任错误的 Herdr session ID；暂时失去证据时保留原会话缓存和草稿，但禁止不确定的输入。旧 APK 不支持新的绑定租约，需配套更新；Gateway codexfix.6 不变。[发现机制与边界](docs/primary-session-binding.md)。
 
-下方下载仍指向已发布版本；`VERSION.json` 的 `android_release` / `native_release` 独立记录已发布产物，不代表当前源码已经发布。
+下方链接指向本次发布；`VERSION.json` 的 `android_release` / `native_release` 记录精确的产物来源和源码提交，独立于后续文档更新。
 
 ## 下载 Android APK
 
-**0.2.23 已发布到 [`android-v0.2.23`](https://github.com/cxnaive/herder_relay_extra/releases/tag/android-v0.2.23)**（2026-11-04），新增电脑/工作空间两级折叠、状态记忆及搜索临时展开；不影响多电脑连接和后台完成提醒。[分组说明](herdr-android/AGENT-GROUPS.md)。
+**0.2.24 / versionCode 27 已发布到 [`android-v0.2.24`](https://github.com/cxnaive/herder_relay_extra/releases/tag/android-v0.2.24)**（2026-11-04）：主会话验证、临时失联时保留原缓存/草稿、只读诊断，以及配对命名和电脑本机重命名。请配套 Relay codexfix.12；旧 APK 不支持新的绑定租约，Gateway codexfix.6 不变。
 
 | 设备架构 | 下载 |
 | --- | --- |
-| ARM64 手机 / 平板 | [Release · arm64-v8a](https://github.com/cxnaive/herder_relay_extra/releases/download/android-v0.2.23/Herdr-Pocket-0.2.23-release-arm64-v8a.apk) |
-| 32 位 ARM | [Release · armeabi-v7a](https://github.com/cxnaive/herder_relay_extra/releases/download/android-v0.2.23/Herdr-Pocket-0.2.23-release-armeabi-v7a.apk) |
-| x86_64 模拟器 / 设备 | [Release · x86_64](https://github.com/cxnaive/herder_relay_extra/releases/download/android-v0.2.23/Herdr-Pocket-0.2.23-release-x86_64.apk) |
+| ARM64 手机 / 平板 | [Release · arm64-v8a](https://github.com/cxnaive/herder_relay_extra/releases/download/android-v0.2.24/Herdr-Pocket-0.2.24-release-arm64-v8a.apk) |
+| 32 位 ARM | [Release · armeabi-v7a](https://github.com/cxnaive/herder_relay_extra/releases/download/android-v0.2.24/Herdr-Pocket-0.2.24-release-armeabi-v7a.apk) |
+| x86_64 模拟器 / 设备 | [Release · x86_64](https://github.com/cxnaive/herder_relay_extra/releases/download/android-v0.2.24/Herdr-Pocket-0.2.24-release-x86_64.apk) |
 
-附件同时提供三种 ABI 的 Debug 包、`BUILD-INFO.json` 和 `SHA256SUMS.txt`。所有 APK 来自同一次成功的 GitHub Actions 固定签名产物，发布时未重新编译或修改。Release 构建仍使用原 Pocket 证书，可覆盖同签名旧版；无需卸载、重新配对或更新 Relay/Gateway。
+附件同时提供三种 ABI 的 Debug 包、`BUILD-INFO.json` 和 `SHA256SUMS.txt`。六个 APK 直接来自成功的 CI 固定签名产物，发布时没有重新编译或签名。继续使用原 Pocket 证书，**直接覆盖安装，不要卸载旧 App**；不需要重新配对，已有 Gateway 无需升级。
 
-发布验证：Android 构建、JVM 测试、lint、固定签名及 Go race 通过；完整 `check` 中网页端设备升级 lane 因缺少测试辅助脚本失败。未宣称设备升级验收通过，详见 [发布验证记录](herdr-android/VALIDATION.md)。
+发布来源：`build-artifacts` run `41811754288`，源码/标签 `e5efde31c469eb51a109428b2e2a8cec25fe29cd`。Android 构建/测试/lint/签名、服务端包冒烟和发布前校验通过。**不宣称完整 check、网页/PWA 设备升级或用户手机真机验收全绿**；详见[发布验证记录](herdr-android/VALIDATION.md)。
 
 0.2.22 发布于 **`android-v0.2.22`**（2026-11-04），包含终端改进：补载历史的进度/阅读位置、明确上游没有更多行的提示、参考 Termux 的退格/回车/方向/翻页/Ctrl/Alt 附加键；[终端使用说明与限制](herdr-android/TERMINAL.md)。包含此前 0.2.21 UI 打磨：按 Impeccable 的原生指南统一深色配色、排版与交互层级，简化 Agent 分组、对话状态/输入区，改善文件页和大屏导航。既有功能、Relay/Gateway 与配对保留；[设计说明](herdr-android/DESIGN.md)。APK 为 `Herdr-Pocket-0.2.22-debug.apk`，附 `SHA256SUMS.txt`；源码通过该 tag 的 Source code 下载项获取。
 
@@ -65,7 +65,7 @@
 
 0.2.13 包含完成提醒声音检查/测试入口及此前 0.2.12 本地构建的工作空间标题修复。
 
-进入仓库 **Releases → Herdr Pocket 0.2.23**，按上表选择设备架构；普通 ARM64 手机优先下载 `Herdr-Pocket-0.2.23-release-arm64-v8a.apk`。
+进入仓库 **Releases → Herdr Pocket 0.2.24**，按上表选择设备架构；普通 ARM64 手机优先下载 `Herdr-Pocket-0.2.24-release-arm64-v8a.apk`。
 
 - Android 9 / API 28 及以上。
 - 与此前同签名的 Pocket APK 可直接覆盖安装，**不需要重新配对**。
@@ -86,14 +86,14 @@ Actions 产物统一保留一天；不自动发布或替换 Release。
 **[完整部署指南：从零安装 → systemd → 配对 → 升级/回滚](docs/native-deployment.md)**
 
 - 公网服务器装 **Gateway**；运行 Herdr/Agent 的电脑以同一用户装 **Relay**；手机装 APK。
-- 服务端 Release **`native-v0.23.5-codexfix.11`** 提供 Linux x86_64 / amd64：
-  - `herdr-mobile-relay_0.23.5-codexfix.11_linux_amd64.tar.gz`
+- 服务端 Release **[`native-v0.23.5-codexfix.12`](https://github.com/cxnaive/herder_relay_extra/releases/tag/native-v0.23.5-codexfix.12)** 提供 Linux x86_64 / amd64：
+  - `herdr-mobile-relay_0.23.5-codexfix.12_linux_amd64.tar.gz`
   - `herdr-gateway_0.23.5-codexfix.6_linux_amd64.tar.gz`
   - `SHA256SUMS.txt`
 - 包含二进制、配置/systemd 模板、初始化工具、部署说明和构建来源；无需在目标机器安装 Go。
 - 公网业务只需 **8377/TCP**，原生 App 不要求域名/HTTPS；应用数据使用现有 E2EE。健康端口仅 loopback。
 - 只更新二进制时保留原密钥和设备库，**不重启 Herdr/Agent**。已有安装先读指南的升级章节，不重复初始化。
-- 此服务端 Release 独立于 Android `android-v0.2.22`；Android 保持 Latest。本次未提供 ARM64/macOS/Windows 二进制。
+- 此服务端 Release 独立于 Android `android-v0.2.24`；Android 保持 Latest。本次未提供 ARM64/macOS/Windows 二进制。
 
 ## 已实现
 

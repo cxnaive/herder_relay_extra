@@ -1,20 +1,20 @@
-# Herdr Pocket · Android 0.2.24（源码）
+# Herdr Pocket · Android 0.2.24
 
-与本仓库根目录的 **Relay 0.23.5+codexfix.11** 配套的原生 Android 客户端，不使用 WebView 运行 Agent 界面。
+与本仓库根目录的 **Relay 0.23.5+codexfix.12** 配套的原生 Android 客户端，不使用 WebView 运行 Agent 界面。
 
 ## 安装
 
-**当前源码：0.2.24 / versionCode 27**，沿用既有签名；新增主会话验证、失联时保留缓存/草稿及只读诊断。需配套 Relay codexfix.12，Gateway 不变；此说明不代表新 Release 已发布。
-
-**0.2.23 已发布到 `android-v0.2.23`**（2026-11-04）：新增「电脑 → 工作空间 → Agent」两级展开/折叠，默认展开并记住本机状态；搜索临时展开匹配项，清空后恢复。折叠后保留数量、路径和新建 Agent 入口，不影响连接和后台提醒。[分组使用说明](AGENT-GROUPS.md)。
+**0.2.24 / versionCode 27 已发布到 [`android-v0.2.24`](https://github.com/cxnaive/herder_relay_extra/releases/tag/android-v0.2.24)**（2026-11-04）：主会话验证、临时失联时保留原缓存/草稿、只读诊断，以及配对命名和电脑本机重命名。请配套 Relay codexfix.12；旧 APK 不支持新的绑定租约，Gateway codexfix.6 不变。
 
 | 设备架构 | 下载 |
 | --- | --- |
-| ARM64 手机 / 平板 | [Release · arm64-v8a](https://github.com/cxnaive/herder_relay_extra/releases/download/android-v0.2.23/Herdr-Pocket-0.2.23-release-arm64-v8a.apk) |
-| 32 位 ARM | [Release · armeabi-v7a](https://github.com/cxnaive/herder_relay_extra/releases/download/android-v0.2.23/Herdr-Pocket-0.2.23-release-armeabi-v7a.apk) |
-| x86_64 模拟器 / 设备 | [Release · x86_64](https://github.com/cxnaive/herder_relay_extra/releases/download/android-v0.2.23/Herdr-Pocket-0.2.23-release-x86_64.apk) |
+| ARM64 手机 / 平板 | [Release · arm64-v8a](https://github.com/cxnaive/herder_relay_extra/releases/download/android-v0.2.24/Herdr-Pocket-0.2.24-release-arm64-v8a.apk) |
+| 32 位 ARM | [Release · armeabi-v7a](https://github.com/cxnaive/herder_relay_extra/releases/download/android-v0.2.24/Herdr-Pocket-0.2.24-release-armeabi-v7a.apk) |
+| x86_64 模拟器 / 设备 | [Release · x86_64](https://github.com/cxnaive/herder_relay_extra/releases/download/android-v0.2.24/Herdr-Pocket-0.2.24-release-x86_64.apk) |
 
-附件同时提供三种 ABI 的 Debug 包、`BUILD-INFO.json` 和 `SHA256SUMS.txt`。所有 APK 来自同一次成功的 GitHub Actions 固定签名产物，发布时未重新编译或修改。Release 构建仍使用原 Pocket 证书，可覆盖同签名旧版；无需卸载、重新配对或更新 Relay/Gateway。
+附件同时提供三种 ABI 的 Debug 包、`BUILD-INFO.json` 和 `SHA256SUMS.txt`。六个 APK 直接来自成功的 CI 固定签名产物，发布时没有重新编译或签名。继续使用原 Pocket 证书，**直接覆盖安装，不要卸载旧 App**；不需要重新配对，已有 Gateway 无需升级。
+
+发布来源：`build-artifacts` run `41811754288`，源码/标签 `e5efde31c469eb51a109428b2e2a8cec25fe29cd`。Android 构建/测试/lint/签名、服务端包冒烟和发布前校验通过。**不宣称完整 check、网页/PWA 设备升级或用户手机真机验收全绿**；详见[验证记录](VALIDATION.md)。
 
 0.2.22 发布于 **`android-v0.2.22`**（2026-11-04），提供 `Herdr-Pocket-0.2.22-debug.apk` 与 `SHA256SUMS.txt`。终端改进：更早输出的进度与阅读位置、退格/回车/翻页/方向/Ctrl/Alt 附加按键，并修正旧按键编码。[用法及历史限制](TERMINAL.md)。包含此前 0.2.21 UI 打磨。统一视觉层级、Agent 列表、对话/工具、输入区、文件查看与导航；[设计规范及验证边界](DESIGN.md)。保留原签名和配对，不改 Relay/Gateway。
 
@@ -31,9 +31,9 @@ Android 9（API 28）及以上。发布 APK 使用原有调试签名，可覆盖
 
 配对：启动电脑 Relay，生成设备邀请，在“我的设备”扫码/粘贴。支持 HTTPS/WSS 和 `herdr-tcp://IP:端口/#…` 的限时设备邀请。邀请和二维码包含秘密，请勿公开。
 
-## 未发布改动
+## 电脑名称
 
-开发中的源码已加入配对时确认电脑名称，以及设备卡片上的本机重命名。仅改显示备注，不改 Relay、连接或配对；离线也可改名。**已发布的 0.2.23 APK 尚不包含此功能**。详见 [电脑名称与分组说明](AGENT-GROUPS.md)。
+0.2.24 已包含配对时确认电脑名称，以及设备卡片上的本机重命名。仅改显示备注，不改 Relay、连接或配对；离线也可改名。详见[电脑名称与分组说明](AGENT-GROUPS.md)。
 
 ## 功能
 
