@@ -222,7 +222,7 @@ mobile-ci-common-check: mobile-frontend-dependencies mobile-test-dependencies mo
 	bun run --cwd tests/mobile lint
 	bun run --cwd tests/mobile check
 	go test ./tests/mobile/fixture
-	go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck= -pyflakes= .github/workflows/build-artifacts.yml .github/workflows/check.yml .github/workflows/mobile-ci.yml .github/workflows/release.yml
+	go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck= -pyflakes= .github/workflows/build-artifacts.yml .github/workflows/check.yml .github/workflows/mobile-ci.yml .github/workflows/release.yml .github/workflows/publish-components.yml
 
 mobile-unit-check: mobile-frontend-dependencies mobile-test-dependencies
 	MOBILE_UNIT_FILTER="$(value MOBILE_UNIT_FILTER)" bun run --cwd tests/mobile test:unit

@@ -1,10 +1,11 @@
-# Herdr Pocket · Android 0.2.24
+# Herdr Pocket · Android
 
-与本仓库根目录的 **Relay 0.23.5+codexfix.12** 配套的原生 Android 客户端，不使用 WebView 运行 Agent 界面。
+与本仓库电脑 Relay 配套的原生 Android 客户端，不使用 WebView 运行 Agent 界面。
 
+<!-- android-downloads:start -->
 ## 安装
 
-**0.2.24 / versionCode 27 已发布到 [`android-v0.2.24`](https://github.com/cxnaive/herder_relay_extra/releases/tag/android-v0.2.24)**（2026-11-04）：主会话验证、临时失联时保留原缓存/草稿、只读诊断，以及配对命名和电脑本机重命名。请配套 Relay codexfix.12；旧 APK 不支持新的绑定租约，Gateway codexfix.6 不变。
+**[0.2.24 / versionCode 27](https://github.com/cxnaive/herder_relay_extra/releases/tag/android-v0.2.24)**。
 
 | 设备架构 | 下载 |
 | --- | --- |
@@ -12,24 +13,14 @@
 | 32 位 ARM | [Release · armeabi-v7a](https://github.com/cxnaive/herder_relay_extra/releases/download/android-v0.2.24/Herdr-Pocket-0.2.24-release-armeabi-v7a.apk) |
 | x86_64 模拟器 / 设备 | [Release · x86_64](https://github.com/cxnaive/herder_relay_extra/releases/download/android-v0.2.24/Herdr-Pocket-0.2.24-release-x86_64.apk) |
 
-附件同时提供三种 ABI 的 Debug 包、`BUILD-INFO.json` 和 `SHA256SUMS.txt`。六个 APK 直接来自成功的 CI 固定签名产物，发布时没有重新编译或签名。继续使用原 Pocket 证书，**直接覆盖安装，不要卸载旧 App**；不需要重新配对，已有 Gateway 无需升级。
+附件还包含三种 ABI 的 Debug APK、`BUILD-INFO.json` 和 `SHA256SUMS.txt`。
+所有 APK 直接复用 CI 固定签名产物，不重新编译或签名。**直接覆盖安装，不要卸载旧版**，以保留配对和草稿。
+Android 9 / API 28 及以上；仍使用原有调试证书，不是 Play 商店版本。自行构建的签名可能不同。
 
-发布来源：`build-artifacts` run `41811754288`，源码/标签 `e5efde31c469eb51a109428b2e2a8cec25fe29cd`。Android 构建/测试/lint/签名、服务端包冒烟和发布前校验通过。**不宣称完整 check、网页/PWA 设备升级或用户手机真机验收全绿**；详见[验证记录](VALIDATION.md)。
-
-0.2.22 发布于 **`android-v0.2.22`**（2026-11-04），提供 `Herdr-Pocket-0.2.22-debug.apk` 与 `SHA256SUMS.txt`。终端改进：更早输出的进度与阅读位置、退格/回车/翻页/方向/Ctrl/Alt 附加按键，并修正旧按键编码。[用法及历史限制](TERMINAL.md)。包含此前 0.2.21 UI 打磨。统一视觉层级、Agent 列表、对话/工具、输入区、文件查看与导航；[设计规范及验证边界](DESIGN.md)。保留原签名和配对，不改 Relay/Gateway。
-
-0.2.20 发布于 **`android-v0.2.20`**，附件为 `Herdr-Pocket-0.2.20-debug.apk` 与 SHA-256 校验文件。保存后查询实际名称，若被改后缀则通过系统文档接口尝试恢复原名并再次核对；拒绝改名、同名冲突或无法确认时显示原名/实际名称并可复制原名，不删除或强制覆盖同名文件。
-
-包含此前 0.2.18/0.2.19 本地修复：正确匹配保存/分享的 MIME；发布标签、仓库 slug 和未带路径的附件名不再生成假文件卡片。可覆盖旧同签名 App，**无需重新配对、升级或重启 Relay/Gateway**。若旧 App 下载此 APK 仍为 `.bin`，这一次先改回 `Herdr-Pocket-0.2.22-debug.apk` 再安装。
-
-0.2.17 发布于 `android-v0.2.17`，包含文件访问/下载改进及此前 0.2.16 的对话漏补修复。配套 Relay 安装包见 `native-v0.23.5-codexfix.11`，Gateway codexfix.6 无需更新。
-
-0.2.15 工作区逐层分页修复发布于 `android-v0.2.15`，配套 Relay 安装包见 `native-v0.23.5-codexfix.9`。目录分页需要 Relay codexfix.9，旧 Relay 继续使用有限的工作区树并提示升级。
-
-预编译 APK 从本仓库 **GitHub Releases** 下载；APK 不提交到 Git 历史。
-Android 9（API 28）及以上。发布 APK 使用原有调试签名，可覆盖此前同签名的 Pocket 包，且不需要重新配对。自行构建会使用你本机的 debug 签名，未必能覆盖发布包；不要为解决签名冲突直接卸载有配对/草稿的旧包。
-
-配对：启动电脑 Relay，生成设备邀请，在“我的设备”扫码/粘贴。支持 HTTPS/WSS 和 `herdr-tcp://IP:端口/#…` 的限时设备邀请。邀请和二维码包含秘密，请勿公开。
+发布来源：[CI run 41811754288](https://github.com/cxnaive/herder_relay_extra/actions/runs/41811754288)，源码 `e5efde31c469eb51a109428b2e2a8cec25fe29cd`。
+构建成功不等于完整 check 或真机验收全绿；验证范围和已知缺口见 Release 说明及 `herdr-android/VALIDATION.md`。
+历史版本和更新内容保留在 Releases / CHANGELOG。
+<!-- android-downloads:end -->
 
 ## 电脑名称
 

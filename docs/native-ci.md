@@ -7,6 +7,37 @@ create tags or publish/replace GitHub Releases. All Actions artifacts expire aft
 retention policy. Download successful build output before it expires; published
 Release assets are independent of Actions retention.
 
+## Release 发布：只走 GitHub Actions
+
+**以后 Android / Native Release 一律使用 `publish-components`，不在本机编译、重签或下载后再上传。**
+`build-artifacts` 负责构建和固定签名，`publish-components` 复用一次已经成功的构建。
+它不会重新跑 Gradle/Go 构建，也不读取签名私钥；大文件只在 GitHub runner 和 GitHub 之间传输。
+每次 push 仍只构建，不会擅自发布新版本。
+
+1. 修改需要发布的组件版本，commit/push 原分支，等 `build-artifacts` 成功。
+2. 在 **Actions → publish-components → Run workflow** 填入这个构建的 run ID。
+3. 先保持 `publish=false` 进行只读验证；确认成功后，用同一 run ID 设 `publish=true` 发布。
+   两个组件都变更选 `both`，只更新 App 选 `android`，只更新服务端选 `native`。
+
+也可仅在本机发起 CI（不会在本机传 APK）：
+
+```bash
+gh workflow run publish-components.yml --ref feat/android-file-companion \
+  -f build_run_id=RUN_ID -f components=both -f publish=false
+# 上面的只读演练成功后，再明确发布：
+gh workflow run publish-components.yml --ref feat/android-file-companion \
+  -f build_run_id=RUN_ID -f components=both -f publish=true
+```
+
+- 只接受本仓库可信分支的成功 `build-artifacts` push/manual run；拒绝 PR、fork、失败/未完成的构建及过期产物。
+- 只读 job 核对官方 Actions ZIP digest、SHA-256、精确源码/版本、六个 APK 的 ABI/原证书，并对 Native 完整包做隔离启动/配对测试。
+- 后续独立 job 才持有 Release 写权限；不执行归档中的程序、不构建、不签名。两个组件先完整上传并核验草稿，再发布；Android 为 Latest，Native 不抢 Latest。
+- 标签必须指向构建的精确 commit。同名已发布版本只允许同源码、同文件、同散列的幂等检查，**不覆盖旧附件、不移动标签、不重传已存在文件**。版本冲突必须先升版本号。
+- 发布完成后，同一 CI 自动更新 `VERSION.json`、根 README/Android README 的下载区，以及部署指南，并提交到现有分支。README 开头的 1×4 截图区保持原样。
+- 文档更新失败会让发布 job 报错，不会默默算作完成。若并发提交使 push 无法 fast-forward，重新运行同一发布即可核验已有 Release 并补文档，绝不 force-push。
+- 发布不会 SSH、部署或重启 Relay/Gateway/Herdr/Agent；独立完整 `check` 的状态会写入发布说明，不把构建通过冒充设备验收全绿。
+- `android-*` / `native-*` 是本 fork 的组件 Release；上游 `v*` 插件 Release 和网页升级基线仍走原有流程。
+
 ## Relay / Gateway artifacts
 
 - `native-bundles-linux_amd64`: installable Relay and Gateway tarballs plus
@@ -163,7 +194,6 @@ python3 -m unittest discover -s scripts/tests -p test_android_artifacts.py
 python3 scripts/android-artifacts.py collect herdr-android/app/build/outputs/apk dist/android-ci
 ```
 
-The signing script accepts the same environment secrets locally; it refuses to
-overwrite an existing output directory. Do not print, trace, or save secret
-values in shell history when setting them. The offline packaging/signing tests
-use synthetic files and a fake signer, not an actual personal keystore.
+Release signing stays in the protected CI signing job. Local development builds
+are not promotion inputs. Offline packaging/signing tests use synthetic files
+and a fake signer, never a personal keystore.

@@ -1,0 +1,114 @@
+name: publish-components
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_run_id:
+        description: Successful build-artifacts run ID (existing CI output, no rebuild)
+        required: true
+        type: string
+      components:
+        description: Components to promote (bump only the versions being released)
+        type: choice
+        options: [both, android, native]
+        default: both
+      publish:
+        description: Publish after verification and update README (false is a read-only rehearsal)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: component-release
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify exact CI release assets
+    if: >-
+      github.repository == 'cxnaive/herder_relay_extra' &&
+      github.ref == 'refs/heads/feat/android-file-companion'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
+        if: inputs.components != 'native'
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4
+        if: inputs.components != 'native'
+      - name: Install APK inspection tools (no Gradle, no signing key)
+        if: inputs.components != 'native'
+        run: sdkmanager "build-tools;35.0.0"
+      - name: Test publisher guards
+        run: python3 -m unittest discover -s scripts/tests -p 'test_*.py'
+      - name: Download and verify existing CI output on the runner
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_RUN_ID: ${{ inputs.build_run_id }}
+          COMPONENTS: ${{ inputs.components }}
+        run: python3 scripts/publish-components.py prepare dist/promotion --build-run-id "$BUILD_RUN_ID" --components "$COMPONENTS"
+      - name: Read-only publication rehearsal
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/publish-components.py promote dist/promotion
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: component-promotion-${{ github.run_attempt }}
+          path: dist/promotion/
+          retention-days: 1
+          if-no-files-found: error
+
+  publish:
+    name: Publish verified assets and update download records
+    needs: verify
+    if: inputs.publish && needs.verify.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: component-promotion-${{ github.run_attempt }}
+          path: dist/promotion
+      - name: Promote exact bytes (no build, no signing, no executable smoke)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/publish-components.py promote dist/promotion --publish
+      - name: Update README and published-version records on the existing branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git fetch origin feat/android-file-companion
+          git checkout --detach origin/feat/android-file-companion
+          python3 scripts/publish-components.py docs dist/promotion
+          git diff --check
+          git add -- README.md VERSION.json herdr-android/README.md docs/native-deployment.md
+          if ! git diff --cached --quiet; then
+            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit -m 'docs(release): refresh CI-published downloads'
+            gh auth setup-git
+            git push origin HEAD:feat/android-file-companion
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: component-publication-${{ github.run_attempt }}
+          path: dist/promotion/published.json
+          retention-days: 1
+          if-no-files-found: warn
