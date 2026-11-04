@@ -35,7 +35,7 @@
 - `herdr-gateway_0.23.5-codexfix.6_linux_amd64.tar.gz`
 - `SHA256SUMS.txt`
 
-APK 使用配套 Release **`android-v0.2.26`**，普通 ARM64 手机选择 `Herdr-Pocket-0.2.26-release-arm64-v8a.apk`。旧 APK 不支持 codexfix.12 的绑定租约，必须配套更新；已有 Gateway codexfix.6 不变。Android Release 保持为 Latest；服务端版本不等于 Android 版本。
+APK 使用配套 Release **`android-v0.2.27`**，普通 ARM64 手机选择 `Herdr-Pocket-0.2.27-release-arm64-v8a.apk`。旧 APK 不支持 codexfix.12 的绑定租约，必须配套更新；已有 Gateway codexfix.6 不变。Android Release 保持为 Latest；服务端版本不等于 Android 版本。
 
 在电脑的空目录中下载（也可直接在 GitHub Releases 页面点附件）。先确认两台 Linux 机器的 `uname -m` 都是 `x86_64`：
 

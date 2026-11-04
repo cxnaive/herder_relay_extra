@@ -33,20 +33,20 @@
     "release_build_run": 41895522095
   },
   "android_release": {
-    "version": "0.2.26",
-    "version_code": 29,
-    "release_tag": "android-v0.2.26",
-    "artifact": "Herdr-Pocket-0.2.26-release-arm64-v8a.apk",
-    "release_source_commit": "3d343b1d5021d2fb089fc19342dbceb234ee70f4",
-    "release_build_run": 41895522095,
+    "version": "0.2.27",
+    "version_code": 30,
+    "release_tag": "android-v0.2.27",
+    "artifact": "Herdr-Pocket-0.2.27-release-arm64-v8a.apk",
+    "release_source_commit": "9c0d8e264216f5fe8c52a9bf129cfad05e10cca3",
+    "release_build_run": 41902832600,
     "release_artifacts": [
       "BUILD-INFO.json",
-      "Herdr-Pocket-0.2.26-debug-arm64-v8a.apk",
-      "Herdr-Pocket-0.2.26-debug-armeabi-v7a.apk",
-      "Herdr-Pocket-0.2.26-debug-x86_64.apk",
-      "Herdr-Pocket-0.2.26-release-arm64-v8a.apk",
-      "Herdr-Pocket-0.2.26-release-armeabi-v7a.apk",
-      "Herdr-Pocket-0.2.26-release-x86_64.apk",
+      "Herdr-Pocket-0.2.27-debug-arm64-v8a.apk",
+      "Herdr-Pocket-0.2.27-debug-armeabi-v7a.apk",
+      "Herdr-Pocket-0.2.27-debug-x86_64.apk",
+      "Herdr-Pocket-0.2.27-release-arm64-v8a.apk",
+      "Herdr-Pocket-0.2.27-release-armeabi-v7a.apk",
+      "Herdr-Pocket-0.2.27-release-x86_64.apk",
       "SHA256SUMS.txt"
     ]
   }
