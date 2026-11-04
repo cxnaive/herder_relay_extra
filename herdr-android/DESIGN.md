@@ -52,3 +52,11 @@ This document records decisions derived from the existing product and code, not 
 Evidence is Robolectric native rendering, **not a connected phone/emulator**. There was no attached device or installed emulator during this pass; no hardware gesture/performance/TalkBack certification is claimed. Existing TCP/E2EE, file transfer, notification, reviewer and history regressions still run. Physical Android QA remains necessary before claiming full device acceptance.
 
 Question round skipped: this was an implementation request on an established native product; task, audience and core constraints were inferable from the existing application and conversation. Physical-device acceptance is explicitly deferred, not implied by screenshot checks.
+
+
+## 0.2.23：电脑与工作空间层级
+
+- 电脑使用独立低对比度标题面板，工作空间缩进，Agent 再缩进；每级均可单独折叠，避免多电脑同名项目混在一起。
+- 折叠工作空间仍显示路径、Agent 数量和独立的「＋ Agent」；标题整块可点击，箭头只作为状态指示，不把命中范围缩到小图标。
+- 搜索临时展开，不覆盖持久折叠偏好；折叠标题在布局完成后恢复滚动锚点，辅助功能提供展开/折叠动作。
+- 界面分组与连接/监控状态分离，收起不是断开；签名、配对和文件访问边界不变。详见 `AGENT-GROUPS.md`。

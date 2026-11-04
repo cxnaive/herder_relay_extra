@@ -1,4 +1,15 @@
-# 验证记录 · Android 0.2.22 / Relay codexfix.11
+# 验证记录 · Android 0.2.23 / Relay codexfix.11
+
+## 0.2.23 · 电脑与工作空间两级折叠（本地构建）
+
+验证完成于 2026-11-04（Asia/Shanghai）；尚未发布 Release。
+
+- **275 个 JVM/Robolectric 测试通过，0 failures / 0 errors / 0 skipped**。`testDebugUnitTest assembleDebug assembleDebugAndroidTest lintDebug` 成功；lint **0 errors / 64 warnings**。APK versionName **0.2.23** / versionCode **26**；证书 SHA-256 与既有 0.2.22 一致。
+- 新增 26 项分组/界面回归：独立电脑、工作空间和服务会话身份，添加顺序/Tab 顺序，同名隔离，离线与空工作空间，状态持久化及标题重命名后的身份稳定。
+- 原生 UI 覆盖两级展开/收起、重建页面、刷新/断线/新 Agent 到达不展开已折叠分组、搜索临时状态（含零结果后换词）、独立新建按钮、准确电脑的对话/文件目标和过期标题回调拒绝。
+- Android API 28/35 的触摸、键盘焦点和辅助功能展开/折叠动作通过；长列表收起工作空间保持标题阅读位置。核对 400dp、360dp / 1.3 倍字体、800×600dp 横屏原生截图及至少 48dp 的操作区域。
+- 合成截图在 `app/build/reports/agent-groups/`，已目视核对。README 的四张独立原生截图由 `ReadmePreviewTest` 生成，使用合成内容和无远程端点的 fixture，放在 `images/pocket/`；图库位于标题下方，横排 1×4 并可点开原图。仅在虚构电脑/Agent 的离线 fixture 中模拟列表，未操作真实终端、设备或文件；未做物理 Android 手机/TalkBack 真机验收。
+- 全套现有 TCP/E2EE、历史、下载、原文件名、图片/文档及监控回归通过。**仅修改 Android 列表，不更新或重启 Relay/Gateway/Herdr/Agent，不改配对、文件权限和完成提醒偏好**。用法见 `AGENT-GROUPS.md`。
 
 ## 0.2.22 · 终端历史与附加按键
 

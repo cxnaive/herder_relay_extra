@@ -1,16 +1,43 @@
 # Herdr Relay Extra + Herdr Pocket
 
+<!-- pocket-preview:start -->
+<table>
+  <tr>
+    <td align="center" valign="top" width="25%">
+      <a href="images/pocket/agents.png"><img src="images/pocket/agents.png" width="200" alt="Herdr Pocket：电脑与工作空间分组" /></a>
+      <br /><sub>电脑与工作空间分组</sub>
+    </td>
+    <td align="center" valign="top" width="25%">
+      <a href="images/pocket/conversation.png"><img src="images/pocket/conversation.png" width="200" alt="Herdr Pocket：原生对话与工具折叠" /></a>
+      <br /><sub>原生对话与工具折叠</sub>
+    </td>
+    <td align="center" valign="top" width="25%">
+      <a href="images/pocket/terminal.png"><img src="images/pocket/terminal.png" width="200" alt="Herdr Pocket：终端与附加按键" /></a>
+      <br /><sub>终端与附加按键</sub>
+    </td>
+    <td align="center" valign="top" width="25%">
+      <a href="images/pocket/workspace.png"><img src="images/pocket/workspace.png" width="200" alt="Herdr Pocket：工作区文件浏览" /></a>
+      <br /><sub>工作区文件浏览</sub>
+    </td>
+  </tr>
+</table>
+
+<sub>0.2.23 界面预览 · 使用演示数据的原生控件渲染，点击查看大图。</sub>
+<!-- pocket-preview:end -->
+
 当前可配套使用的 **Relay 源码 + 原生 Android App 源码**。APK 及编译好的 Linux Relay/Gateway 通过本仓库的 **GitHub Releases** 发布，不存放在 Git 仓库目录中。
 
 | 组件 | 版本 | 位置 |
 | --- | --- | --- |
 | 电脑 Relay | `0.23.5+codexfix.11` | 仓库根目录，`cmd/herdr-mobile-relay` |
 | 原生 TCP Gateway | `0.23.5+codexfix.6` | `cmd/herdr-gateway`，`deploy/native-tcp/` |
-| Herdr Pocket Android | `0.2.22` / versionCode `25` | `herdr-android/` |
+| Herdr Pocket Android | `0.2.23` / versionCode `26`（本地构建） | `herdr-android/` |
 
 本次按当前可用源码快照替换此前根目录的 0.24.0 文件扩展实现，不把两条不同基线混为同一版本。组件对应关系及源码来源见 [VERSION.json](VERSION.json)。旧内容仍可从 Git 历史查看。
 
 ## 下载 Android APK
+
+**0.2.23 为本地构建，尚未发布 Release**，新增电脑/工作空间两级折叠、状态记忆及搜索临时展开；不影响多电脑连接和后台完成提醒，沿用原签名与配对。[分组说明](herdr-android/AGENT-GROUPS.md)。下面的 0.2.22 仍是已发布版本。
 
 0.2.22 发布于 **`android-v0.2.22`**（2026-11-04），包含终端改进：补载历史的进度/阅读位置、明确上游没有更多行的提示、参考 Termux 的退格/回车/方向/翻页/Ctrl/Alt 附加键；[终端使用说明与限制](herdr-android/TERMINAL.md)。包含此前 0.2.21 UI 打磨：按 Impeccable 的原生指南统一深色配色、排版与交互层级，简化 Agent 分组、对话状态/输入区，改善文件页和大屏导航。既有功能、Relay/Gateway 与配对保留；[设计说明](herdr-android/DESIGN.md)。APK 为 `Herdr-Pocket-0.2.22-debug.apk`，附 `SHA256SUMS.txt`；源码通过该 tag 的 Source code 下载项获取。
 

@@ -6,6 +6,7 @@ project follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Android 0.2.23: fold computers and workspaces independently, remember their state locally, and temporarily expand matching search results without changing connections or completion monitoring.
 - Read-only current Codex turn status and timing, using bounded metadata-only queries to distinguish running, waiting, finished and interrupted work without loading conversation bodies.
 - Authenticated, controller-only per-Codex-session model/reasoning updates using the live runtime catalog and exact pane identity; read back effective settings and never replay unconfirmed writes.
 - Native Android IP + TCP gateway mode with the existing E2EE protocol, a single public TCP port, protected relay registration and private local one-device invitation creation.

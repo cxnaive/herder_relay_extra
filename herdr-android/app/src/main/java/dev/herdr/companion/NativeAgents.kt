@@ -16,6 +16,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
+import androidx.core.view.doOnLayout
 import io.noties.markwon.Markwon
 import io.noties.markwon.ext.tables.TableAwareMovementMethod
 import io.noties.markwon.ext.tables.TablePlugin
@@ -38,6 +39,7 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
     private val workspaces = mutableMapOf<String, JSONArray>()
     private var host: FrameLayout? = null
     private var agentListRows: LinearLayout? = null
+    private val groupExpansion = AgentGroupExpansion(context)
     private var monitorButton: Button? = null
     fun updateMonitorControls() { monitorButton?.text = when { AgentMonitorService.active -> "常驻监控运行中 · 通知设置"; MonitorPreferences(context).enabled -> "监控待恢复 · 检查通知权限"; else -> "开启常驻监控 / 完成提醒" } }
     private var active = false
@@ -211,7 +213,7 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
         controls.addView(AgentStyle.iconButton(context, "refresh", "刷新") { inventory().keys.forEach { engine.send(it, JSONObject().put("type", "refresh_agents")) } }, LinearLayout.LayoutParams(dp(48), dp(48)))
         layout.addView(controls)
         monitorButton = AgentStyle.button(context, "常驻监控 / 完成提醒", subtle = true, action = monitoring).also { layout.addView(it, LinearLayout.LayoutParams(-1, dp(48))) }; updateMonitorControls()
-        val filter = EditText(context).apply { hint = "搜索工作空间或 Agent"; contentDescription = "搜索工作空间、Tab、Agent 或电脑"; setTextColor(textInk); setHintTextColor(muted); setSingleLine(); setText(search) }
+        val filter = EditText(context).apply { hint = "搜索电脑、工作空间或 Agent"; contentDescription = "搜索工作空间、Tab、Agent 或电脑"; setTextColor(textInk); setHintTextColor(muted); setSingleLine(); setText(search) }
         val rows = column(0).also { agentListRows = it }
         filter.addTextChangedListener(simpleWatcher { search = it; fillAgentRows(rows) }); layout.addView(AgentStyle.search(context, filter), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4); bottomMargin = dp(20) })
         layout.addView(ScrollView(context).apply { isVerticalScrollBarEnabled = false; addView(rows) }, LinearLayout.LayoutParams(-1, 0, 1f)); fillAgentRows(rows)
@@ -219,58 +221,100 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
     private fun workspaceTitle(id: String, agent: JSONObject): String =
         AgentPresentation.workspaceTitle(id, agent, workspaces)
     private fun fillAgentRows(rows: LinearLayout) {
+        groupExpansion.updateSearch(search)
         rows.removeAllViews()
-        var visible = 0
-        for (group in AgentPresentation.groups(inventory(), workspaces)) {
-            val members = group.agents.filter { search.isBlank() || it.toString().contains(search, true) ||
-                group.title.contains(search, true) || group.path.contains(search, true) || relayName(group.relay).contains(search, true) }
-            if (members.isEmpty() && (group.agents.isNotEmpty() || search.isNotBlank() && !group.title.contains(search, true) && !group.path.contains(search, true) && !relayName(group.relay).contains(search, true))) continue
-            visible += maxOf(1, members.size)
+        val computers = AgentListPresentation.computers(engine.snapshot().optJSONArray("relays") ?: JSONArray(), inventory(), workspaces, search)
+        val searching = search.isNotBlank()
+        for (computer in computers) {
+            val key = AgentGroupExpansion.computerKey(computer.id)
+            val expanded = groupExpansion.expanded(key, search)
+            val status = if (computer.id in online) "已连接" else "未连接"
+            val counts = if (searching) "匹配 ${computer.workspaces.size}/${computer.totalWorkspaces} 个工作空间 · ${computer.matchingAgents}/${computer.totalAgents} 个 Agent"
+                else "${computer.totalWorkspaces} 个工作空间 · ${computer.totalAgents} 个 Agent"
             val section = column(0)
-            val workspaceHeader = row()
-            workspaceHeader.addView(label(group.title, 18, textInk).apply { typeface = AgentStyle.medium }, weight())
-            workspaceHeader.addView(AgentStyle.button(context, "＋ Agent", subtle = true) { launchInWorkspace(group.relay, group.id, group.server) }.apply { contentDescription = "在 ${group.title} 新建 Agent"; isEnabled = group.server == "primary" && !group.id.startsWith("cwd:") && managementReady(group.relay) })
-            section.addView(workspaceHeader)
-            val serverLabel = if (group.server == "primary") "" else " · ${group.server}"
-            section.addView(label("${relayName(group.relay)}$serverLabel · ${members.size} 个 Agent", 12, muted))
-            section.addView(label(group.path, 12, muted).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.MIDDLE })
-            if (members.isEmpty()) section.addView(label("这个工作空间还没有 Agent，可点击上方 ＋ Agent 新建。", 13, muted))
-            for ((_, agents) in members.groupBy { it.optString("tab_id").ifBlank { it.optString("pane_id") } }) {
-                val first = agents.first()
-                if (agents.size > 1) section.addView(label("${first.optInt("tab_number").takeIf { it > 0 }?.let { "$it  " }.orEmpty()}${name(first)}", 14, muted)
-                    .apply { setPadding(dp(4), dp(14), 0, dp(8)); contentDescription = "Tab：${name(first)}" })
-                for (agent in agents) {
-                    val card = column(0).apply { setPadding(dp(2), dp(12), dp(2), dp(4)) }
-                    val cardHeader = row()
-                    cardHeader.addView(label(name(agent), 17, textInk).apply { typeface = AgentStyle.medium; maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END; contentDescription = "Tab：${name(agent)}"; setOnClickListener { open(group.relay, agent) }; isFocusable = true; minimumHeight = dp(48); gravity = Gravity.CENTER_VERTICAL }, weight())
-                    cardHeader.addView(AgentStyle.iconButton(context, "more", "管理 ${name(agent)}") {
-                        val captured = JSONObject(agent.toString())
-                        AlertDialog.Builder(context).setTitle(name(captured)).setItems(arrayOf("重命名 Agent", "模型 / 思考强度", "打开管理详情", MonitorSettingsUi.muteLabel(context, group.relay, captured))) { _, choice -> when (choice) {
-                            0 -> renameAgent(group.relay, captured)
-                            1 -> modelSettings(group.relay, captured)
-                            2 -> { open(group.relay, captured); manageAgent() }
-                            3 -> { MonitorSettingsUi.toggle(context, group.relay, captured); if (active && selected == null) renderList() }
-                        } }.show()
-                    }, LinearLayout.LayoutParams(dp(48), dp(48)))
-                    card.addView(cardHeader)
-                    val status = when (agent.optString("status")) { "blocked" -> "需要处理"; "working" -> "运行中"; "done" -> "已完成"; else -> "空闲" }
-                    val statusColor = when (agent.optString("status")) { "working", "done" -> accent; "blocked" -> AgentStyle.warning; else -> muted }
-                    card.addView(label("${agent.optString("agent")} · $status" + if (agents.size > 1) " · ${agent.optString("pane_id")}" else "", 12, statusColor).apply { setPadding(0, 0, 0, dp(6)) })
-                    if (runCatching { MonitorPreferences(context).muted(MonitorIdentity.key(group.relay, agent)) }.getOrDefault(false)) card.addView(label("完成提醒已关闭", 11, muted))
-                    if (agent.optString("cwd") != group.path) card.addView(label(agent.optString("cwd"), 11, muted))
-                    if (agent.optString("status") == "blocked") card.addView(label(agent.optString("prompt").take(220), 13, textInk))
-                    val actions = row()
-                    actions.addView(AgentStyle.button(context, "打开对话", subtle = true) { open(group.relay, agent) }, weight())
-                    actions.addView(AgentStyle.button(context, "终端", subtle = true) { open(group.relay, agent); mode = "terminal"; render() }, weight())
-                    actions.addView(AgentStyle.button(context, "工作区", subtle = true) { workspace(group.relay, agent) }, weight())
-                    card.addView(actions)
-                    section.addView(card, LinearLayout.LayoutParams(-1, -2))
-                    section.addView(View(context).apply { setBackgroundColor(AgentStyle.border); importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO }, LinearLayout.LayoutParams(-1, dp(1)))
-                }
+            section.addView(AgentGroupHeader(context, key, computer.label, "$status · $counts", expanded, true) { toggleListGroup(rows, it) })
+            if (expanded) {
+                val children = column(0).apply { setPadding(dp(12), dp(6), 0, 0) }
+                for (workspace in computer.workspaces) children.addView(workspaceSection(rows, workspace), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(12) })
+                if (computer.workspaces.isEmpty()) children.addView(label(if (computer.id in online) "这台电脑尚未提供工作空间。" else "连接后显示这台电脑的工作空间与 Agent。", 13, muted).apply { setPadding(dp(4), dp(12), dp(4), dp(12)) })
+                section.addView(children)
             }
-            rows.addView(section, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(20) })
+            rows.addView(section, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(16) })
         }
-        if (visible == 0) rows.addView(label(if (search.isBlank()) "连接电脑后，Agent 会按工作空间和 Tab 显示。" else "没有匹配的工作空间或 Agent", 15, muted))
+        if (computers.isEmpty()) rows.addView(label(if (searching) "没有匹配的电脑、工作空间或 Agent" else "连接电脑后，Agent 会按电脑、工作空间和 Tab 显示。", 15, muted))
+    }
+    private fun toggleListGroup(rows: LinearLayout, header: AgentGroupHeader) {
+        if (!active || selected != null || agentListRows !== rows || rows.findViewWithTag<View>(header.groupKey) !== header) return
+        val scroll = rows.parent as? ScrollView
+        fun top(view: View): Int {
+            val bounds = android.graphics.Rect(0, 0, view.width, view.height)
+            rows.offsetDescendantRectToMyCoords(view, bounds)
+            return bounds.top
+        }
+        val offset = top(header) - (scroll?.scrollY ?: 0)
+        val focused = header.hasFocus()
+        groupExpansion.toggle(header.groupKey, search)
+        fillAgentRows(rows)
+        rows.doOnLayout {
+            if (!active || selected != null || agentListRows !== rows) return@doOnLayout
+            val replacement = rows.findViewWithTag<AgentGroupHeader>(header.groupKey) ?: return@doOnLayout
+            if (focused) replacement.requestFocus()
+            scroll?.scrollTo(0, (top(replacement) - offset).coerceAtLeast(0))
+        }
+    }
+    private fun workspaceSection(rows: LinearLayout, workspace: AgentListPresentation.Workspace): LinearLayout {
+        val group = workspace.group
+        val members = workspace.agents
+        val key = AgentGroupExpansion.workspaceKey(group)
+        val expanded = groupExpansion.expanded(key, search)
+        val section = column(0)
+        val workspaceHeader = row()
+        val count = if (search.isBlank()) "${members.size} 个 Agent" else "匹配 ${members.size}/${group.agents.size} 个 Agent"
+        val server = if (group.server == "primary") "" else " · ${group.server}"
+        workspaceHeader.addView(AgentGroupHeader(context, key, group.title, count + server, expanded, false, group.path) { toggleListGroup(rows, it) }, weight())
+        workspaceHeader.addView(AgentStyle.button(context, "＋ Agent", subtle = true) { launchInWorkspace(group.relay, group.id, group.server) }.apply {
+            contentDescription = "在 ${group.title} 新建 Agent"
+            isEnabled = group.server == "primary" && !group.id.startsWith("cwd:") && managementReady(group.relay)
+        })
+        section.addView(workspaceHeader)
+        if (!expanded) return section
+        val agentRows = column(0).apply { setPadding(dp(28), 0, 0, 0) }
+        section.addView(agentRows)
+        if (members.isEmpty()) agentRows.addView(label("这个工作空间还没有 Agent，可点击上方 ＋ Agent 新建。", 13, muted))
+        for ((_, agents) in members.groupBy { it.optString("tab_id").ifBlank { it.optString("pane_id") } }) {
+            val first = agents.first()
+            if (agents.size > 1) agentRows.addView(label("${first.optInt("tab_number").takeIf { it > 0 }?.let { "$it  " }.orEmpty()}${name(first)}", 14, muted)
+                .apply { setPadding(dp(4), dp(14), 0, dp(8)); contentDescription = "Tab：${name(first)}" })
+            for (agent in agents) {
+                val card = column(0).apply { setPadding(dp(2), dp(12), dp(2), dp(4)) }
+                val cardHeader = row()
+                cardHeader.addView(label(name(agent), 17, textInk).apply { typeface = AgentStyle.medium; maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END; contentDescription = "Tab：${name(agent)}"; setOnClickListener { open(group.relay, agent) }; isFocusable = true; minimumHeight = dp(48); gravity = Gravity.CENTER_VERTICAL }, weight())
+                cardHeader.addView(AgentStyle.iconButton(context, "more", "管理 ${name(agent)}") {
+                    val captured = JSONObject(agent.toString())
+                    AlertDialog.Builder(context).setTitle(name(captured)).setItems(arrayOf("重命名 Agent", "模型 / 思考强度", "打开管理详情", MonitorSettingsUi.muteLabel(context, group.relay, captured))) { _, choice -> when (choice) {
+                        0 -> renameAgent(group.relay, captured)
+                        1 -> modelSettings(group.relay, captured)
+                        2 -> { open(group.relay, captured); manageAgent() }
+                        3 -> { MonitorSettingsUi.toggle(context, group.relay, captured); if (active && selected == null) renderList() }
+                    } }.show()
+                }, LinearLayout.LayoutParams(dp(48), dp(48)))
+                card.addView(cardHeader)
+                val status = when (agent.optString("status")) { "blocked" -> "需要处理"; "working" -> "运行中"; "done" -> "已完成"; else -> "空闲" }
+                val statusColor = when (agent.optString("status")) { "working", "done" -> accent; "blocked" -> AgentStyle.warning; else -> muted }
+                card.addView(label("${agent.optString("agent")} · $status" + if (agents.size > 1) " · ${agent.optString("pane_id")}" else "", 12, statusColor).apply { setPadding(0, 0, 0, dp(6)) })
+                if (runCatching { MonitorPreferences(context).muted(MonitorIdentity.key(group.relay, agent)) }.getOrDefault(false)) card.addView(label("完成提醒已关闭", 11, muted))
+                if (agent.optString("cwd") != group.path) card.addView(label(agent.optString("cwd"), 11, muted))
+                if (agent.optString("status") == "blocked") card.addView(label(agent.optString("prompt").take(220), 13, textInk))
+                val actions = row()
+                actions.addView(AgentStyle.button(context, "打开对话", subtle = true) { open(group.relay, agent) }, weight())
+                actions.addView(AgentStyle.button(context, "终端", subtle = true) { open(group.relay, agent); mode = "terminal"; render() }, weight())
+                actions.addView(AgentStyle.button(context, "工作区", subtle = true) { workspace(group.relay, agent) }, weight())
+                card.addView(actions)
+                agentRows.addView(card, LinearLayout.LayoutParams(-1, -2))
+                agentRows.addView(View(context).apply { setBackgroundColor(AgentStyle.border); importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO }, LinearLayout.LayoutParams(-1, dp(1)))
+            }
+        }
+        return section
     }
     private fun updateIdentity() {
         val agent = selected ?: return

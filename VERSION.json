@@ -2,11 +2,11 @@
   "repository": "cxnaive/herder_relay_extra",
   "snapshot_date": "2026-11-04",
   "android": {
-    "version": "0.2.22",
-    "version_code": 25,
+    "version": "0.2.23",
+    "version_code": 26,
     "source_path": "herdr-android",
-    "release_tag": "android-v0.2.22",
-    "artifact": "Herdr-Pocket-0.2.22-debug.apk",
+    "release_tag": "android-v0.2.23",
+    "artifact": "Herdr-Pocket-0.2.23-debug.apk",
     "reference_upstream_revision": "09b52781399114a7576d40fcdf91ccefd7686be6",
     "signature": "debug",
     "signing_certificate_sha256": "fe1ddf4d04f46d45168d53ca25dd2b379f242b6cd9b23169c9717258cf5232b9"
