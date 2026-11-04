@@ -6,7 +6,6 @@ project follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
-- Android 0.2.23: fold computers and workspaces independently, remember their state locally, and temporarily expand matching search results without changing connections or completion monitoring.
 - Read-only current Codex turn status and timing, using bounded metadata-only queries to distinguish running, waiting, finished and interrupted work without loading conversation bodies.
 - Authenticated, controller-only per-Codex-session model/reasoning updates using the live runtime catalog and exact pane identity; read back effective settings and never replay unconfirmed writes.
 - Native Android IP + TCP gateway mode with the existing E2EE protocol, a single public TCP port, protected relay registration and private local one-device invitation creation.
@@ -18,6 +17,14 @@ project follows [Semantic Versioning](https://semver.org/).
 - Recover missing Codex session IDs from the local daemon’s TUI endpoint and exact foreground-process socket ownership. Shared or stale endpoints stay unavailable instead of selecting a similarly named conversation.
 - Allow an operator-selected local Codex session to be bound to an exact terminal and live process when Herdr omits its session ID; reject stale, renamed, replaced or ambiguous bindings instead of guessing by directory.
 - Locate resumed Codex threads through the read-only state database and validate the rollout's session metadata. Rotated `<thread-id>_<segment-id>.jsonl` files no longer appear to have no conversation.
+
+## [Android 0.2.23] - 2026-11-04
+
+### Added
+- Android 0.2.23: fold computers and workspaces independently, remember their state locally, and temporarily expand matching search results without changing connections or completion monitoring.
+
+### Changed
+- Publish the fixed-signature Debug and Release APKs from GitHub Actions for ARM64, ARMv7, and x86_64, with checksums and build provenance; existing paired installations retain their signing identity.
 
 ## [Android 0.2.22] - 2026-11-04
 

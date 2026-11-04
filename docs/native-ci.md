@@ -5,6 +5,20 @@ and macOS arm64, and Herdr Pocket for `armeabi-v7a`, `arm64-v8a`, and `x86_64`.
 It does not create tags or publish/replace GitHub Releases. Actions artifacts
 expire after **one day**, like the repository's other CI artifacts.
 
+## Promoting CI output to a GitHub Release
+
+Actions artifacts are not Release attachments. A release must explicitly copy a
+successful run's **`android-apks-signed`** files into a new Release; no local APK
+build is necessary. Preserve the CI bytes, manifest,
+and checksums, and point the release tag at that run's exact source commit.
+Never substitute `android-apks-ci` or an unrelated run's artifacts.
+
+`android-v0.2.23` was promoted from run `41778780951`, commit
+`2789f9165741e3249f983a2e1c95dfa82177f5d8`. It includes all six APKs plus
+`BUILD-INFO.json` and `SHA256SUMS.txt`. The Release attachments remain available
+independently of the one-day Actions artifact retention. The build workflow still
+does not publish a Release on every push.
+
 ## Which APK can update an existing installation?
 
 | Artifact | Contents | Existing Pocket installation |

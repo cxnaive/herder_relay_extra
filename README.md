@@ -31,13 +31,23 @@
 | --- | --- | --- |
 | 电脑 Relay | `0.23.5+codexfix.11` | 仓库根目录，`cmd/herdr-mobile-relay` |
 | 原生 TCP Gateway | `0.23.5+codexfix.6` | `cmd/herdr-gateway`，`deploy/native-tcp/` |
-| Herdr Pocket Android | `0.2.23` / versionCode `26`（本地构建） | `herdr-android/` |
+| Herdr Pocket Android | `0.2.23` / versionCode `26` | `herdr-android/` |
 
 本次按当前可用源码快照替换此前根目录的 0.24.0 文件扩展实现，不把两条不同基线混为同一版本。组件对应关系及源码来源见 [VERSION.json](VERSION.json)。旧内容仍可从 Git 历史查看。
 
 ## 下载 Android APK
 
-**0.2.23 为本地构建，尚未发布 Release**，新增电脑/工作空间两级折叠、状态记忆及搜索临时展开；不影响多电脑连接和后台完成提醒，沿用原签名与配对。[分组说明](herdr-android/AGENT-GROUPS.md)。下面的 0.2.22 仍是已发布版本。
+**0.2.23 已发布到 [`android-v0.2.23`](https://github.com/cxnaive/herder_relay_extra/releases/tag/android-v0.2.23)**（2026-11-04），新增电脑/工作空间两级折叠、状态记忆及搜索临时展开；不影响多电脑连接和后台完成提醒。[分组说明](herdr-android/AGENT-GROUPS.md)。
+
+| 设备架构 | 下载 |
+| --- | --- |
+| ARM64 手机 / 平板 | [Release · arm64-v8a](https://github.com/cxnaive/herder_relay_extra/releases/download/android-v0.2.23/Herdr-Pocket-0.2.23-release-arm64-v8a.apk) |
+| 32 位 ARM | [Release · armeabi-v7a](https://github.com/cxnaive/herder_relay_extra/releases/download/android-v0.2.23/Herdr-Pocket-0.2.23-release-armeabi-v7a.apk) |
+| x86_64 模拟器 / 设备 | [Release · x86_64](https://github.com/cxnaive/herder_relay_extra/releases/download/android-v0.2.23/Herdr-Pocket-0.2.23-release-x86_64.apk) |
+
+附件同时提供三种 ABI 的 Debug 包、`BUILD-INFO.json` 和 `SHA256SUMS.txt`。所有 APK 来自同一次成功的 GitHub Actions 固定签名产物，发布时未重新编译或修改。Release 构建仍使用原 Pocket 证书，可覆盖同签名旧版；无需卸载、重新配对或更新 Relay/Gateway。
+
+发布验证：Android 构建、JVM 测试、lint、固定签名及 Go race 通过；完整 `check` 中网页端设备升级 lane 因缺少测试辅助脚本失败。未宣称设备升级验收通过，详见 [发布验证记录](herdr-android/VALIDATION.md)。
 
 0.2.22 发布于 **`android-v0.2.22`**（2026-11-04），包含终端改进：补载历史的进度/阅读位置、明确上游没有更多行的提示、参考 Termux 的退格/回车/方向/翻页/Ctrl/Alt 附加键；[终端使用说明与限制](herdr-android/TERMINAL.md)。包含此前 0.2.21 UI 打磨：按 Impeccable 的原生指南统一深色配色、排版与交互层级，简化 Agent 分组、对话状态/输入区，改善文件页和大屏导航。既有功能、Relay/Gateway 与配对保留；[设计说明](herdr-android/DESIGN.md)。APK 为 `Herdr-Pocket-0.2.22-debug.apk`，附 `SHA256SUMS.txt`；源码通过该 tag 的 Source code 下载项获取。
 
@@ -51,13 +61,13 @@
 
 0.2.13 包含完成提醒声音检查/测试入口及此前 0.2.12 本地构建的工作空间标题修复。
 
-进入仓库 **Releases → Herdr Pocket 0.2.22**，下载 `Herdr-Pocket-0.2.22-debug.apk`。
+进入仓库 **Releases → Herdr Pocket 0.2.23**，按上表选择设备架构；普通 ARM64 手机优先下载 `Herdr-Pocket-0.2.23-release-arm64-v8a.apk`。
 
 - Android 9 / API 28 及以上。
 - 与此前同签名的 Pocket APK 可直接覆盖安装，**不需要重新配对**。
 - 发布包使用调试签名，不是 Play 商店版本；签名私钥不随源码发布。自己构建的 debug APK 通常使用不同签名，不要为了覆盖安装而直接卸载含配对/草稿的旧 App。
 - Release 同时提供 SHA-256 校验文件，源码由对应 Git tag 的 Source code 下载项提供。
-- 用旧版 App 下载本次 APK 若仍显示 `.bin`，这一次先将完整名称改为 `Herdr-Pocket-0.2.22-debug.apk` 再安装。
+- 用旧版 App 下载 APK 若仍显示 `.bin`，先恢复所下载附件的完整 `.apk` 文件名再安装。
 
 ## CI 构建与固定签名
 

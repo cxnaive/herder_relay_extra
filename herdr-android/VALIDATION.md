@@ -1,5 +1,15 @@
 # 验证记录 · Android 0.2.23 / Relay codexfix.11
 
+## 0.2.23 GitHub Release 发布
+
+2026-11-04：`android-v0.2.23` 已发布，标签指向源码提交 `2789f9165741e3249f983a2e1c95dfa82177f5d8`。
+
+- 直接复用成功的 `build-artifacts` run `41778780951` 的 `android-apks-signed`，不使用本地通用 APK，不重编译、不重签。
+- 同提交的 Go race 通过，但完整 `check` run `41778781023` 失败：网页端设备升级 lane 缺少 `tests/mobile/support/android-emulator-lifetime.ts`、`tests/mobile/ios-appium/ci.sh`、`tests/mobile/ios-appium/evidence.ts`，未完成设备场景，环境报告/gate 随之失败。本次仅发布原生 Android APK，不宣称完整 check 或设备升级验收通过；失败检查未被修改或跳过。
+- 验证 Actions 归档 digest、逐文件 SHA-256、BUILD-INFO 来源及版本；六个 APK 的 Android 应用 ID、versionCode 26、对应 ABI 和原签名证书均核对一致。
+- Release 附件为三种 ABI 的 Debug/Release APK、`BUILD-INFO.json`、`SHA256SUMS.txt`。上传后的 GitHub 资产大小/散列与原始 CI 文件一致。
+- 保留旧 Release、标签及所有附件；Relay/Gateway、配对和文件权限不变。既有真机验收边界不因发布而改变。
+
 ## 构建工具链更新 · Gradle 8.14.6
 
 2026-11-04：从 Gradle 8.13 升至 8.14.6 维护补丁版，不修改 AGP 8.13.0、Kotlin 2.2.20、JDK 21、应用版本或签名。

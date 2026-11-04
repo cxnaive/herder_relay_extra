@@ -1,10 +1,18 @@
-# Herdr Pocket · Android 0.2.23（本地构建）
+# Herdr Pocket · Android 0.2.23
 
 与本仓库根目录的 **Relay 0.23.5+codexfix.11** 配套的原生 Android 客户端，不使用 WebView 运行 Agent 界面。
 
 ## 安装
 
-**0.2.23 本地构建，尚未发布 Release**：新增「电脑 → 工作空间 → Agent」两级展开/折叠，默认展开并记住本机状态；搜索临时展开匹配项，清空后恢复。折叠后保留数量、路径和新建 Agent 入口，不影响连接和后台提醒。可同签名覆盖安装，无需重新配对或更新 Relay/Gateway。[分组使用说明](AGENT-GROUPS.md)。
+**0.2.23 已发布到 `android-v0.2.23`**（2026-11-04）：新增「电脑 → 工作空间 → Agent」两级展开/折叠，默认展开并记住本机状态；搜索临时展开匹配项，清空后恢复。折叠后保留数量、路径和新建 Agent 入口，不影响连接和后台提醒。[分组使用说明](AGENT-GROUPS.md)。
+
+| 设备架构 | 下载 |
+| --- | --- |
+| ARM64 手机 / 平板 | [Release · arm64-v8a](https://github.com/cxnaive/herder_relay_extra/releases/download/android-v0.2.23/Herdr-Pocket-0.2.23-release-arm64-v8a.apk) |
+| 32 位 ARM | [Release · armeabi-v7a](https://github.com/cxnaive/herder_relay_extra/releases/download/android-v0.2.23/Herdr-Pocket-0.2.23-release-armeabi-v7a.apk) |
+| x86_64 模拟器 / 设备 | [Release · x86_64](https://github.com/cxnaive/herder_relay_extra/releases/download/android-v0.2.23/Herdr-Pocket-0.2.23-release-x86_64.apk) |
+
+附件同时提供三种 ABI 的 Debug 包、`BUILD-INFO.json` 和 `SHA256SUMS.txt`。所有 APK 来自同一次成功的 GitHub Actions 固定签名产物，发布时未重新编译或修改。Release 构建仍使用原 Pocket 证书，可覆盖同签名旧版；无需卸载、重新配对或更新 Relay/Gateway。
 
 0.2.22 发布于 **`android-v0.2.22`**（2026-11-04），提供 `Herdr-Pocket-0.2.22-debug.apk` 与 `SHA256SUMS.txt`。终端改进：更早输出的进度与阅读位置、退格/回车/翻页/方向/Ctrl/Alt 附加按键，并修正旧按键编码。[用法及历史限制](TERMINAL.md)。包含此前 0.2.21 UI 打磨。统一视觉层级、Agent 列表、对话/工具、输入区、文件查看与导航；[设计规范及验证边界](DESIGN.md)。保留原签名和配对，不改 Relay/Gateway。
 
