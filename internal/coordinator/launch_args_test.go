@@ -49,10 +49,12 @@ func TestValidateStartBoundsCombinedHermesAndExplicitArguments(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		args, err := validated.launchArgs()
+		args, err := validated.launchArgs(profile)
 		want := []string{"--custom", "two words"}
 		if profile == "hermes" {
 			want = append([]string{"-p", "apollo"}, want...)
+		} else {
+			want = append([]string{"-c", codexTerminalTitleDefault}, want...)
 		}
 		if err != nil || !slices.Equal(args, want) {
 			t.Fatalf("args = %q, %v", args, err)
@@ -63,7 +65,7 @@ func TestValidateStartBoundsCombinedHermesAndExplicitArguments(t *testing.T) {
 		}
 		request.AgentArgs = make([]string, profiles.MaxLaunchArgs)
 		_, _, err = l.ValidateStart(request)
-		if (err != nil) != (profile == "hermes") {
+		if err == nil {
 			t.Fatalf("combined argv bound for %s: %v", profile, err)
 		}
 		request.AgentArgs = []string{"bad\narg"}
@@ -95,7 +97,7 @@ esac
 			if kind == "hermes" {
 				request.HermesProfile = "apollo"
 			}
-			want, err := request.launchArgs()
+			want, err := request.launchArgs(kind)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -148,7 +150,7 @@ func TestAgentStartIdempotencyIncludesArguments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Count(string(data), "agent start") != 1 || !strings.Contains(string(data), " -- --no-daemon") || strings.Contains(string(data), "agent prompt") {
+	if strings.Count(string(data), "agent start") != 1 || !strings.Contains(string(data), " -- -c "+codexTerminalTitleDefault+" --no-daemon") || strings.Contains(string(data), "agent prompt") {
 		t.Fatalf("arguments were dropped, sent as prompt, or launch duplicated: %s", data)
 	}
 }

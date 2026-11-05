@@ -101,7 +101,7 @@ func (l *Lifecycle) ValidateStart(request StartRequest) (profiles.Profile, Start
 	if len([]rune(request.Prompt)) > promptMaxChars {
 		return profiles.Profile{}, request, errors.New("prompt exceeds maximum length")
 	}
-	if _, err := request.launchArgs(); err != nil {
+	if _, err := request.launchArgs(profile.Kind); err != nil {
 		return profiles.Profile{}, request, err
 	}
 	request.AgentArgs = append([]string(nil), request.AgentArgs...)
@@ -114,7 +114,7 @@ func (l *Lifecycle) ValidateStart(request StartRequest) (profiles.Profile, Start
 }
 
 func (l *Lifecycle) Start(ctx context.Context, profile profiles.Profile, request StartRequest) (result StartResult, resultErr error) {
-	agentArgs, err := request.launchArgs()
+	agentArgs, err := request.launchArgs(profile.Kind)
 	if err != nil {
 		return StartResult{}, err
 	}
@@ -228,7 +228,7 @@ func (l *Lifecycle) createTarget(ctx context.Context, workspaceID, label, cwd st
 
 func (l *Lifecycle) startInTarget(ctx context.Context, profile profiles.Profile, request StartRequest, paneID string) error {
 	name := request.Name
-	agentArgs, err := request.launchArgs()
+	agentArgs, err := request.launchArgs(profile.Kind)
 	if err != nil {
 		return err
 	}
@@ -262,10 +262,15 @@ func (l *Lifecycle) startInTarget(ctx context.Context, profile profiles.Profile,
 	}
 }
 
-func (request StartRequest) launchArgs() ([]string, error) {
+func (request StartRequest) launchArgs(kind string) ([]string, error) {
 	args, err := hermesProfileArgs(request.HermesProfile)
 	if err != nil {
 		return nil, err
+	}
+	if kind == "codex" && !(len(request.AgentArgs) >= 2 && request.AgentArgs[0] == "-c" && request.AgentArgs[1] == codexTerminalTitleDefault) {
+		// Prepending lets Codex apply explicit user overrides last. Ownership
+		// stores this prefix, so a restart must not prepend it a second time.
+		args = append(args, "-c", codexTerminalTitleDefault)
 	}
 	args = append(args, request.AgentArgs...)
 	if err := profiles.ValidateLaunchArgs(args); err != nil {

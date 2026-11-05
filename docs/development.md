@@ -45,7 +45,8 @@ the same request ID replay that result.
 Android's **New Agent in this workspace → Startup arguments** field accepts only
 arguments for the selected agent, not an executable name or a shell command.
 For a Codex launch, enter `--no-daemon` there and keep the initial prompt in its
-own field. Leaving arguments empty preserves the existing launch behavior.
+own field. Leaving arguments empty keeps each provider's defaults, including the
+Relay's Codex terminal-title default described below.
 This does not change the startup mode of an already running agent or guarantee
 that its conversation can be uniquely identified.
 
@@ -71,6 +72,32 @@ profiles, Relay appends to a copy of the profile argv and uses the existing
 before explicit arguments; the combined array is subject to the same limits.
 Conflicting options and supported flag names are the selected agent's concern;
 Relay does not guess, translate or repair them.
+
+Starting with Relay `codexfix.17`, for the resolved built-in **Codex** kind only,
+Relay prepends
+`-c 'tui.terminal_title=["thread-id","thread-name"]'`. These are two argv entries;
+the shell quotes shown here are not part of the value. Explicit user `-c` /
+`--config` overrides follow the default, so Codex applies the user's title choice
+last (including `tui.terminal_title=[]` to disable it). The saved prefix is not
+added again on Restart/Clear. The combined default and user argv must fit the
+same 64-argument / 8192-byte budget; failure is reported before creating a pane.
+
+This applies to new Relay-launched Codex agents and explicitly requested
+restarts, with or without `--no-daemon`. It does not enable standalone mode,
+rewrite `config.toml`, change custom wrappers or other providers, or restart
+existing agents. Commands typed directly into a Herdr terminal do not pass
+through Relay. To change those as well, the user can set Codex's own configuration:
+
+```toml
+[tui]
+terminal_title = ["thread-id", "thread-name"]
+```
+
+That configuration affects Codex launches using that config file, not only Herdr;
+Relay does not install it. This change only supplies a display signal. The current
+binding policy still does not use terminal titles, ID prefixes, or text similarity
+to select a conversation. In Codex 0.166.0, the title's ID segment is truncated by
+the TUI; it must not be treated as a complete session ID.
 
 Effective extra arguments are persisted with the private verified launch record
 and reused for Restart/Clear, including after a Relay service restart. They are

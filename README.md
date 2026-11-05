@@ -29,7 +29,7 @@
 
 | 组件 | 当前源码版本 | 位置 |
 | --- | --- | --- |
-| 电脑 Relay | `0.23.5+codexfix.16` | 仓库根目录，`cmd/herdr-mobile-relay` |
+| 电脑 Relay | `0.23.5+codexfix.17` | 仓库根目录，`cmd/herdr-mobile-relay` |
 | 原生 TCP Gateway | `0.23.5+codexfix.6` | `cmd/herdr-gateway`，`deploy/native-tcp/` |
 | Herdr Pocket Android | `0.2.29` / versionCode `32` | `herdr-android/` |
 
@@ -46,6 +46,8 @@ Pocket `0.2.27` 修复终端输出刷新打断手机输入法编辑：普通快�
 Pocket `0.2.28` / Relay `codexfix.15` 将终端操作与主对话确认分开：主会话不唯一时，控制者仍可手动输入终端文本/按键、停止或重启 Agent。电脑端每次核对确切终端和请求代次；不猜选历史，不开放结构化审批或按对话发送。配套更新 App 和 Relay，Gateway 不变。
 
 Pocket `0.2.29` / Relay `codexfix.16`：Android 新建 Agent 增加“启动参数”输入行，选择 Codex 后可只填 `--no-daemon`（不要填 `codex` 命令名），初始提示仍单独填写。参数随该 Agent 的启动记录保存，重启时保留；需要配套更新 App 与 Relay，不自动修改正在运行的 Agent。含空格的参数值用引号，详见[启动参数边界](docs/development.md#agent-startup-arguments)。
+
+**Relay `codexfix.17` · Codex 远程启动默认标题**：Relay 新建或明确重启内置 Codex 时，默认附加 `-c 'tui.terminal_title=["thread-id","thread-name"]'`；手填的同名配置优先。无需更新 App，不修改全局 Codex 配置，不重启现有 Agent，也不默认启用 `--no-daemon`。这一步只提供标题线索，当前会话绑定仍不使用标题或文字匹配；手动在 Herdr 终端运行的命令不受影响。
 
 “会话绑定诊断”通过[独立只读接口](docs/session-binding-diagnostics.md)提供带版本的可扩展 JSON；手机不查询可操作候选、不分析子代理或确认主会话，也不会自动上传诊断。
 
@@ -123,7 +125,7 @@ Android 为 Latest；服务端版本和 Android 版本分别编号。
 ```bash
 mkdir -p bin
 CGO_ENABLED=0 go build -trimpath \
-  -ldflags '-s -w -X main.version=0.23.5+codexfix.16 -X main.revision=source-build' \
+  -ldflags '-s -w -X main.version=0.23.5+codexfix.17 -X main.revision=source-build' \
   -o bin/herdr-mobile-relay ./cmd/herdr-mobile-relay
 CGO_ENABLED=0 go build -trimpath \
   -ldflags '-s -w -X main.version=0.23.5+codexfix.6 -X main.revision=source-build' \

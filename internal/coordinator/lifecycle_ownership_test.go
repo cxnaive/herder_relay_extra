@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -100,6 +101,7 @@ func TestLifecyclePersistsShellOwnershipBeforeAgentDiscovery(t *testing.T) {
 	}{
 		{"pi", nil}, {"codex", nil}, {"test-wrapper", nil},
 		{"codex", []string{"--no-daemon", "--model", "custom"}},
+		{"codex", []string{"--config=tui.terminal_title=[]"}},
 		{"test-wrapper", []string{"--custom", "two words", ""}},
 	} {
 		profileID := test.profileID
@@ -120,12 +122,17 @@ func TestLifecyclePersistsShellOwnershipBeforeAgentDiscovery(t *testing.T) {
 				Target    profiles.PaneIdentity `json:"target"`
 				ProfileID string                `json:"profile_id"`
 				Pending   bool                  `json:"pending"`
+				AgentArgs []string              `json:"agent_args"`
 			}
 			if err := json.Unmarshal(data, &records); err != nil {
 				t.Fatal(err)
 			}
 			if len(records) != 1 || records[0].Pending || records[0].ProfileID != profileID || records[0].Target.TerminalID != "terminal-pane-new" {
 				t.Fatalf("ownership = %s", data)
+			}
+			expectedArgs, err := f.request.launchArgs(f.profile.Kind)
+			if err != nil || !slices.Equal(records[0].AgentArgs, expectedArgs) {
+				t.Fatalf("saved args = %q, expected %q (%v)", records[0].AgentArgs, expectedArgs, err)
 			}
 			info, err := os.Stat(f.store)
 			if err != nil || info.Mode().Perm() != 0600 {
@@ -164,14 +171,17 @@ func TestLifecyclePersistsShellOwnershipBeforeAgentDiscovery(t *testing.T) {
 			if !strings.Contains(string(calls), "pane close pane-new") {
 				t.Fatalf("old pane not cleared: %s", calls)
 			}
-			if len(test.args) > 0 {
-				want := " -- " + strings.Join(test.args, " ")
+			if len(expectedArgs) > 0 {
+				want := " -- " + strings.Join(expectedArgs, " ")
 				if f.profile.Kind == "" {
-					want = herdr.ShellJoin(append(append([]string(nil), f.profile.Argv...), test.args...))
+					want = herdr.ShellJoin(append(append([]string(nil), f.profile.Argv...), expectedArgs...))
 				}
 				if strings.Count(string(calls), want) != 2 {
 					t.Fatalf("restart lost launch args: %s", calls)
 				}
+			}
+			if profileID == "codex" && strings.Count(string(calls), codexTerminalTitleDefault) != 2 {
+				t.Fatalf("restart duplicated or dropped Codex title defaults: %s", calls)
 			}
 			if f.profile.Kind == "" && strings.Count(string(calls), "pane run") != 2 {
 				t.Fatalf("custom profile not relaunched: %s", calls)

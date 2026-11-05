@@ -10,6 +10,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -154,9 +155,10 @@ func TestAgentStartPassesTheRemainingBudgetAsTimeout(t *testing.T) {
 	}
 	for _, start := range starts {
 		fields := strings.Fields(start)
-		index := len(fields) - 1
-		if index < 1 || fields[index-1] != "--timeout" {
-			t.Fatalf("invocation has no trailing --timeout value: %q", start)
+		index := slices.Index(fields, "--timeout") + 1
+		separator := slices.Index(fields, "--")
+		if index < 1 || index >= len(fields) || (separator >= 0 && index >= separator) {
+			t.Fatalf("invocation has no Herdr --timeout value: %q", start)
 		}
 		timeout, err := strconv.Atoi(fields[index])
 		if err != nil {

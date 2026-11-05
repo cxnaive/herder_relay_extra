@@ -6,6 +6,8 @@ import (
 	"github.com/0cv/herdr-mobile-relay/internal/profiles"
 )
 
+const codexTerminalTitleDefault = `tui.terminal_title=["thread-id","thread-name"]`
+
 func decodeAgentArgs(message map[string]any) ([]string, error) {
 	raw, present := message["agent_args"]
 	if !present {

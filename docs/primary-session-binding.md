@@ -176,8 +176,11 @@ Terminal access neither confirms a primary ID nor discards the user's draft.
 
 Process/socket proof currently targets Linux; no root or process injection is used.
 Do not promise that `--no-daemon` repairs malformed metadata or enables unsupported
-platforms. The Relay does not change startup arguments, stop a daemon, restart an
-agent or change Codex Desktop settings automatically.
+platforms. The Relay does not enable `--no-daemon`, stop a daemon, restart an agent or
+change Codex Desktop settings automatically. Relay `codexfix.17` adds a default
+terminal-title argument only when creating or explicitly restarting a built-in
+Codex agent; it does not change already-running processes or use the title to
+select a conversation. See [startup arguments](development.md#agent-startup-arguments).
 
 ## Verification and release
 

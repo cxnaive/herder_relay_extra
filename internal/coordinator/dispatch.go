@@ -724,7 +724,7 @@ func (d *Dispatcher) handleAgentStart(ctx context.Context, receivedAt time.Time,
 			// Compatibility for direct unit construction. The production server
 			// always installs a profile resolver and uses the full workflow.
 			var agentArgs []string
-			agentArgs, err = request.launchArgs()
+			agentArgs, err = request.launchArgs(request.ProfileID)
 			snapshot := d.state.beginLaunch()
 			paneID := "pane-" + request.Name
 			var returned string

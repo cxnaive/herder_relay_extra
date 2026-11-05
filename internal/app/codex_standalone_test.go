@@ -19,6 +19,10 @@ func TestCodexNoDaemonArgs(t *testing.T) {
 		want bool
 	}{
 		{[]string{"codex", "--no-daemon"}, true},
+		{[]string{"codex", "-c", `tui.terminal_title=["thread-id","thread-name"]`, "--no-daemon"}, true},
+		{[]string{"codex", "-c", `tui.terminal_title=["thread-id","thread-name"]`, "resume", "--last", "--no-daemon"}, true},
+		{[]string{"codex", "-c", `tui.terminal_title=["thread-id","thread-name"]`}, false},
+		{[]string{"codex", "-c", `tui.terminal_title=["thread-id","thread-name"]`, "--", "--no-daemon"}, false},
 		{[]string{"/bin/codex", "--no-alt-screen", "-C", "/project", "--no-daemon", "resume", reportID}, true},
 		{[]string{"codex", "resume", "--last", "--no-daemon"}, true},
 		{[]string{"codex", "fork", reportID, "--no-daemon"}, true},
