@@ -87,20 +87,20 @@ Android 9 / API 28 及以上；仍使用原有调试证书，不是 Play 商店�
 <!-- native-downloads:start -->
 ## 下载 Relay / Gateway 与部署指南
 
-**[完整部署指南](docs/native-deployment.md)** · **[native-v0.23.5-codexfix.16](https://github.com/cxnaive/herder_relay_extra/releases/tag/native-v0.23.5-codexfix.16)**
+**[完整部署指南](docs/native-deployment.md)** · **[native-v0.23.5-codexfix.17](https://github.com/cxnaive/herder_relay_extra/releases/tag/native-v0.23.5-codexfix.17)**
 
 Linux x86_64 / amd64 完整部署包：
 
-- [`herdr-mobile-relay_0.23.5-codexfix.16_linux_amd64.tar.gz`](https://github.com/cxnaive/herder_relay_extra/releases/download/native-v0.23.5-codexfix.16/herdr-mobile-relay_0.23.5-codexfix.16_linux_amd64.tar.gz)
-- [`herdr-gateway_0.23.5-codexfix.6_linux_amd64.tar.gz`](https://github.com/cxnaive/herder_relay_extra/releases/download/native-v0.23.5-codexfix.16/herdr-gateway_0.23.5-codexfix.6_linux_amd64.tar.gz)
-- [`SHA256SUMS.txt`](https://github.com/cxnaive/herder_relay_extra/releases/download/native-v0.23.5-codexfix.16/SHA256SUMS.txt)
+- [`herdr-mobile-relay_0.23.5-codexfix.17_linux_amd64.tar.gz`](https://github.com/cxnaive/herder_relay_extra/releases/download/native-v0.23.5-codexfix.17/herdr-mobile-relay_0.23.5-codexfix.17_linux_amd64.tar.gz)
+- [`herdr-gateway_0.23.5-codexfix.6_linux_amd64.tar.gz`](https://github.com/cxnaive/herder_relay_extra/releases/download/native-v0.23.5-codexfix.17/herdr-gateway_0.23.5-codexfix.6_linux_amd64.tar.gz)
+- [`SHA256SUMS.txt`](https://github.com/cxnaive/herder_relay_extra/releases/download/native-v0.23.5-codexfix.17/SHA256SUMS.txt)
 
 包含二进制、Relay Web、配置/systemd 模板、初始化工具、部署说明及 BUILD-INFO。
 其他架构的 `native-binaries-*` 仅是 CI 可执行文件，不是完整部署包。
 公网服务器装 Gateway，运行 Herdr/Agent 的电脑装 Relay；已运行同版 Gateway 无需因 Relay 更新而重启。
 升级保留现有配置、密钥和设备库，不重复初始化，不重启 Herdr/Agent；发布流程不部署服务器。
 
-发布来源：[CI run 41959060973](https://github.com/cxnaive/herder_relay_extra/actions/runs/41959060973)，源码 `697a2127e14c11cd9239078518844e126cf24fc3`。
+发布来源：[CI run 41968724872](https://github.com/cxnaive/herder_relay_extra/actions/runs/41968724872)，源码 `9a15e8fa9ffb92ef04cf739f355922e34096ed0f`。
 Android 为 Latest；服务端版本和 Android 版本分别编号。
 <!-- native-downloads:end -->
 

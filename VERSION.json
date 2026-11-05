@@ -22,15 +22,15 @@
   },
   "prior_repository_head": "d07403b246a2220c3447dcd84084d7d717140361",
   "native_release": {
-    "tag": "native-v0.23.5-codexfix.16",
+    "tag": "native-v0.23.5-codexfix.17",
     "targets": [
       "linux/amd64"
     ],
-    "relay_artifact": "herdr-mobile-relay_0.23.5-codexfix.16_linux_amd64.tar.gz",
+    "relay_artifact": "herdr-mobile-relay_0.23.5-codexfix.17_linux_amd64.tar.gz",
     "gateway_artifact": "herdr-gateway_0.23.5-codexfix.6_linux_amd64.tar.gz",
     "checksums": "SHA256SUMS.txt",
-    "release_source_commit": "697a2127e14c11cd9239078518844e126cf24fc3",
-    "release_build_run": 41959060973
+    "release_source_commit": "9a15e8fa9ffb92ef04cf739f355922e34096ed0f",
+    "release_build_run": 41968724872
   },
   "android_release": {
     "version": "0.2.29",
