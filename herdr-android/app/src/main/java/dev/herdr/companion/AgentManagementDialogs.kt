@@ -33,7 +33,7 @@ object AgentManagementDialogs {
             }
         } }; dialog.show(); return dialog
     }
-    fun launch(context: Context, workspace: JSONObject, profiles: JSONArray, launchArgsSupported: Boolean = false, submit: (JSONObject, ManagementReply) -> Unit): AlertDialog {
+    fun launch(context: Context, workspace: JSONObject, profiles: JSONArray, launchArgsSupported: Boolean = false, launchDefaults: JSONObject? = null, submit: (JSONObject, ManagementReply) -> Unit): AlertDialog {
         val body = body(context)
         body.addView(text(context, "工作空间：${workspace.optString("label")} [${workspace.optString("workspace_id")}]\n${workspace.optString("cwd")}"))
         val profile = Spinner(context).apply { contentDescription = "Agent 类型" }
@@ -47,7 +47,18 @@ object AgentManagementDialogs {
         }
         val prompt = input(context, "初始提示（可留空）").apply { setSingleLine(false); minLines = 3; maxLines = 6; gravity = android.view.Gravity.TOP }
         body.addView(name)
-        body.addView(text(context, "启动参数（可留空）")); body.addView(arguments)
+        val defaultsLabel = text(context, "").apply { contentDescription = "电脑端默认启动参数" }
+        body.addView(defaultsLabel)
+        fun showDefaults(position: Int) {
+            defaultsLabel.text = AgentLaunchArguments.defaultLabel(launchDefaults, options.getOrNull(position)?.optString("id").orEmpty())
+            defaultsLabel.visibility = if (defaultsLabel.text.isEmpty()) View.GONE else View.VISIBLE
+        }
+        profile.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) { showDefaults(position) }
+            override fun onNothingSelected(parent: AdapterView<*>?) { showDefaults(-1) }
+        }
+        showDefaults(profile.selectedItemPosition)
+        body.addView(text(context, "额外启动参数（可留空）")); body.addView(arguments)
         body.addView(text(context, if (launchArgsSupported) "只填参数，不填命令名。含空格的值用引号；重启此 Agent 时保留。" else "此电脑 Relay 尚不支持启动参数，请先升级 Relay。"))
         body.addView(prompt)
         val status = text(context, "只会在上述工作空间创建，不改变现有 Agent。名称以小写字母开头，可含数字、_ 和 -。"); body.addView(status)

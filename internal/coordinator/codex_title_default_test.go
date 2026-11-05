@@ -88,3 +88,18 @@ func TestCodexTitleDefaultCountsTowardBoundsBeforePaneCreation(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestAdvertisedLaunchDefaultsMatchEffectiveArgsAndAreIndependent(t *testing.T) {
+	defaults := AgentLaunchDefaults()
+	got, err := (StartRequest{}).launchArgs("codex")
+	if err != nil || !slices.Equal(defaults["codex"], got) {
+		t.Fatalf("defaults %q != argv %q: %v", defaults["codex"], got, err)
+	}
+	defaults["codex"][0] = "changed"
+	if AgentLaunchDefaults()["codex"][0] != "-c" {
+		t.Fatal("caller changed shared defaults")
+	}
+	if len(defaults) != 1 {
+		t.Fatal("other providers inherited Codex defaults")
+	}
+}

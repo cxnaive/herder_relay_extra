@@ -29,9 +29,9 @@
 
 | 组件 | 当前源码版本 | 位置 |
 | --- | --- | --- |
-| 电脑 Relay | `0.23.5+codexfix.17` | 仓库根目录，`cmd/herdr-mobile-relay` |
+| 电脑 Relay | `0.23.5+codexfix.18` | 仓库根目录，`cmd/herdr-mobile-relay` |
 | 原生 TCP Gateway | `0.23.5+codexfix.6` | `cmd/herdr-gateway`，`deploy/native-tcp/` |
-| Herdr Pocket Android | `0.2.29` / versionCode `32` | `herdr-android/` |
+| Herdr Pocket Android | `0.2.30` / versionCode `33` | `herdr-android/` |
 
 本次按当前可用源码快照替换此前根目录的 0.24.0 文件扩展实现，不把两条不同基线混为同一版本。组件对应关系及源码来源见 [VERSION.json](VERSION.json)。旧内容仍可从 Git 历史查看。
 
@@ -48,6 +48,8 @@ Pocket `0.2.28` / Relay `codexfix.15` 将终端操作与主对话确认分开：
 Pocket `0.2.29` / Relay `codexfix.16`：Android 新建 Agent 增加“启动参数”输入行，选择 Codex 后可只填 `--no-daemon`（不要填 `codex` 命令名），初始提示仍单独填写。参数随该 Agent 的启动记录保存，重启时保留；需要配套更新 App 与 Relay，不自动修改正在运行的 Agent。含空格的参数值用引号，详见[启动参数边界](docs/development.md#agent-startup-arguments)。
 
 **Relay `codexfix.17` · Codex 远程启动默认标题**：Relay 新建或明确重启内置 Codex 时，默认附加 `-c 'tui.terminal_title=["thread-id","thread-name"]'`；手填的同名配置优先。无需更新 App，不修改全局 Codex 配置，不重启现有 Agent，也不默认启用 `--no-daemon`。Relay 读取 Herdr 的当前标题 ID，仅在该终端已验证的主会话候选里唯一匹配；共享模式和 `--no-daemon` 均适用。缺失、冲突或截断前缀不唯一则保持未确认，不按名称或对话文字猜选。手动启动不会自动加参数；标题仍是显示信号而非原子选择证明，详见[边界](docs/primary-session-binding.md#explicit-terminal-title-id-signal)。
+
+**Pocket `0.2.30` / Relay `codexfix.18`**：修复只有标题 `-c` 参数、没有 `--no-daemon` 时 Codex 实际使用内嵌运行时却被 Relay 误查共享后台的问题；以该 TUI 真正持有的排他写锁确认运行方式。标题唯一命中的目标单独验证主会话元数据，不再被其他未产生历史的旧写锁挡住；目标本身无元数据仍提示等待首轮输入。App 新建界面显示电脑端默认参数，额外参数可留空；已确认时显示完整 Session ID。标题参数更新的是终端窗口标题，并非 TUI 底部状态栏。
 
 “会话绑定诊断”通过[独立只读接口](docs/session-binding-diagnostics.md)提供带版本的可扩展 JSON；手机不查询可操作候选、不分析子代理或确认主会话，也不会自动上传诊断。
 
@@ -125,7 +127,7 @@ Android 为 Latest；服务端版本和 Android 版本分别编号。
 ```bash
 mkdir -p bin
 CGO_ENABLED=0 go build -trimpath \
-  -ldflags '-s -w -X main.version=0.23.5+codexfix.17 -X main.revision=source-build' \
+  -ldflags '-s -w -X main.version=0.23.5+codexfix.18 -X main.revision=source-build' \
   -o bin/herdr-mobile-relay ./cmd/herdr-mobile-relay
 CGO_ENABLED=0 go build -trimpath \
   -ldflags '-s -w -X main.version=0.23.5+codexfix.6 -X main.revision=source-build' \

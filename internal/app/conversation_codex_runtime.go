@@ -95,17 +95,26 @@ func (s *Server) inspectCodexProcess(ctx context.Context, a *coordinator.AgentSt
 		return bad("provider_store_unavailable")
 	}
 	probe := codexRuntimeProbe{pid: process.PID, process: birth, root: root, mode: "shared", titleID: codexTitleIDConfigured(process.Argv)}
-	if codexNoDaemonArgs(process.Argv) {
-		probe.mode = "standalone"
-		probe.writers, err = codexProcessWriters(process.PID, root)
-		if err != nil || len(probe.writers) == 0 {
-			return probe, "standalone_runtime_unavailable"
+	return inspectCodexRuntimeOwnership(probe, codexNoDaemonArgs(process.Argv), codexProcessWriters, codexProcessListeners)
+}
+
+// Codex can choose an embedded runtime for a -c override without --no-daemon.
+// Only actual exclusive writers owned by this TUI enable that inferred mode.
+func inspectCodexRuntimeOwnership(probe codexRuntimeProbe, explicitStandalone bool, writers func(int, string) (map[string]string, error), listeners func(int) (map[string]string, error)) (codexRuntimeProbe, string) {
+	if explicitStandalone || probe.titleID {
+		owned, err := writers(probe.pid, probe.root)
+		if explicitStandalone || err == nil && len(owned) > 0 {
+			probe.mode = "standalone"
+			probe.writers = owned
+			if err != nil || len(owned) == 0 {
+				return probe, "standalone_runtime_unavailable"
+			}
+			return probe, ""
 		}
-		return probe, ""
 	}
-	listeners, err := codexProcessListeners(process.PID)
-	probe.listeners = listeners
-	if err != nil || len(listeners) == 0 {
+	owned, err := listeners(probe.pid)
+	probe.listeners = owned
+	if err != nil || len(owned) == 0 {
 		return probe, "runtime_unavailable"
 	}
 	return probe, ""

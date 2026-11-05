@@ -36,7 +36,7 @@ func codexReportMessage(reason string) string {
 	case "terminal_title_conflict":
 		return "Codex 标题 ID 未匹配此终端已验证的主会话候选；可能处于切换或子代理界面，暂不绑定其他历史。"
 	case "standalone_runtime_unavailable":
-		return "此 Codex 已使用 --no-daemon，但无法读取本进程持有的会话写锁；请检查版本及同用户进程权限，不会使用共享后台或旧上报代替。"
+		return "此 Codex 使用内嵌/独立运行时，但无法读取本进程持有的会话写锁；请检查版本及同用户进程权限，不会使用共享后台或旧上报代替。"
 	case "standalone_metadata_unavailable":
 		return "独立 Codex 的会话元数据尚不可读；新会话可能需在电脑端开始首轮输入后再刷新，不会改读旧会话。"
 	case "standalone_ambiguous":

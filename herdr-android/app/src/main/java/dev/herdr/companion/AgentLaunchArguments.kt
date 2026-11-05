@@ -12,6 +12,25 @@ object AgentLaunchArguments {
         (0 until values.length()).any { values.optString(it) == CAPABILITY }
     } == true
 
+    fun defaultArgs(defaults: JSONObject?, profile: String): List<String> {
+        val values = defaults?.optJSONArray(profile) ?: return emptyList()
+        if (values.length() > MAX_ARGS) return emptyList()
+        val args = (0 until values.length()).map { values.opt(it) }
+        if (args.any { it !is String }) return emptyList()
+        val strings = args.map { it as String }
+        if (strings.any { it.any(Char::isISOControl) } || strings.sumOf { it.toByteArray(Charsets.UTF_8).size } > MAX_BYTES) return emptyList()
+        return strings
+    }
+
+    fun defaultLabel(defaults: JSONObject?, profile: String): String {
+        val args = defaultArgs(defaults, profile)
+        if (args.isEmpty()) return ""
+        val command = args.joinToString(" ") { value ->
+            if (value.matches(Regex("[a-zA-Z0-9_./:=+-]+"))) value else "'" + value.replace("'", "'\\''") + "'"
+        }
+        return "电脑端默认附加（无需手填）：\n$command\n下面仅填写额外参数；同名配置以你填写的为准。"
+    }
+
     fun parse(line: String): List<String> {
         require(line.toByteArray(Charsets.UTF_8).size <= MAX_BYTES * 2) { "启动参数输入过长" }
         require(line.none { it.isISOControl() && it != '\t' }) { "启动参数不能包含换行或控制字符" }

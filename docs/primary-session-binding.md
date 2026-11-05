@@ -1,6 +1,6 @@
 # Codex terminal-scoped primary session discovery
 
-Relay codexfix.17 / Pocket 0.2.29 applies this policy **only to `agent == codex`**.
+Relay codexfix.18 / Pocket 0.2.30 applies this policy **only to `agent == codex`**.
 All other providers keep the existing Herdr Relay discovery, session identifiers,
 history parsers, and interaction authorization. No Codex runtime or hook report
 is required for them.
@@ -54,10 +54,14 @@ configuration or existing TUI is modified by Relay.
 Read `terminal_title` from fresh Herdr `pane.get` responses. In the supported
 layout, ID is the first ` | `-separated segment. Accept a complete UUID or Codex
 0.166.0's exact 29-character UUID prefix plus `...`; match it against the full IDs
-of this terminal's already-verified primary roots only. Exactly one connected
-root must match. A child title is not mapped to its parent, collisions remain
-ambiguous, and neither another terminal's thread nor a missing/unclassified
-writer can be inferred from title text.
+of this terminal's verified runtime roots in shared mode. In embedded mode,
+match against **all** this TUI's verified exclusive writer IDs first (including
+unmaterialized IDs for prefix collision checks), then validate the selected
+thread's exact identity, store, project and primary/non-subagent classification.
+The selected thread must have a valid metadata header. Other retained writer IDs
+without history do not block it; they cannot be selected as a substitute. A child
+title is never mapped to its parent. No thread from another terminal can be
+introduced by title text.
 
 When this signal is enabled, it is required even for a single root. Empty,
 unrecognized, conflicting or ambiguous titles do not fall back to a retained
@@ -80,12 +84,16 @@ OSC output are not eliminated. It must not be described as cryptographic or
 atomic selection proof. This feature never parses recent conversation text or
 sends `/status`, `/title`, or rename probes into user terminals.
 
-## Explicit `--no-daemon` / standalone path
+## Embedded / standalone writer path
 
 An explicit `--no-daemon` option on the verified **native TUI** selects this path.
-Arguments after `--`, prompt text, option values, Node wrappers and non-TUI
-subcommands cannot enable it. Unknown startup options are handled conservatively;
-implicit embedded fallback is not inferred just because a shared RPC fails.
+From codexfix.18, an explicitly configured title-ID TUI can also use it **only
+when its own live exclusive writer locks are positively verified**. Codex
+0.166.0 excludes ordinary `-c` overrides such as `tui.terminal_title` from shared
+daemon reuse; the flag alone is therefore not a reliable mode detector. A failed
+shared RPC, absent lock file, another PID's lock, or title alone never proves
+embedded mode. Without positive writer evidence, shared discovery stays separate.
+Unknown CLI options, prompt text and non-TUI commands do not enable title trust.
 
 1. Preserve the terminal, foreground group, owner, PID birth and allowlisted
    `CODEX_HOME` checks. Do not require a loopback listener or a shared socket.
@@ -95,23 +103,22 @@ implicit embedded fallback is not inferred just because a shared RPC fails.
    Lock-file existence, another process's locks, read locks, open history files,
    removed/replaced files and symlinked lock namespaces are not proof. Relay never
    opens/acquires/releases/deletes these lock files.
-3. Read only exact-ID, contained rollout metadata for those owned threads and
-   reduce explicit parent/subagent trees. Unknown classification, incomplete
-   ancestry, incompatible session IDs, foreign stores and conflicting project
-   metadata fail closed. Independent forks stay roots. A single root can bind
-   without a Herdr report, including a resumed session before its next hook runs.
-4. A new unmaterialized thread waits for its metadata, normally after the first
-   local turn. A lock ID by itself is **not** proof that this is a primary rather
-   than a child. Other open roots cannot be ignored because their history is empty.
-5. **Multiple standalone roots need the explicit title-ID signal; a matching
-   hook report alone remains insufficient.**
-   Original Codex 0.166.0 retained old writer locks after same-process `/new` and
-   `/resume`; Herdr's public `agent_session` does not expose a report timestamp,
-   sequence or process birth. Its retained report can still name the old root
-   before the new SessionStart hook runs. This is deliberately stricter than the
-   shared-mode hook tie-breaker, not a generic hook-only fallback. The title can
-   select one of the verified writer roots, but cannot bypass missing metadata,
-   ambiguous parentage or writer ownership checks.
+3. With the supported title-ID signal, first match the complete/prefix ID against
+   every verified writer. Require exactly one match; read and validate only that
+   exact ID's metadata, with primary classification, no delegated parent, matching
+   project/store/session identity. A child, corrupt header or conflicting project
+   stays unconfirmed. Re-check the whole writer set and selected metadata before
+   accepting the result.
+4. Without title-ID evidence, preserve the original complete-set metadata and
+   parent-tree reduction. Missing metadata or ambiguous roots do not become a
+   hook-only fallback. Independent forks remain roots.
+5. A selected unmaterialized new thread still waits for its first metadata
+   header, normally after the first user turn (location misses have a bounded
+   five-second cache). A `/new` placeholder retained beside a valid resumed
+   target no longer blocks that target. This was the production failure missed
+   by the earlier explicit-`--no-daemon` experiment.
+6. Old hook reports cannot select between embedded roots. Title display signal
+   limits above still apply; this does not establish an atomic selection getter.
 
 Ownership and identity/ancestry metadata are rechecked, including after the final
 metadata read. Process, mode, writer inode, store or selected-ID changes revoke
@@ -154,7 +161,7 @@ report change does not veto a unique runtime root.
 The selected exact ID is checked against available history ID/project metadata.
 Conflicting metadata fails closed. In shared mode, missing or unmaterialized
 history does not erase identity established by live runtime metadata. Standalone
-requires an available header to classify each owned thread before selecting a root. Historical
+requires an available header for the title-selected thread, or for every owned thread when selecting without a title. Historical
 creator names do not establish the current executor.
 
 History reads and protected conversation operations revalidate the binding.

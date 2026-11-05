@@ -8,6 +8,12 @@ import (
 
 const codexTerminalTitleDefault = `tui.terminal_title=["thread-id","thread-name"]`
 
+// AgentLaunchDefaults advertises the same built-in defaults used at launch.
+// Clients display these separately instead of copying them into user arguments.
+func AgentLaunchDefaults() map[string][]string {
+	return map[string][]string{"codex": {"-c", codexTerminalTitleDefault}}
+}
+
 func decodeAgentArgs(message map[string]any) ([]string, error) {
 	raw, present := message["agent_args"]
 	if !present {

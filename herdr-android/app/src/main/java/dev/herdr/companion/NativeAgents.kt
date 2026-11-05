@@ -984,9 +984,11 @@ class NativeAgents(private val context: Context, private val engine: RelayEngine
             AlertDialog.Builder(context).setTitle("先核对上次创建结果").setMessage("上次在此工作空间创建 Agent 的结果未确认。请先查看列表，避免重复创建。")
                 .setPositiveButton("已核对，清除待确认状态") { _, _ -> if (key !in pendingMutations) vault.remove(key) else toast("请求仍在处理中") }.setNegativeButton("返回", null).show(); return
         }
-        AgentManagementDialogs.launch(context, ws, profiles, AgentLaunchArguments.supported(configs[id])) { payload, done ->
+        val launchDefaults = configs[id]?.optJSONObject("agent_launch_defaults")?.let { JSONObject(it.toString()) }
+        AgentManagementDialogs.launch(context, ws, profiles, AgentLaunchArguments.supported(configs[id]), launchDefaults) { payload, done ->
             val current = workspaceMetadata(id, workspaceId, server)
             if (!managementReady(id) || current == null || current.optString("cwd") != ws.optString("cwd") || key in pendingMutations || vault.read(key) != null) done(null, "工作空间或连接已变化，请刷新后再创建")
+            else if (AgentLaunchArguments.defaultArgs(launchDefaults, payload.optString("profile_id")) != AgentLaunchArguments.defaultArgs(configs[id]?.optJSONObject("agent_launch_defaults"), payload.optString("profile_id"))) done(null, "电脑端默认启动参数已变化，请关闭后重新创建")
             else if (payload.has("agent_args") && !AgentLaunchArguments.supported(configs[id])) done(null, "此电脑 Relay 的启动参数能力已变化，请升级并刷新后重试")
             else {
                 vault.write(key, "unconfirmed"); pendingMutations += key

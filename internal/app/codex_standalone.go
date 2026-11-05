@@ -80,6 +80,19 @@ func (s *Server) standalonePrimary(ctx context.Context, a *coordinator.AgentStat
 		return bad("standalone_runtime_unavailable")
 	}
 	ids := slices.Sorted(maps.Keys(probe.writers))
+	if probe.titleID {
+		owned := make([]codexruntime.Thread, 0, len(ids))
+		for _, id := range ids {
+			owned = append(owned, codexruntime.Thread{ID: id, Connected: true})
+		}
+		selected, reason := selectCodexTitle(title, owned)
+		if reason != "" {
+			return bad(reason)
+		}
+		// The exact selected writer must prove it is a primary. Other retained
+		// empty threads cannot replace it or block an unambiguous title ID.
+		ids = []string{selected.ID}
+	}
 	threads := make([]codexruntime.Thread, 0, len(ids))
 	for _, id := range ids {
 		if ctx.Err() != nil {
@@ -94,6 +107,9 @@ func (s *Server) standalonePrimary(ctx context.Context, a *coordinator.AgentStat
 			return bad("standalone_metadata_conflict")
 		}
 		t := codexruntime.Thread{ID: strings.ToLower(meta.ID), CWD: meta.CWD, SessionID: meta.SessionID, ParentThreadID: meta.ParentThreadID, ForkedFromID: meta.ForkedFromID, Source: meta.Source, Connected: true}
+		if probe.titleID && (meta.ThreadSource == "subagent" || t.Delegated()) {
+			return bad("terminal_title_conflict")
+		}
 		var source string
 		_ = json.Unmarshal(meta.Source, &source)
 		// A missing parent on a classified child is not evidence of a root.

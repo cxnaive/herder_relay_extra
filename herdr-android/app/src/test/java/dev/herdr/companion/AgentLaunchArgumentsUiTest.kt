@@ -81,7 +81,7 @@ class AgentLaunchArgumentsUiTest {
         dialog.dismiss(); activity.pause().stop().destroy()
     }
     @Test fun realWorkspaceLaunchRechecksCapabilityRoleConnectionAndDirectory() {
-        for (change in listOf("capability", "role", "connection", "directory")) {
+        for (change in listOf("capability", "role", "connection", "directory", "defaults")) {
             val activity = Robolectric.buildActivity(Activity::class.java).setup()
             val vault = Vault(activity.get())
             val engine = RelayEngine(activity.get(), vault) {}
@@ -106,13 +106,14 @@ class AgentLaunchArgumentsUiTest {
             assertTrue(inputs[1].isEnabled)
             when (change) {
                 "capability" -> event(config(false))
+                "defaults" -> event(config(true).put("agent_launch_defaults", JSONObject().put("codex", JSONArray().put("-c").put("tui.terminal_title=[]"))))
                 "role" -> auth.put("role", "reader")
                 "connection" -> ui.onEvent(JSONObject().put("type", "status").put("relayId", "computer").put("status", "disconnected"))
                 "directory" -> event(JSONObject().put("type", "workspaces").put("workspaces", JSONArray().put(JSONObject(workspace.toString()).put("cwd", "/work/other"))))
             }
             shadowOf(Looper.getMainLooper()).idle()
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
-            val reason = if (change == "capability") "启动参数能力已变化" else "工作空间或连接已变化"
+            val reason = when (change) { "capability" -> "启动参数能力已变化"; "defaults" -> "默认启动参数已变化"; else -> "工作空间或连接已变化" }
             assertTrue(change, views(dialog.window!!.decorView).filterIsInstance<TextView>().any { it.text.contains(reason) })
             assertNull(vault.read("launch:computer:primary:workspace-one"))
             assertEquals("--no-daemon", inputs[1].text.toString())

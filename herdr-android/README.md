@@ -2,9 +2,11 @@
 
 与本仓库电脑 Relay 配套的原生 Android 客户端，不使用 WebView 运行 Agent 界面。
 
-当前源码 `0.2.29` / versionCode `32` 配合 Relay codexfix.16，按 [Codex 终端主会话策略](../docs/primary-session-binding.md) 展示 runtime 唯一主线程，或以匹配的 Herdr 上报消除多主线程歧义；无法确认时提示可尝试 `--no-daemon`，其他 agent 不改变流程；同会话缓存会刷新，换会话撤销旧请求并切换缓存。下载版本及构建来源以下方已发布记录为准。
+当前源码 `0.2.30` / versionCode `33` 配合 Relay codexfix.18，按 [Codex 终端主会话策略](../docs/primary-session-binding.md) 展示 runtime 唯一主线程，或以匹配的 Herdr 上报消除多主线程歧义；无法确认时提示可尝试 `--no-daemon`，其他 agent 不改变流程；同会话缓存会刷新，换会话撤销旧请求并切换缓存。下载版本及构建来源以下方已发布记录为准。
 
-新建 Agent 时可在“启动参数”行填写 `--no-daemon`，只填参数、不填 `codex` 命令名。初始提示单独填写；重启由 App 创建的 Agent 时保留参数，Relay 服务重启后也不丢失。需配套更新 Relay；旧版不支持时明确提示升级，不会忽略参数。不会自动改变现有 Agent 的启动方式。
+新建 Codex 时会显示 Relay 上报的“电脑端默认附加”参数；下面的“额外启动参数”留空也会使用默认值，不需要手填或复制。已确认主会话时在页面显示完整 Session ID，运行时/标题失败与首轮尚无元数据分别说明。
+
+新建 Agent 时可在“额外启动参数”行填写 `--no-daemon`，只填参数、不填 `codex` 命令名。初始提示单独填写；重启由 App 创建的 Agent 时保留参数，Relay 服务重启后也不丢失。需配套更新 Relay；旧版不支持时明确提示升级，不会忽略参数。不会自动改变现有 Agent 的启动方式。
 
 会话识别完全由 Relay 完成；手机只跟随最终会话 ID。菜单中的“会话绑定诊断”使用[只读诊断接口](../docs/session-binding-diagnostics.md)，展示可扩展 JSON，不查询可操作候选、不分析子代理或确认主会话。
 

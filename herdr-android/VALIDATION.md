@@ -1,5 +1,14 @@
 # 验证记录
 
+## 0.2.30 / Relay codexfix.18 · 内嵌运行时与默认参数可见性
+
+2026-11-05：确认 Codex 0.166.0 的标题 `-c` 覆盖会使普通启动选择内嵌运行时；此前仅用显式 `--no-daemon` 决定发现路径是遗漏。本次以受支持标题布局及该 native TUI 实际持有的排他写锁证明内嵌模式，不把共享 RPC 失败当作证据。
+
+- 原版 Codex 隔离 PTY 实验不带 `--no-daemon`，只带 Relay 默认标题参数：创建 A、`/new` 留下未物化 B，再 `/resume A`。实际 Relay 选择器验证真实内核写锁/目标元数据，A 可重新读取，B 的空历史不再阻断 A；无外部模型请求/生产 socket/用户配置修改。生产 Agent 的私有只读核对也确认同一进程恢复后可唯一选中目标，未发送提示或重启 Agent；真实路径、名称、ID 不进入公开 fixtures。
+- Android 344 项 JVM/Robolectric 测试通过；lintDebug 通过。API28/35 新建对话框显示 Relay 上报的默认参数、额外参数仍留空；切换类型更新说明，不改用户输入；默认值在提交前变化则拒绝，不发送旧表单。已确认状态显示完整会话 ID，未确认/旧缓存不显示成当前 ID。新窗口合成预览已目视核对，原五张 QA 图片恢复，README 1×4 图库不变。
+- Go 全量 tests/vet 及 app/coordinator/protocol/herdr/codexruntime race 检查通过；回归覆盖显式/隐式内嵌模式、坏锁/缺锁不会被当成运行时证明、选中未物化线程仍拒绝、选中子代理/错误 ID/前缀碰撞拒绝，以及共享模式不受影响。元数据缺失使用原有有界缓存，不为凑绑定跳过目标校验。
+- App 的“默认附加”来自 push_config 的 agent_launch_defaults，与 Relay 实际启动默认值同源。标题本身不是 TUI 底部状态栏；不改全局 Codex 配置、不默认附加 --no-daemon、不重启现有 Agent。Release 全部经 CI 构建签名发布。
+
 ## Relay codexfix.17 · 读取 Codex 标题 ID 消歧（App 保持 0.2.29）
 
 2026-11-05：不止添加启动参数；Relay 从 Herdr `pane.get` 读取标题首段 ID，在本终端已验证的主线程候选内唯一匹配。仅明确配置了支持的 ID-first 布局时启用，不使用普通标题或正文相似度。

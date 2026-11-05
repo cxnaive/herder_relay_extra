@@ -83,8 +83,10 @@ added again on Restart/Clear. The combined default and user argv must fit the
 same 64-argument / 8192-byte budget; failure is reported before creating a pane.
 
 This applies to new Relay-launched Codex agents and explicitly requested
-restarts, with or without `--no-daemon`. It does not enable standalone mode,
-rewrite `config.toml`, change custom wrappers or other providers, or restart
+restarts, with or without `--no-daemon`. Relay does not add `--no-daemon`, but
+Codex 0.166.0 itself selects embedded mode for this `-c` override. codexfix.18
+therefore verifies actual writer ownership rather than inferring mode solely
+from the flag. The launch default does not rewrite `config.toml`, change custom wrappers or other providers, or restart
 existing agents. Commands typed directly into a Herdr terminal do not pass
 through Relay. To change those as well, the user can set Codex's own configuration:
 
@@ -99,9 +101,16 @@ explicit CLI ID-first layout on the verified TUI process; global config alone
 does not enable the signal. Relay reads Herdr's fresh terminal title and matches
 the first segment against this terminal's verified primary candidates. Codex
 0.166.0 truncates the ID to 29 characters plus `...`; collisions, missing titles,
-child selections and conflicting runtime/store metadata remain unconfirmed.
+child selections and conflicting selected-thread runtime/store metadata remain unconfirmed.
 Raw names and recent conversation text are never used for similarity matching.
 See [selection checks and display-signal limits](primary-session-binding.md#explicit-terminal-title-id-signal).
+
+Pocket 0.2.30 displays the `push_config.agent_launch_defaults` map separately
+from the editable extra arguments. Defaults come from the same Relay function as
+the real launch, are not copied into `agent_args`, and are rechecked on submit.
+An older Relay without that field is not advertised as providing defaults. The
+confirmed full `agent_session_id` is displayed in the native binding label; an
+unconfirmed/cached ID or a raw terminal-title prefix is never presented as current.
 
 Effective extra arguments are persisted with the private verified launch record
 and reused for Restart/Clear, including after a Relay service restart. They are

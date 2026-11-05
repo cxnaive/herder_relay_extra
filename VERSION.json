@@ -2,15 +2,15 @@
   "repository": "cxnaive/herder_relay_extra",
   "snapshot_date": "2026-11-05",
   "android": {
-    "version": "0.2.29",
-    "version_code": 32,
+    "version": "0.2.30",
+    "version_code": 33,
     "source_path": "herdr-android",
     "reference_upstream_revision": "09b52781399114a7576d40fcdf91ccefd7686be6",
     "signature": "debug",
     "signing_certificate_sha256": "fe1ddf4d04f46d45168d53ca25dd2b379f242b6cd9b23169c9717258cf5232b9"
   },
   "relay": {
-    "version": "0.23.5+codexfix.17",
+    "version": "0.23.5+codexfix.18",
     "source_path": ".",
     "upstream_version": "0.23.5",
     "upstream_revision": "27054011fd8137d5f9702cc9e718aff1bd73443d"

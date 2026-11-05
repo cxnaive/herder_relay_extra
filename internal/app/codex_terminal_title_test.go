@@ -276,6 +276,7 @@ func TestStandaloneTitleCannotBypassWriterOrMetadataProof(t *testing.T) {
 				standaloneRollout(t, s.home, id, a.Cwd, nil)
 			case "missing-meta":
 				writers[childReportID] = "dev:inode-3"
+				f.pane.TerminalTitle = shortTitle(childReportID)
 			case "process":
 				old := s.codexProcessProbe
 				calls := 0

@@ -19,17 +19,24 @@ object PrimarySessionBinding {
     fun label(agent: JSONObject): String {
         if (agent.optString("agent").let { it.isNotBlank() && it != "codex" }) return ""
         when (agent.optString("binding_reason")) {
-            "standalone_runtime_unavailable" -> return "已使用 --no-daemon · 无法读取本进程会话写锁，请检查版本与进程权限"
+            "standalone_runtime_unavailable" -> return "Codex 内嵌/独立运行时的会话写锁不可读，请检查版本与进程权限"
             "standalone_metadata_unavailable" -> return "独立会话元数据尚不可读 · 新会话请在电脑端开始首轮输入后刷新"
             "standalone_ambiguous" -> return "独立 Codex 仍持有多个主会话 · 旧 hook 上报不足以确认，请退出原 TUI 后在独立终端恢复目标会话"
             "standalone_ancestry_unavailable" -> return "独立 Codex 的主子会话关系无法完整确认 · 不会猜选"
             "standalone_metadata_conflict" -> return "独立 Codex 的写锁与会话元数据冲突 · 不会改读其他会话"
+            "terminal_title_missing", "terminal_title_invalid" -> return "已配置线程 ID 标题，但尚未读到有效 ID · 等待终端刷新，不按名称猜选"
+            "terminal_title_ambiguous" -> return "标题 ID 前缀匹配多个会话 · 暂不能唯一确认"
+            "terminal_title_conflict" -> return "标题 ID 与本终端会话不匹配 · 可能正在切换或查看子代理"
+            "runtime_unavailable" -> return "终端进程已找到，但会话运行时关联不可用 · 需检查电脑 Relay，不代表启动参数未附加"
             "runtime_changed" -> return "终端或主会话已变化 · 正在重新确认，旧请求已失效"
             "runtime_metadata_conflict", "process_project_conflict" -> return "Codex 运行时与会话信息冲突 · 请检查终端和工作目录"
             "runtime_platform_unsupported" -> return "此平台暂不支持 Codex 终端运行时确认"
         }
         return when (agent.optString("binding_state")) {
-            "verified" -> "终端对应的 Codex 主会话已确认"
+            "verified" -> {
+                val id = agent.optString("agent_session_id")
+                "终端对应的 Codex 主会话已确认" + if (id.matches(Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"))) "\nSession ID：$id" else ""
+            }
             "verifying", "stale", "ambiguous", "conflict" -> "无法唯一确认主会话 · 可尝试 codex --no-daemon 并检查 Herdr hook，不保证修复；已读内容仅为旧缓存"
             else -> ""
         }

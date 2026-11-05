@@ -504,9 +504,10 @@ type PushConfig struct {
 	HerdrStatus    HerdrStatus `json:"herdr_status"`
 	// SpeechLanguages lists the languages this host has a voice for, so the
 	// phone offers only what the relay can actually read aloud.
-	SpeechLanguages []string `json:"speech_languages,omitempty"`
-	Inventory       any      `json:"inventory"`
-	AgentProfiles   any      `json:"agent_profiles"`
+	SpeechLanguages     []string            `json:"speech_languages,omitempty"`
+	Inventory           any                 `json:"inventory"`
+	AgentProfiles       any                 `json:"agent_profiles"`
+	AgentLaunchDefaults map[string][]string `json:"agent_launch_defaults,omitempty"`
 	// HermesProfiles lists the Hermes Agent profiles a launch may select, so
 	// the phone's Hermes form offers only names this host can actually start.
 	// Omitted by relays that do not know about profiles at all.
