@@ -255,3 +255,15 @@ func TestApiErrorArgumentsAreBounded(t *testing.T) {
 		}
 	}
 }
+
+func TestInboundDecodesAgentArguments(t *testing.T) {
+	message, err := DecodeMap(map[string]any{"type": "agent_start", "agent_args": []any{"--no-daemon", "two words", ""}})
+	if err != nil || len(message.AgentArgs) != 3 || message.AgentArgs[0] != "--no-daemon" || message.AgentArgs[1] != "two words" || message.AgentArgs[2] != "" {
+		t.Fatalf("startup argv = %q, %v", message.AgentArgs, err)
+	}
+	for _, bad := range []any{"--no-daemon", []any{1}, map[string]any{}} {
+		if _, err := DecodeMap(map[string]any{"type": "agent_start", "agent_args": bad}); err == nil {
+			t.Fatal("accepted malformed argv")
+		}
+	}
+}

@@ -13,6 +13,7 @@ project follows [Semantic Versioning](https://semver.org/).
 - Codex associated-history and manual-pin overrides, terminal status-line identity parsing and automatic `/status` probing.
 
 ### Added
+- Enter optional startup arguments when creating an Agent from Android, separately from the initial prompt. Preserve those arguments when restarting Relay-created agents, and require Relay support instead of silently ignoring them.
 - Read-only session binding diagnostics for paired devices, with a versioned structured payload and an Android viewer for future detailed evidence. Diagnostics never select or confirm a primary session.
 - Read-only current Codex turn status and timing, using bounded metadata-only queries to distinguish running, waiting, finished and interrupted work without loading conversation bodies.
 - Authenticated, controller-only per-Codex-session model/reasoning updates using the live runtime catalog and exact pane identity; read back effective settings and never replay unconfirmed writes.

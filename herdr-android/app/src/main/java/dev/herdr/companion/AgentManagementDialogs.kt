@@ -33,26 +33,34 @@ object AgentManagementDialogs {
             }
         } }; dialog.show(); return dialog
     }
-    fun launch(context: Context, workspace: JSONObject, profiles: JSONArray, submit: (JSONObject, ManagementReply) -> Unit): AlertDialog {
+    fun launch(context: Context, workspace: JSONObject, profiles: JSONArray, launchArgsSupported: Boolean = false, submit: (JSONObject, ManagementReply) -> Unit): AlertDialog {
         val body = body(context)
         body.addView(text(context, "工作空间：${workspace.optString("label")} [${workspace.optString("workspace_id")}]\n${workspace.optString("cwd")}"))
         val profile = Spinner(context).apply { contentDescription = "Agent 类型" }
         val options = (0 until profiles.length()).map { profiles.getJSONObject(it) }
         choices(context, profile, options.map { it.optString("label").ifBlank { it.optString("id") } }); body.addView(profile)
         val name = input(context, "名称，例如 writer-2")
+        val arguments = input(context, "例如 --no-daemon").apply {
+            contentDescription = "启动参数"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD or android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            isEnabled = launchArgsSupported
+        }
         val prompt = input(context, "初始提示（可留空）").apply { setSingleLine(false); minLines = 3; maxLines = 6; gravity = android.view.Gravity.TOP }
-        body.addView(name); body.addView(prompt)
+        body.addView(name)
+        body.addView(text(context, "启动参数（可留空）")); body.addView(arguments)
+        body.addView(text(context, if (launchArgsSupported) "只填参数，不填命令名。含空格的值用引号；重启此 Agent 时保留。" else "此电脑 Relay 尚不支持启动参数，请先升级 Relay。"))
+        body.addView(prompt)
         val status = text(context, "只会在上述工作空间创建，不改变现有 Agent。名称以小写字母开头，可含数字、_ 和 -。"); body.addView(status)
         val dialog = AlertDialog.Builder(context).setTitle("在此工作空间新建 Agent").setView(ScrollView(context).apply { addView(body) }).setPositiveButton("创建", null).setNegativeButton("取消", null).create()
         dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
             if (!dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled) return@setOnClickListener
-            val payload = try { AgentManagement.launchPayload(workspace, options.getOrNull(profile.selectedItemPosition)?.optString("id").orEmpty(), name.text.toString().trim(), prompt.text.toString()) }
+            val payload = try { AgentManagement.launchPayload(workspace, options.getOrNull(profile.selectedItemPosition)?.optString("id").orEmpty(), name.text.toString().trim(), prompt.text.toString(), arguments.text.toString(), launchArgsSupported) }
                 catch (e: IllegalArgumentException) { status.text = e.message; return@setOnClickListener }
-            name.isEnabled = false; prompt.isEnabled = false; profile.isEnabled = false; dialog.getButton(AlertDialog.BUTTON_NEGATIVE).text = "关闭"
+            name.isEnabled = false; arguments.isEnabled = false; prompt.isEnabled = false; profile.isEnabled = false; dialog.getButton(AlertDialog.BUTTON_NEGATIVE).text = "关闭"
             val create = dialog.getButton(AlertDialog.BUTTON_POSITIVE); create.isEnabled = false; status.text = "正在创建 Agent，请勿重复提交…"
             submit(payload) { data, error -> if (!dialog.isShowing) return@submit
                 if (error == null && !AgentManagement.unknown(data, null)) dialog.dismiss()
-                else { status.text = error ?: "创建结果未确认，请刷新工作空间核对后再操作。"; create.isEnabled = !AgentManagement.unknown(data, error); name.isEnabled = create.isEnabled; prompt.isEnabled = create.isEnabled; profile.isEnabled = create.isEnabled }
+                else { status.text = error ?: "创建结果未确认，请刷新工作空间核对后再操作。"; create.isEnabled = !AgentManagement.unknown(data, error); name.isEnabled = create.isEnabled; arguments.isEnabled = create.isEnabled && launchArgsSupported; prompt.isEnabled = create.isEnabled; profile.isEnabled = create.isEnabled }
             }
         } }; dialog.show(); return dialog
     }

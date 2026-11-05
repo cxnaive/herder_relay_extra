@@ -1,5 +1,14 @@
 # 验证记录
 
+## 0.2.29 / codexfix.16 · 新建 Agent 的启动参数
+
+2026-11-05：在名称与初始提示之间增加独立“启动参数”输入行，支持 `--no-daemon`、引号和含空格的值。按 argv 传到 Relay，不作为初始提示发送；支持能力缺失或提交时变化会明确拒绝，不悄悄丢弃参数。
+
+- Android 全量 **339 项 JVM/Robolectric 测试通过，0 failures / errors / skipped**；`assembleDebug` 与 `lintDebug` 通过，lint 0 errors / 82 warnings。新 UI 回归覆盖 API 28/35：校验、等待回执禁用、确定失败可编辑、未知结果禁止重试、旧 Relay 提示，以及提交时能力/角色/连接/工作空间改变均不投递。
+- Go 全量 `go test -p 2 ./...` 与 `go vet ./...` 通过；profiles/coordinator/herdr/protocol/app 的 race 检查通过。新增 fixture 验证 Herdr `--` 后的逐项 argv、custom profile 安全引用且不改共享配置、Hermes 参数合并、空参数/控制字符/大小边界、同 request ID 不接受不同参数、Relay 重启后再重启 Agent 仍保留参数、终端替换不转移记录、私有记录总大小不会写成无法重载的文件。
+- 查看了使用合成数据渲染的新建对话框；预览保存在 `app/build/reports/launch-arguments/workspace-launch.png`。测试改写的五张已跟踪历史 QA 图片按原字节恢复；README 开头 1×4 图库未修改。
+- 以上是本地源码验证，未用 fake Herdr 的 argv 验证冒充真实 Codex 启动或手机真机验收。配套 Release 只从 GitHub Actions 构建并发布，版本与精确来源由 CI 更新 README/VERSION 记录；部署只更新 Relay，不重启 Herdr/Gateway/Agent。
+
 ## 0.2.28 / codexfix.15 · 终端恢复操作独立授权
 
 2026-11-05：将终端手动输入、按键与停止/重启从主对话确认中分离，保留设备角色、确切终端、cwd、请求代次和未确认投递保护；历史/对话发送/结构化审批/模型设置仍按主会话验证。管理确认不能随切换目标转发给另一个终端。

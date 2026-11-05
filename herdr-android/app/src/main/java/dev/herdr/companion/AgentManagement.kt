@@ -5,7 +5,7 @@ import org.json.JSONObject
 
 /** Pure validation and exact-target payloads shared by the management dialogs. */
 object AgentManagement {
-    fun launchPayload(workspace: JSONObject, profile: String, name: String, prompt: String): JSONObject {
+    fun launchPayload(workspace: JSONObject, profile: String, name: String, prompt: String, arguments: String = "", launchArgsSupported: Boolean = false): JSONObject {
         val id = workspace.optString("workspace_id")
         val cwd = workspace.optString("cwd")
         require(id.isNotBlank() && !id.startsWith("cwd:") && cwd.startsWith('/') && cwd.none { it.isISOControl() }) { "工作空间身份或目录不可用，请刷新列表" }
@@ -13,8 +13,11 @@ object AgentManagement {
         require(profile.isNotBlank()) { "请选择 Agent 类型" }
         require(name.matches(Regex("[a-z][a-z0-9_-]{0,31}"))) { "名称须以小写字母开头，最多 32 位，可含数字、_ 和 -" }
         require(prompt.codePointCount(0, prompt.length) <= 100000) { "初始提示过长" }
+        val args = AgentLaunchArguments.parse(arguments)
+        require(args.isEmpty() || launchArgsSupported) { "请先升级电脑 Relay，再使用启动参数；参数不会被忽略" }
         return JSONObject().put("type", "agent_start").put("server_session_id", "primary").put("workspace_id", id)
             .put("cwd", cwd).put("profile_id", profile).put("name", name).put("prompt", prompt)
+            .apply { if (args.isNotEmpty()) put("agent_args", JSONArray(args)) }
     }
     fun renamePayload(name: String): JSONObject {
         val value = name.trim()

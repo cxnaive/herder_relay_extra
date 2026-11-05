@@ -341,21 +341,28 @@ func (r *Resolver) ResolvePane(paneID, reportedAgent string) string {
 }
 
 func (r *Resolver) verifiedProfile(paneID string) string {
+	profileID, _ := r.ResolveOwnedLaunch(paneID)
+	return profileID
+}
+
+// ResolveOwnedLaunch returns the profile and saved arguments from one verified
+// ownership record. Callers cannot mutate the persisted launch configuration.
+func (r *Resolver) ResolveOwnedLaunch(paneID string) (string, []string) {
 	r.mu.Lock()
 	record, remembered := r.ownership[ownershipKey(paneID)]
 	observed, seen := r.observed[ownershipKey(paneID)]
 	unavailable := r.ownershipUnavailable
 	r.mu.Unlock()
 	if unavailable || !remembered {
-		return ""
+		return "", nil
 	}
 	if record.Pending || !seen || !record.Target.valid() || observed != record.Target {
-		return ""
+		return "", nil
 	}
 	if _, exists := r.Profile(record.ProfileID); !exists {
-		return ""
+		return "", nil
 	}
-	return record.ProfileID
+	return record.ProfileID, append([]string(nil), record.AgentArgs...)
 }
 
 func (r *Resolver) Reload() {

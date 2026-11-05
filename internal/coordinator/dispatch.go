@@ -681,6 +681,11 @@ func (d *Dispatcher) handleAgentStart(ctx context.Context, receivedAt time.Time,
 		Prompt:        stringValue(message, "prompt"),
 		HermesProfile: stringValue(message, "hermes_profile"),
 	}
+	var argsErr error
+	request.AgentArgs, argsErr = decodeAgentArgs(message)
+	if argsErr != nil {
+		return d.fail(requestID, "agent_start", "", argsErr.Error())
+	}
 	if request.ProfileID == "" || request.Name == "" || request.Cwd == "" {
 		return d.fail(requestID, "agent_start", "", "Profile, name, and working directory are required")
 	}
@@ -719,7 +724,7 @@ func (d *Dispatcher) handleAgentStart(ctx context.Context, receivedAt time.Time,
 			// Compatibility for direct unit construction. The production server
 			// always installs a profile resolver and uses the full workflow.
 			var agentArgs []string
-			agentArgs, err = hermesProfileArgs(request.HermesProfile)
+			agentArgs, err = request.launchArgs()
 			snapshot := d.state.beginLaunch()
 			paneID := "pane-" + request.Name
 			var returned string
@@ -827,13 +832,13 @@ func (d *Dispatcher) handleClear(ctx context.Context, receivedAt time.Time, requ
 		}))
 	}
 
-	profileID := d.profiles.ResolveOwnedPane(paneID)
+	profileID, agentArgs := d.profiles.ResolveOwnedLaunch(paneID)
 	profile, exists := d.profiles.Profile(profileID)
 	if !exists {
 		return d.fail(requestID, "agent_clear", paneID, "Launch profile ownership is unknown; start a new agent explicitly before stopping this one")
 	}
 	name := "clear-" + fmt.Sprintf("%x", receivedAt.UnixNano())[:8]
-	request := StartRequest{ProfileID: profile.ID, Name: name, Cwd: agent.Cwd}
+	request := StartRequest{ProfileID: profile.ID, Name: name, Cwd: agent.Cwd, AgentArgs: agentArgs}
 	_, request, err := d.lifecycle.ValidateStart(request)
 	if err != nil {
 		return d.fail(requestID, "agent_clear", paneID, err.Error())

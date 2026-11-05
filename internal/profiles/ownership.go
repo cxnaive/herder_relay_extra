@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 )
@@ -24,6 +25,7 @@ type profileOwnership struct {
 	Target    PaneIdentity `json:"target"`
 	ProfileID string       `json:"profile_id"`
 	Pending   bool         `json:"pending,omitempty"`
+	AgentArgs []string     `json:"agent_args,omitempty"`
 }
 
 func (r *Resolver) SetOwnershipPath(path string) error {
@@ -65,7 +67,7 @@ func (r *Resolver) SetOwnershipPath(path string) error {
 		return errors.New("invalid profile ownership store")
 	}
 	for _, record := range records {
-		if !record.Target.valid() || record.ProfileID == "" {
+		if !record.Target.valid() || record.ProfileID == "" || ValidateLaunchArgs(record.AgentArgs) != nil {
 			r.ownershipUnavailable = true
 			return errors.New("invalid profile ownership identity")
 		}
@@ -83,22 +85,25 @@ func (r *Resolver) SetOwnershipPath(path string) error {
 func ownershipKey(pane string) string   { return strings.TrimSpace(pane) }
 func (target PaneIdentity) valid() bool { return target.PaneID != "" && target.TerminalID != "" }
 
-func (r *Resolver) OwnsTarget(target PaneIdentity, profileID string) bool {
+func (r *Resolver) OwnsTarget(target PaneIdentity, profileID string, agentArgs ...string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	record, exists := r.ownership[ownershipKey(target.PaneID)]
-	return !r.ownershipUnavailable && exists && !record.Pending && target.valid() && record.Target == target && record.ProfileID == profileID
+	return !r.ownershipUnavailable && exists && !record.Pending && target.valid() && record.Target == target && record.ProfileID == profileID && slices.Equal(record.AgentArgs, agentArgs)
 }
 
-func (r *Resolver) RememberVerified(target PaneIdentity, profileID string) error {
-	return r.rememberOwnership(target, profileID, false)
+func (r *Resolver) RememberVerified(target PaneIdentity, profileID string, agentArgs ...string) error {
+	return r.rememberOwnership(target, profileID, false, agentArgs)
 }
 
-func (r *Resolver) BeginLaunchOwnership(target PaneIdentity, profileID string) error {
-	return r.rememberOwnership(target, profileID, true)
+func (r *Resolver) BeginLaunchOwnership(target PaneIdentity, profileID string, agentArgs ...string) error {
+	return r.rememberOwnership(target, profileID, true, agentArgs)
 }
 
-func (r *Resolver) rememberOwnership(target PaneIdentity, profileID string, pending bool) error {
+func (r *Resolver) rememberOwnership(target PaneIdentity, profileID string, pending bool, agentArgs []string) error {
+	if err := ValidateLaunchArgs(agentArgs); err != nil {
+		return err
+	}
 	if !target.valid() {
 		return errors.New("launch terminal identity is unavailable")
 	}
@@ -115,7 +120,7 @@ func (r *Resolver) rememberOwnership(target PaneIdentity, profileID string, pend
 		return errors.New("profile ownership store is full")
 	}
 	previous, existed := r.ownership[key]
-	r.ownership[key] = profileOwnership{Target: target, ProfileID: profileID, Pending: pending}
+	r.ownership[key] = profileOwnership{Target: target, ProfileID: profileID, Pending: pending, AgentArgs: slices.Clone(agentArgs)}
 	delete(r.unobserved, key)
 	if err := r.persistOwnershipLocked(); err != nil {
 		if existed {
@@ -184,6 +189,9 @@ func (r *Resolver) persistOwnershipLocked() error {
 	data, err := json.Marshal(records)
 	if err != nil {
 		return err
+	}
+	if len(data) > 1024*1024 {
+		return errors.New("profile ownership store exceeds 1 MiB")
 	}
 	dir := filepath.Dir(r.ownershipPath)
 	if err := os.MkdirAll(dir, 0700); err != nil {

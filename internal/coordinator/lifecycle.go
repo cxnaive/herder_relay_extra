@@ -43,6 +43,7 @@ type StartRequest struct {
 	Name        string
 	Cwd         string
 	Prompt      string
+	AgentArgs   []string
 	// HermesProfile is the Hermes Agent profile (`hermes -p <name>`) the launch
 	// should select. It is empty for every other agent kind, and for a Hermes
 	// launch that did not pick one at all; both start the default profile.
@@ -100,6 +101,10 @@ func (l *Lifecycle) ValidateStart(request StartRequest) (profiles.Profile, Start
 	if len([]rune(request.Prompt)) > promptMaxChars {
 		return profiles.Profile{}, request, errors.New("prompt exceeds maximum length")
 	}
+	if _, err := request.launchArgs(); err != nil {
+		return profiles.Profile{}, request, err
+	}
+	request.AgentArgs = append([]string(nil), request.AgentArgs...)
 	cwd, err := l.ResolveCwd(request.Cwd)
 	if err != nil {
 		return profiles.Profile{}, request, err
@@ -109,6 +114,10 @@ func (l *Lifecycle) ValidateStart(request StartRequest) (profiles.Profile, Start
 }
 
 func (l *Lifecycle) Start(ctx context.Context, profile profiles.Profile, request StartRequest) (result StartResult, resultErr error) {
+	agentArgs, err := request.launchArgs()
+	if err != nil {
+		return StartResult{}, err
+	}
 	expectedTerminal := ""
 	if l.state != nil {
 		snapshot := l.state.beginLaunch()
@@ -124,7 +133,7 @@ func (l *Lifecycle) Start(ctx context.Context, profile profiles.Profile, request
 			}
 		}()
 	}
-	if existing := l.reconcileExisting(ctx, profile.ID, request); existing.PaneID != "" {
+	if existing := l.reconcileExisting(ctx, profile.ID, request, agentArgs); existing.PaneID != "" {
 		expectedTerminal = existing.TerminalID
 		return StartResult{PaneID: existing.PaneID, Name: request.Name, Cwd: request.Cwd, WorkspaceID: request.WorkspaceID}, nil
 	}
@@ -177,7 +186,7 @@ func (l *Lifecycle) Start(ctx context.Context, profile profiles.Profile, request
 	if ownership.TerminalID == "" {
 		return result, errors.New("cannot verify the new terminal; agent was not started")
 	}
-	if err := l.profiles.BeginLaunchOwnership(ownership, profile.ID); err != nil {
+	if err := l.profiles.BeginLaunchOwnership(ownership, profile.ID, agentArgs...); err != nil {
 		return result, err
 	}
 	startErr := l.startInTarget(startupCtx, profile, request, target.PaneID)
@@ -189,7 +198,7 @@ func (l *Lifecycle) Start(ctx context.Context, profile profiles.Profile, request
 		return result, startErr
 	}
 
-	if err := l.profiles.RememberVerified(ownership, profile.ID); err != nil {
+	if err := l.profiles.RememberVerified(ownership, profile.ID, agentArgs...); err != nil {
 		return result, partiallyApplied("agent started but profile ownership could not be saved", err)
 	}
 	return result, nil
@@ -219,17 +228,18 @@ func (l *Lifecycle) createTarget(ctx context.Context, workspaceID, label, cwd st
 
 func (l *Lifecycle) startInTarget(ctx context.Context, profile profiles.Profile, request StartRequest, paneID string) error {
 	name := request.Name
+	agentArgs, err := request.launchArgs()
+	if err != nil {
+		return err
+	}
 	if profile.Kind != "" {
-		agentArgs, err := hermesProfileArgs(request.HermesProfile)
-		if err != nil {
-			return err
-		}
 		return l.startKindAgent(ctx, profile.Kind, name, paneID, agentArgs)
 	}
 	if len(profile.Argv) == 0 {
 		return errors.New("profile has no executable argv")
 	}
-	if err := l.herdr.PaneRun(ctx, paneID, profile.Argv); err != nil {
+	argv := append(append([]string(nil), profile.Argv...), agentArgs...)
+	if err := l.herdr.PaneRun(ctx, paneID, argv); err != nil {
 		return err
 	}
 	ticker := time.NewTicker(customAgentPollInterval)
@@ -250,6 +260,18 @@ func (l *Lifecycle) startInTarget(ctx context.Context, profile profiles.Profile,
 		case <-ticker.C:
 		}
 	}
+}
+
+func (request StartRequest) launchArgs() ([]string, error) {
+	args, err := hermesProfileArgs(request.HermesProfile)
+	if err != nil {
+		return nil, err
+	}
+	args = append(args, request.AgentArgs...)
+	if err := profiles.ValidateLaunchArgs(args); err != nil {
+		return nil, err
+	}
+	return args, nil
 }
 
 // startKindAgent retries while Herdr refuses the target pane. A pane created
@@ -329,7 +351,7 @@ func remainingTimeoutMS(ctx context.Context) int {
 	return int(min(remaining, agentStartProcessTimeoutMS))
 }
 
-func (l *Lifecycle) reconcileExisting(ctx context.Context, profileID string, request StartRequest) profiles.PaneIdentity {
+func (l *Lifecycle) reconcileExisting(ctx context.Context, profileID string, request StartRequest, agentArgs []string) profiles.PaneIdentity {
 	inventory, err := l.herdr.GetInventory(ctx)
 	if err != nil {
 		return profiles.PaneIdentity{}
@@ -346,7 +368,7 @@ func (l *Lifecycle) reconcileExisting(ctx context.Context, profileID string, req
 			continue
 		}
 		target := profiles.PaneIdentity{PaneID: pane.ID, TerminalID: pane.TerminalID, TabID: pane.TabID, WorkspaceID: pane.WorkspaceID}
-		if l.profiles.OwnsTarget(target, profileID) {
+		if l.profiles.OwnsTarget(target, profileID, agentArgs...) {
 			return target
 		}
 	}

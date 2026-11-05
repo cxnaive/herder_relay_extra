@@ -40,6 +40,45 @@ seconds, allowing eight seconds for the final response. Both success and
 initial-prompt warnings finalize the original request; duplicate requests with
 the same request ID replay that result.
 
+## Agent startup arguments
+
+Android's **New Agent in this workspace → Startup arguments** field accepts only
+arguments for the selected agent, not an executable name or a shell command.
+For a Codex launch, enter `--no-daemon` there and keep the initial prompt in its
+own field. Leaving arguments empty preserves the existing launch behavior.
+This does not change the startup mode of an already running agent or guarantee
+that its conversation can be uniquely identified.
+
+The input separates arguments at spaces/tabs, supports single/double quotes and
+backslash escaping, and preserves empty quoted arguments. For example,
+`--no-daemon -c 'model="custom"'` sends three arguments. Variables, command
+substitution, wildcards, pipes and redirects are not evaluated. In double quotes,
+backslash escapes only backslash, double quote, dollar and backtick. Unclosed
+quotes, a trailing escape, control characters, more than 64 arguments or more
+than 8192 UTF-8 bytes of argument values are rejected before a pane is created.
+The input line itself is limited to 16384 UTF-8 bytes.
+
+The optional `agent_args` field on `agent_start` is a JSON string array; it is
+never concatenated with `prompt`. The `agent_launch_args_v1` capability advertises
+support. Android disables the field for a Relay without that capability, and
+checks it again at submission; supplied arguments must never be silently dropped.
+Existing controller, inventory and exact-workspace checks still apply.
+
+For built-in kinds, Relay passes the array after `herdr agent start ... --`.
+Herdr constructs a shell-quoted command for the selected executable. For custom
+profiles, Relay appends to a copy of the profile argv and uses the existing
+`PaneRun` shell-quoting path. A selected Hermes profile contributes `-p <name>`
+before explicit arguments; the combined array is subject to the same limits.
+Conflicting options and supported flag names are the selected agent's concern;
+Relay does not guess, translate or repair them.
+
+Effective extra arguments are persisted with the private verified launch record
+and reused for Restart/Clear, including after a Relay service restart. They are
+not global defaults or initial prompts; a different argument list is not treated
+as the same reconciled launch. Arguments may appear in the OS process list and
+private ownership store: do not put passwords or tokens in this field. There is
+no argument editor for already-running or unowned agents in this change.
+
 ## Profile ownership and installation recovery
 
 Relaunching an agent requires a verified association between its profile and

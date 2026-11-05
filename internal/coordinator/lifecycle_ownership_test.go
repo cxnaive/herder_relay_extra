@@ -94,9 +94,18 @@ esac
 }
 
 func TestLifecyclePersistsShellOwnershipBeforeAgentDiscovery(t *testing.T) {
-	for _, profileID := range []string{"pi", "codex", "test-wrapper"} {
-		t.Run(profileID, func(t *testing.T) {
+	for _, test := range []struct {
+		profileID string
+		args      []string
+	}{
+		{"pi", nil}, {"codex", nil}, {"test-wrapper", nil},
+		{"codex", []string{"--no-daemon", "--model", "custom"}},
+		{"test-wrapper", []string{"--custom", "two words", ""}},
+	} {
+		profileID := test.profileID
+		t.Run(profileID+strings.Join(test.args, "_"), func(t *testing.T) {
 			f := newLaunchOwnershipFixture(t, profileID, nil)
+			f.request.AgentArgs = test.args
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			result, err := f.lifecycle.Start(ctx, f.profile, f.request)
@@ -154,6 +163,15 @@ func TestLifecyclePersistsShellOwnershipBeforeAgentDiscovery(t *testing.T) {
 			}
 			if !strings.Contains(string(calls), "pane close pane-new") {
 				t.Fatalf("old pane not cleared: %s", calls)
+			}
+			if len(test.args) > 0 {
+				want := " -- " + strings.Join(test.args, " ")
+				if f.profile.Kind == "" {
+					want = herdr.ShellJoin(append(append([]string(nil), f.profile.Argv...), test.args...))
+				}
+				if strings.Count(string(calls), want) != 2 {
+					t.Fatalf("restart lost launch args: %s", calls)
+				}
 			}
 			if f.profile.Kind == "" && strings.Count(string(calls), "pane run") != 2 {
 				t.Fatalf("custom profile not relaunched: %s", calls)

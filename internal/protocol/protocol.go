@@ -215,6 +215,7 @@ type Inbound struct {
 	Role                 string          `json:"role,omitempty"`
 	Locale               string          `json:"locale,omitempty"`
 	ProfileID            string          `json:"profile_id,omitempty"`
+	AgentArgs            []string        `json:"agent_args,omitempty"`
 	Label                string          `json:"label,omitempty"`
 	WorkspaceID          string          `json:"workspace_id,omitempty"`
 	WorkspaceIDs         []string        `json:"workspace_ids,omitempty"`
@@ -547,6 +548,7 @@ var Capabilities = []string{
 	"filesystem_read_opt_in_v1",
 	"workspace_directory_v1",
 	"agent_model_settings_v1",
+	"agent_launch_args_v1",
 	"agent_run_state_v1",
 	"semantic_input",
 	"manual_terminal_input",

@@ -40,6 +40,7 @@
     "speech_voice_management",
     "invitation_qr",
     "agent_model_settings_v1",
+    "agent_launch_args_v1",
     "agent_run_state_v1",
     "session_binding_diagnostics_v1"
   ],

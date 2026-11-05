@@ -78,12 +78,13 @@ class AgentManagementUiTest {
         val controller = Robolectric.buildActivity(Activity::class.java).setup(); val activity = controller.get()
         val ws = JSONObject().put("workspace_id", "workspace-two").put("cwd", "/work/shared").put("label", "论文项目")
         var payload: JSONObject? = null; var reply: ManagementReply? = null
-        val dialog = AgentManagementDialogs.launch(activity, ws, JSONArray().put(JSONObject().put("id", "codex").put("label", "Codex"))) { value, done -> payload = value; reply = done }; idle()
-        val inputs = views(dialog.window!!.decorView).filterIsInstance<EditText>(); assertEquals(2, inputs.size)
+        val dialog = AgentManagementDialogs.launch(activity, ws, JSONArray().put(JSONObject().put("id", "codex").put("label", "Codex")), launchArgsSupported = true) { value, done -> payload = value; reply = done }; idle()
+        val inputs = views(dialog.window!!.decorView).filterIsInstance<EditText>(); assertEquals(3, inputs.size)
         inputs.first().setText("Writer"); dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick(); assertNull(payload)
-        inputs.first().setText("writer-2"); inputs.last().setText("调研论文")
+        inputs.first().setText("writer-2"); inputs[1].setText("--no-daemon"); inputs.last().setText("调研论文")
         draw("workspace-launch", dialog)
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick(); assertEquals("workspace-two", payload!!.getString("workspace_id")); assertFalse(dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled)
+        assertEquals("--no-daemon", payload!!.getJSONArray("agent_args").getString(0)); assertTrue(inputs.none { it.isEnabled })
         reply!!(null, "请求超时，执行结果未确认"); assertFalse(dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled); assertTrue(dialog.isShowing)
         dialog.dismiss(); controller.pause().stop().destroy()
     }
