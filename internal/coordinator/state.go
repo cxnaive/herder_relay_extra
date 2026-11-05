@@ -16,6 +16,7 @@ import (
 )
 
 type AgentState struct {
+	BindingSelection  string             `json:"-"`
 	BindingMode       string             `json:"-"`
 	BindingRuntime    string             `json:"-"`
 	ReportedSession   herdr.AgentSession `json:"-"`

@@ -5,6 +5,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -22,12 +23,14 @@ type codexRuntimeProbe struct {
 	pid           int
 	process, root string
 	mode          string
+	titleID       bool
 	writers       map[string]string
 	listeners     map[string]string
 }
 type codexObservation struct {
 	probe           codexRuntimeProbe
 	report          herdr.AgentSession
+	title           string
 	thread          codexruntime.Thread
 	runtime, reason string
 }
@@ -91,7 +94,7 @@ func (s *Server) inspectCodexProcess(ctx context.Context, a *coordinator.AgentSt
 	if !allowed {
 		return bad("provider_store_unavailable")
 	}
-	probe := codexRuntimeProbe{pid: process.PID, process: birth, root: root, mode: "shared"}
+	probe := codexRuntimeProbe{pid: process.PID, process: birth, root: root, mode: "shared", titleID: codexTitleIDConfigured(process.Argv)}
 	if codexNoDaemonArgs(process.Argv) {
 		probe.mode = "standalone"
 		probe.writers, err = codexProcessWriters(process.PID, root)
@@ -113,8 +116,9 @@ func codexPaneMatches(p *herdr.Pane, a *coordinator.AgentState) bool {
 }
 
 // Candidate IDs have already been restricted to this TUI's owned endpoint and
-// reduced by explicit parent relationships. Reports only break remaining ties.
-func selectCodexPrimary(probe codexRuntimeProbe, threads map[string]codexruntime.Thread, report herdr.AgentSession) (codexruntime.Thread, string, string) {
+// reduced by explicit parent relationships. A configured title ID selects within
+// those roots; without it, reports only break remaining ties.
+func selectCodexPrimary(probe codexRuntimeProbe, threads map[string]codexruntime.Thread, report herdr.AgentSession, title string) (codexruntime.Thread, string, string) {
 	candidates := map[string]codexruntime.Thread{}
 	origins := map[string]string{}
 	for origin := range probe.listeners {
@@ -137,7 +141,13 @@ func selectCodexPrimary(probe codexRuntimeProbe, threads map[string]codexruntime
 		return codexruntime.Thread{}, "", "runtime_unavailable"
 	}
 	var selected codexruntime.Thread
-	if len(candidates) == 1 {
+	if probe.titleID {
+		var reason string
+		selected, reason = selectCodexTitle(title, slices.Collect(maps.Values(candidates)))
+		if reason != "" {
+			return selected, "", reason
+		}
+	} else if len(candidates) == 1 {
 		for _, t := range candidates {
 			selected = t
 		}
@@ -186,6 +196,7 @@ func (s *Server) observeCodexRuntime(ctx context.Context, agents []*coordinator.
 			continue
 		}
 		obs.report = pane.SessionRaw
+		obs.title = pane.TerminalTitle
 		if len(observations) > 128 {
 			obs.reason = "runtime_unavailable"
 			observations[a.PaneID] = obs
@@ -220,7 +231,7 @@ func (s *Server) observeCodexRuntime(ctx context.Context, agents []*coordinator.
 			continue
 		}
 		var origin string
-		obs.thread, origin, obs.reason = selectCodexPrimary(obs.probe, store.threads, obs.report)
+		obs.thread, origin, obs.reason = selectCodexPrimary(obs.probe, store.threads, obs.report, obs.title)
 		if obs.reason == "" && obs.thread.CWD != a.Cwd {
 			obs.reason = "runtime_metadata_conflict"
 		}
@@ -245,16 +256,16 @@ func (s *Server) observeCodexRuntime(ctx context.Context, agents []*coordinator.
 		if err != nil || !codexPaneMatches(after, a) {
 			obs.reason = "runtime_changed"
 		} else {
-			// Re-select with the fresh report; an irrelevant stale hook cannot veto a
-			// unique runtime root, while an ambiguous root must still match the report.
-			selected, selectedOrigin, reason := selectCodexPrimary(obs.probe, store.threads, after.SessionRaw)
+			// Re-select from a fresh pane read, including its title when explicitly
+			// configured. A cached title is never an admission or dispatch lease.
+			selected, selectedOrigin, reason := selectCodexPrimary(obs.probe, store.threads, after.SessionRaw, after.TerminalTitle)
 			if reason != "" || selected.ID != obs.thread.ID || selectedOrigin != origin {
 				obs.reason = "runtime_changed"
 			}
 			obs.report = after.SessionRaw
 		}
 		current, reason := s.inspectCodexProcess(ctx, a)
-		if reason != "" || current.mode != obs.probe.mode || current.pid != obs.probe.pid || current.process != obs.probe.process || current.root != obs.probe.root || !maps.Equal(current.listeners, obs.probe.listeners) || ctx.Err() != nil {
+		if reason != "" || current.mode != obs.probe.mode || current.titleID != obs.probe.titleID || current.pid != obs.probe.pid || current.process != obs.probe.process || current.root != obs.probe.root || !maps.Equal(current.listeners, obs.probe.listeners) || ctx.Err() != nil {
 			obs.reason = "runtime_changed"
 		}
 		obs.runtime = store.instance + ":" + origin + ":" + obs.probe.listeners[origin]
@@ -277,6 +288,10 @@ func (s *Server) enrichCodexRuntime(ctx context.Context, agents []*coordinator.A
 		a.ConversationProcess = obs.probe.process
 		a.BindingRuntime = obs.runtime
 		a.BindingMode = obs.probe.mode
+		a.BindingSelection = ""
+		if obs.probe.titleID {
+			a.BindingSelection = codexTitleSelection
+		}
 		a.BindingStoreID = ""
 		if obs.probe.root != "" {
 			a.BindingStoreID = codexStoreID(obs.probe.root)
@@ -320,7 +335,7 @@ func (s *Server) codexPrimaryCurrent(ctx context.Context, a *coordinator.AgentSt
 	check, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	obs, ok := s.observeCodexRuntime(check, []*coordinator.AgentState{a})[a.PaneID]
-	valid := ok && obs.reason == "" && obs.thread.ID == a.SessionID && obs.probe.process == a.ConversationProcess && obs.runtime == a.BindingRuntime && codexStoreID(obs.probe.root) == a.BindingStoreID && a.ConversationSource == codexBindingSource(obs.probe)+a.SessionID
+	valid := ok && obs.reason == "" && obs.thread.ID == a.SessionID && obs.probe.process == a.ConversationProcess && obs.runtime == a.BindingRuntime && (obs.probe.titleID == (a.BindingSelection == codexTitleSelection)) && codexStoreID(obs.probe.root) == a.BindingStoreID && a.ConversationSource == codexBindingSource(obs.probe)+a.SessionID
 	if !valid {
 		s.codexBindings.invalidate(a)
 		if s.poller != nil {

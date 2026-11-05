@@ -1,5 +1,15 @@
 # 验证记录
 
+## Relay codexfix.17 · 读取 Codex 标题 ID 消歧（App 保持 0.2.29）
+
+2026-11-05：不止添加启动参数；Relay 从 Herdr `pane.get` 读取标题首段 ID，在本终端已验证的主线程候选内唯一匹配。仅明确配置了支持的 ID-first 布局时启用，不使用普通标题或正文相似度。
+
+- 原版 Codex 0.166.0 的隔离 PTY 实测：独立 HOME/CODEX_HOME/项目、无生产 socket、无 hook、仅回环假模型。先创建 A，再同一 TUI `/new` 创建 B，最后 `/resume A`；TUI 保留两份实际内核写锁，OSC 标题分别指向 A → B → A。三阶段均调用本次 Relay 的 `standalonePrimary`，读取该测试进程真实写锁及会话元数据，准确恢复当前完整 ID。全程非 root，测试进程已关闭，没有重启/操作用户 Agent。
+- Go 全量 `go test -p 2 ./...` / `go vet ./...` 通过；app/coordinator/codexruntime/herdr race 检查通过。未修改 App/Web 运行时代码，沿用已发布 App 0.2.29。
+- Herdr Unix-socket + runtime fixture 覆盖共享/独立模式多主线程、陈旧/缺失 hook、外部终端、子代理、前缀碰撞、缺失元数据、标题/进程/布局中途变化、历史隔离及旧租约撤销；标题不可用不禁用显式终端恢复操作，也不放行未经确认的对话/结构化审批。诊断提供 `selection_evidence`，不复制标题或对话正文。
+- 支持完整 UUID，或这版 TUI 实际输出的 29 字符 UUID 前缀加 `...`；不猜更短/任意格式。标题是显示信号，不是认证的活动线程 API；切换到重绘之间的短窗口和伪造 OSC 不在本次保证范围内，重复读相同标题不能证明新鲜性。
+- 发布只复用 CI 构建；无需更新 App/Gateway。保留源码与发布来源分别记录，不把模拟回归或隔离 PTY 当成用户真机完整验收。
+
 ## 0.2.29 / codexfix.16 · 新建 Agent 的启动参数
 
 2026-11-05：在名称与初始提示之间增加独立“启动参数”输入行，支持 `--no-daemon`、引号和含空格的值。按 argv 传到 Relay，不作为初始提示发送；支持能力缺失或提交时变化会明确拒绝，不悄悄丢弃参数。

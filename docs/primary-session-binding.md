@@ -1,6 +1,6 @@
 # Codex terminal-scoped primary session discovery
 
-Relay codexfix.15 / Pocket 0.2.28 applies this policy **only to `agent == codex`**.
+Relay codexfix.17 / Pocket 0.2.29 applies this policy **only to `agent == codex`**.
 All other providers keep the existing Herdr Relay discovery, session identifiers,
 history parsers, and interaction authorization. No Codex runtime or hook report
 is required for them.
@@ -19,25 +19,66 @@ is required for them.
    missing links, cycles or contradictory session-tree metadata. An independently
    forked conversation remains a root. A single connected root is selected without
    requiring or trusting Herdr's reported ID.
-4. If multiple roots remain, validate the fresh Herdr report's provider/kind/UUID
-   and match it against those roots. A matching connected root is selected; an ID
-   outside the candidate set, a child ID, a missing report or a malformed report
-   cannot supply a replacement candidate.
+4. If the verified native TUI argv explicitly configures the supported ID-first
+   terminal-title layout, select using the fresh title ID as described below.
+   Otherwise, if multiple roots remain, validate the fresh Herdr report's
+   provider/kind/UUID and match it against those roots. A matching connected root
+   is selected; unrelated or child IDs cannot supply replacement candidates.
 5. If still unresolved, retain no chosen current ID and show a reason. Suggest
    trying `codex --no-daemon` and checking the Herdr hook where appropriate. This
    is guidance, **not a guarantee**. Explicit standalone startup uses the separate
    writer-ownership path below, never this shared-server endpoint.
 
-Names, terminal titles, creation origin, recent activity, direct-input flags,
-transcript length and whether a conversation has materialized do not choose a
-root. Discovery never sends `/status`, reads a footer ID, installs a dynamic hook,
+Names, human-readable title text, creation origin, recent activity, direct-input
+flags, transcript length and whether a conversation has materialized do not
+choose a root. Only the explicitly configured title ID can break a tie. Discovery never sends `/status`, reads a footer ID, installs a dynamic hook,
 attaches a debugger, resumes a thread, or invokes a model/tool. Manual pins and
 associated-history substitutions are not part of this policy.
 
-In a multiple-root tie, the matching Herdr report is a trusted input, not an
+Without the title-ID signal, in a multiple-root tie the matching Herdr report is
+a trusted input, not an
 independent TUI selection getter. If Herdr incorrectly names another otherwise
 valid root in this same candidate set, these checks cannot establish the actual
 TUI selection. The policy must not be described as eliminating that trust boundary.
+
+## Explicit terminal-title ID signal
+
+Relay-launched built-in Codex agents default to
+`-c 'tui.terminal_title=["thread-id","thread-name"]'`. The inspected native TUI argv
+must contain that effective layout (or `["thread-id"]`); Node wrappers, positional
+prompt text after `--`, unknown options, alternative layouts and disabling or
+unrecognized overrides do not enable this path. Merely changing a Tab name, a
+UUID appearing in output, or a global config file is not enough. No global
+configuration or existing TUI is modified by Relay.
+
+Read `terminal_title` from fresh Herdr `pane.get` responses. In the supported
+layout, ID is the first ` | `-separated segment. Accept a complete UUID or Codex
+0.166.0's exact 29-character UUID prefix plus `...`; match it against the full IDs
+of this terminal's already-verified primary roots only. Exactly one connected
+root must match. A child title is not mapped to its parent, collisions remain
+ambiguous, and neither another terminal's thread nor a missing/unclassified
+writer can be inferred from title text.
+
+When this signal is enabled, it is required even for a single root. Empty,
+unrecognized, conflicting or ambiguous titles do not fall back to a retained
+hook. A valid title takes precedence over a stale hook report, which is retained
+only for diagnostics. This intentionally solves the case where `/new` or `/resume`
+leaves old roots loaded and Herdr's old report has not updated.
+
+The title is re-read before accepting a result and during protected history and
+conversation operations. A changed terminal/process/layout/selected ID invalidates
+old leases. A human-readable name change with the same ID does not switch history.
+The existing read-only diagnostic interface reports
+`selection_evidence: "terminal_title_id"`; raw titles, names and transcript text
+are not added to diagnostics. No phone-side candidate selection is introduced.
+
+**Trust boundary:** this is a terminal display signal, not authenticated Codex
+selection RPC. Herdr cannot prove which writer emitted OSC or that a retained
+title has already refreshed after a switch. Re-reading the same stale title does
+not prove freshness; a short switch-before-redraw window and deliberately spoofed
+OSC output are not eliminated. It must not be described as cryptographic or
+atomic selection proof. This feature never parses recent conversation text or
+sends `/status`, `/title`, or rename probes into user terminals.
 
 ## Explicit `--no-daemon` / standalone path
 
@@ -62,12 +103,15 @@ implicit embedded fallback is not inferred just because a shared RPC fails.
 4. A new unmaterialized thread waits for its metadata, normally after the first
    local turn. A lock ID by itself is **not** proof that this is a primary rather
    than a child. Other open roots cannot be ignored because their history is empty.
-5. **Multiple standalone roots remain unconfirmed even with a matching report.**
+5. **Multiple standalone roots need the explicit title-ID signal; a matching
+   hook report alone remains insufficient.**
    Original Codex 0.166.0 retained old writer locks after same-process `/new` and
    `/resume`; Herdr's public `agent_session` does not expose a report timestamp,
    sequence or process birth. Its retained report can still name the old root
    before the new SessionStart hook runs. This is deliberately stricter than the
-   shared-mode tie-breaker, not a generic hook-only fallback.
+   shared-mode hook tie-breaker, not a generic hook-only fallback. The title can
+   select one of the verified writer roots, but cannot bypass missing metadata,
+   ambiguous parentage or writer ownership checks.
 
 Ownership and identity/ancestry metadata are rechecked, including after the final
 metadata read. Process, mode, writer inode, store or selected-ID changes revoke
@@ -103,8 +147,9 @@ process and ancestry data are resolved on the computer, not by the Android app.
 Runtime association/root metadata is read twice. Child lifecycle changes are
 allowed only if the verified root set remains unchanged. Terminal identity,
 process birth, store and owned listeners are rechecked after discovery. The
-fresh Herdr report must still select the same candidate when needed to break a
-tie; an irrelevant report change does not veto a unique runtime root.
+fresh title ID, when enabled, must still select the same candidate. Without it,
+the fresh Herdr report must agree when needed to break a tie; an irrelevant
+report change does not veto a unique runtime root.
 
 The selected exact ID is checked against available history ID/project metadata.
 Conflicting metadata fails closed. In shared mode, missing or unmaterialized
@@ -170,7 +215,10 @@ Terminal access neither confirms a primary ID nor discards the user's draft.
 - `runtime_platform_unsupported`: process proof is not implemented on that platform.
 - `standalone_runtime_unavailable`: no readable, valid writer ownership proof.
 - `standalone_metadata_unavailable`: owned thread metadata is not readable yet.
-- `standalone_ambiguous`: multiple roots; retained hook reports cannot break this tie.
+- `standalone_ambiguous`: multiple roots without title-ID evidence; retained hooks cannot break this tie.
+- `terminal_title_missing` / `terminal_title_invalid`: expected ID-first title is not readable.
+- `terminal_title_ambiguous`: truncated ID matches multiple verified roots.
+- `terminal_title_conflict`: ID does not match a verified primary root.
 - `standalone_ancestry_unavailable` / `standalone_metadata_conflict`: incomplete or
   conflicting standalone identity/parent/project/store metadata.
 
@@ -179,8 +227,9 @@ Do not promise that `--no-daemon` repairs malformed metadata or enables unsuppor
 platforms. The Relay does not enable `--no-daemon`, stop a daemon, restart an agent or
 change Codex Desktop settings automatically. Relay `codexfix.17` adds a default
 terminal-title argument only when creating or explicitly restarting a built-in
-Codex agent; it does not change already-running processes or use the title to
-select a conversation. See [startup arguments](development.md#agent-startup-arguments).
+Codex agent; it does not change already-running processes. The title ID only
+selects within that terminal's verified primary candidates as described above.
+See [startup arguments](development.md#agent-startup-arguments).
 
 ## Verification and release
 

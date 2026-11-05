@@ -12,9 +12,9 @@ import (
 )
 
 type codexBindingRecord struct {
-	terminal, server, cwd, session, process, source, store, runtime, state, status string
-	epoch                                                                          uint64
-	verifiedAt                                                                     int64
+	terminal, server, cwd, session, process, source, store, runtime, state, status, selection string
+	epoch                                                                                     uint64
+	verifiedAt                                                                                int64
 }
 
 // Proof availability is not session identity. Losing proof revokes the lease,
@@ -66,14 +66,14 @@ func (r *codexBindingRegistry) reconcile(agents []*coordinator.AgentState) {
 				a.BindingState = "stale"
 			}
 		}
-		changed := !exists || !sameTerminal || old.session != a.Session || old.process != a.ConversationProcess || old.store != a.BindingStoreID || old.runtime != a.BindingRuntime || old.state != a.BindingState || old.source != a.ConversationSource
+		changed := !exists || !sameTerminal || old.session != a.Session || old.process != a.ConversationProcess || old.store != a.BindingStoreID || old.runtime != a.BindingRuntime || old.state != a.BindingState || old.source != a.ConversationSource || old.selection != a.BindingSelection
 		if changed {
 			r.sequence++
 			a.BindingEpoch = r.sequence
 		} else {
 			a.BindingEpoch = old.epoch
 		}
-		r.records[a.PaneID] = codexBindingRecord{terminal: a.TerminalID, server: a.ServerSessionID, cwd: a.Cwd, session: a.Session, process: a.ConversationProcess, source: a.ConversationSource, store: a.BindingStoreID, runtime: a.BindingRuntime, state: a.BindingState, status: a.Status, epoch: a.BindingEpoch, verifiedAt: a.BindingVerifiedAt}
+		r.records[a.PaneID] = codexBindingRecord{terminal: a.TerminalID, server: a.ServerSessionID, cwd: a.Cwd, session: a.Session, process: a.ConversationProcess, source: a.ConversationSource, store: a.BindingStoreID, runtime: a.BindingRuntime, state: a.BindingState, status: a.Status, selection: a.BindingSelection, epoch: a.BindingEpoch, verifiedAt: a.BindingVerifiedAt}
 	}
 	for pane := range r.records {
 		if !seen[pane] {

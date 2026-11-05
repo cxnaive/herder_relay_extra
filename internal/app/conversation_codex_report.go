@@ -29,6 +29,12 @@ func codexReportReason(ref herdr.AgentSession) string {
 }
 func codexReportMessage(reason string) string {
 	switch reason {
+	case "terminal_title_missing", "terminal_title_invalid":
+		return "Codex 已配置线程 ID 标题，但 Herdr 尚未返回可识别的 ID 标题；等待终端刷新后重试，不会按会话名或正文猜选。"
+	case "terminal_title_ambiguous":
+		return "Codex 标题里的截断 ID 同时匹配多个主会话，无法唯一确认；不会改用旧 hook 上报猜选。"
+	case "terminal_title_conflict":
+		return "Codex 标题 ID 未匹配此终端已验证的主会话候选；可能处于切换或子代理界面，暂不绑定其他历史。"
 	case "standalone_runtime_unavailable":
 		return "此 Codex 已使用 --no-daemon，但无法读取本进程持有的会话写锁；请检查版本及同用户进程权限，不会使用共享后台或旧上报代替。"
 	case "standalone_metadata_unavailable":

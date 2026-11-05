@@ -107,3 +107,13 @@ The Android “会话绑定诊断” menu fetches this interface and permits loc
 search and user-initiated copying. It does not automatically upload to GitHub,
 telemetry, or another third-party service. A Relay without this capability prompts
 for an upgrade rather than invoking an old discovery/confirmation path.
+
+### Title-ID evidence (Relay codexfix.17)
+
+`details.selection_evidence` is `terminal_title_id` when the verified TUI explicitly
+uses the supported ID-first title layout. The normal binding state/reason reports
+whether selection succeeded. This field is a signal classification, not a new
+permission or a claim that terminal OSC is authenticated. The original Herdr
+report remains separately visible even when stale; raw title text and transcript
+content are not exposed. The existing schema version and read-only behavior stay
+unchanged.

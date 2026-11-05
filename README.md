@@ -39,7 +39,7 @@
 
 当前源码仅对 **Codex** 使用终端范围内的 runtime 主会话发现：先排除有明确父子关系的子代理，主线程唯一时直接采用；共享模式仍有多个主线程时，只用匹配候选的 Herdr 上报 ID 消除歧义。无法确认时不猜选，提示可尝试 `codex --no-daemon` 并检查 hook（不保证修复）。其他 agent 保持原有 Herdr Relay 流程；不执行 `/status`、动态 hook 或修改 Codex。相同 ID 刷新缓存，不同 ID 撤销旧请求并隔离历史，详见[会话身份与缓存边界](docs/primary-session-binding.md)。
 
-**`--no-daemon` 已有独立关联路径**：只读验证该 TUI 进程实际持有的会话写锁及精确 ID 元数据，不查询共享后台。主线程唯一即可绑定，不依赖 hook；新会话可能要等首轮输入落下元数据。若 `/new`、`/resume` 后仍持有多个主线程，旧 hook 上报不作消歧依据，保持未确认。独立模式模型设置请在电脑端操作，运行计时不冒用共享后台；其他 agent 不受影响。
+**`--no-daemon` 已有独立关联路径**：只读验证该 TUI 进程实际持有的会话写锁及精确 ID 元数据，不查询共享后台。主线程唯一即可绑定，不依赖 hook；新会话可能要等首轮输入落下元数据。若 `/new`、`/resume` 后仍持有多个主线程，旧 hook 上报不作消歧依据；codexfix.17 可用明确配置的标题 ID 消歧，否则保持未确认。独立模式模型设置请在电脑端操作，运行计时不冒用共享后台；其他 agent 不受影响。
 
 Pocket `0.2.27` 修复终端输出刷新打断手机输入法编辑：普通快照/增量不再重设输入框类型，保留拼音编辑状态、光标与草稿；密码输入仍单独处理。本次只更新 App，Relay codexfix.14 / Gateway codexfix.6 不变。
 
@@ -47,7 +47,7 @@ Pocket `0.2.28` / Relay `codexfix.15` 将终端操作与主对话确认分开：
 
 Pocket `0.2.29` / Relay `codexfix.16`：Android 新建 Agent 增加“启动参数”输入行，选择 Codex 后可只填 `--no-daemon`（不要填 `codex` 命令名），初始提示仍单独填写。参数随该 Agent 的启动记录保存，重启时保留；需要配套更新 App 与 Relay，不自动修改正在运行的 Agent。含空格的参数值用引号，详见[启动参数边界](docs/development.md#agent-startup-arguments)。
 
-**Relay `codexfix.17` · Codex 远程启动默认标题**：Relay 新建或明确重启内置 Codex 时，默认附加 `-c 'tui.terminal_title=["thread-id","thread-name"]'`；手填的同名配置优先。无需更新 App，不修改全局 Codex 配置，不重启现有 Agent，也不默认启用 `--no-daemon`。这一步只提供标题线索，当前会话绑定仍不使用标题或文字匹配；手动在 Herdr 终端运行的命令不受影响。
+**Relay `codexfix.17` · Codex 远程启动默认标题**：Relay 新建或明确重启内置 Codex 时，默认附加 `-c 'tui.terminal_title=["thread-id","thread-name"]'`；手填的同名配置优先。无需更新 App，不修改全局 Codex 配置，不重启现有 Agent，也不默认启用 `--no-daemon`。Relay 读取 Herdr 的当前标题 ID，仅在该终端已验证的主会话候选里唯一匹配；共享模式和 `--no-daemon` 均适用。缺失、冲突或截断前缀不唯一则保持未确认，不按名称或对话文字猜选。手动启动不会自动加参数；标题仍是显示信号而非原子选择证明，详见[边界](docs/primary-session-binding.md#explicit-terminal-title-id-signal)。
 
 “会话绑定诊断”通过[独立只读接口](docs/session-binding-diagnostics.md)提供带版本的可扩展 JSON；手机不查询可操作候选、不分析子代理或确认主会话，也不会自动上传诊断。
 

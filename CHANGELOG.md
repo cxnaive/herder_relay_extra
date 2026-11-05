@@ -6,7 +6,7 @@ project follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Changed
-- Default Relay-launched Codex terminal titles to thread ID and name. Explicit startup overrides still win, restarts preserve the arguments without duplicating them, and other agents or manually launched terminals are unchanged. Titles do not select a conversation.
+- Default Relay-launched Codex terminal titles to thread ID and name. Explicit startup overrides still win, restarts preserve the arguments without duplicating them, and other agents or manually launched terminals are unchanged. Read the configured title ID from Herdr and uniquely match it within that terminal’s verified primary candidates, including retained standalone roots after resume. Missing titles, prefix collisions, child selections and metadata conflicts remain unconfirmed; names and transcript similarity are not used.
 - Resolve Codex primary conversations from terminal-owned runtime associations: reduce explicit subagent trees, use a unique root directly, and use a matching Herdr report only to break remaining ties. Unresolved sessions suggest trying `--no-daemon` without promising a fix; other agent providers keep their existing behavior.
 - Refresh same-ID conversation caches and indexed rollout locations after resume; switching the selected ID revokes old requests and keeps histories/drafts isolated.
 

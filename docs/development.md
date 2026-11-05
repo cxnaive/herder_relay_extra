@@ -94,10 +94,14 @@ terminal_title = ["thread-id", "thread-name"]
 ```
 
 That configuration affects Codex launches using that config file, not only Herdr;
-Relay does not install it. This change only supplies a display signal. The current
-binding policy still does not use terminal titles, ID prefixes, or text similarity
-to select a conversation. In Codex 0.166.0, the title's ID segment is truncated by
-the TUI; it must not be treated as a complete session ID.
+Relay does not install it. Title-based disambiguation additionally requires the
+explicit CLI ID-first layout on the verified TUI process; global config alone
+does not enable the signal. Relay reads Herdr's fresh terminal title and matches
+the first segment against this terminal's verified primary candidates. Codex
+0.166.0 truncates the ID to 29 characters plus `...`; collisions, missing titles,
+child selections and conflicting runtime/store metadata remain unconfirmed.
+Raw names and recent conversation text are never used for similarity matching.
+See [selection checks and display-signal limits](primary-session-binding.md#explicit-terminal-title-id-signal).
 
 Effective extra arguments are persisted with the private verified launch record
 and reused for Restart/Clear, including after a Relay service restart. They are

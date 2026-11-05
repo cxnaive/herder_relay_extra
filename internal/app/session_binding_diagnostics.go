@@ -60,6 +60,7 @@ func (s *Server) sessionBindingDiagnostics(ctx context.Context, in protocol.Inbo
 	result.Binding = protocol.SessionBindingDiagnosticResult{State: bounded(agent.BindingState), Reason: bounded(agent.BindingReason), VerifiedAt: agent.BindingVerifiedAt}
 	result.Details = map[string]any{
 		"policy":                "codex-terminal-roots-v1",
+		"selection_evidence":    bounded(agent.BindingSelection),
 		"selection_source":      bounded(agent.ConversationSource),
 		"binding_lease_current": s.codexBindings.current(agent),
 		"herdr_report":          map[string]any{"provider": bounded(agent.ReportedSession.Agent), "kind": bounded(agent.ReportedSession.Kind), "id": bounded(agent.ReportedSession.Value), "source": bounded(agent.ReportedSession.Source)},

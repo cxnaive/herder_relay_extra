@@ -34,6 +34,8 @@ type reportPaneFixture struct {
 	pane                                     herdr.Pane
 	calls                                    []string
 	reads, changeAt, probes, processChangeAt int
+	titleChangeAt                            int
+	changedTitle                             string
 	changed                                  herdr.AgentSession
 	threads                                  map[string]codexruntime.Thread
 	origins                                  map[string]string
@@ -80,6 +82,9 @@ func reportServer(t *testing.T) (*Server, *reportPaneFixture, *coordinator.Agent
 				f.reads++
 				if f.changeAt == f.reads {
 					f.pane.SessionRaw = f.changed
+				}
+				if f.titleChangeAt == f.reads {
+					f.pane.TerminalTitle = f.changedTitle
 				}
 				p := f.pane
 				acceptInput := f.acceptTerminalInput && req.Method == "pane.send_input"

@@ -74,7 +74,7 @@ func codexBindingSource(probe codexRuntimeProbe) string {
 	return codexRuntimeSource
 }
 
-func (s *Server) standalonePrimary(ctx context.Context, a *coordinator.AgentState, probe codexRuntimeProbe) (codexruntime.Thread, string) {
+func (s *Server) standalonePrimary(ctx context.Context, a *coordinator.AgentState, probe codexRuntimeProbe, title string) (codexruntime.Thread, string) {
 	bad := func(reason string) (codexruntime.Thread, string) { return codexruntime.Thread{}, reason }
 	if s.conversationM == nil || len(probe.writers) == 0 || len(probe.writers) > 64 {
 		return bad("standalone_runtime_unavailable")
@@ -108,14 +108,21 @@ func (s *Server) standalonePrimary(ctx context.Context, a *coordinator.AgentStat
 	t := codexruntime.PrimaryForOwnedThreads(threads)
 	switch t.Unavailable {
 	case "runtime_ambiguous":
-		// Embedded TUI retains old writers across /new and /resume. Herdr does
-		// not expose hook freshness, so a matching old report cannot break ties.
-		return bad("standalone_ambiguous")
+		if !probe.titleID {
+			return bad("standalone_ambiguous")
+		}
 	case "runtime_ancestry_unavailable":
 		return bad("standalone_ancestry_unavailable")
 	case "":
 	default:
 		return bad("standalone_metadata_conflict")
+	}
+	if probe.titleID {
+		var reason string
+		t, reason = selectCodexTitle(title, t.Candidates)
+		if reason != "" {
+			return bad(reason)
+		}
 	}
 	if t.CWD != a.Cwd {
 		return bad("standalone_metadata_conflict")
@@ -124,7 +131,7 @@ func (s *Server) standalonePrimary(ctx context.Context, a *coordinator.AgentStat
 }
 
 func (s *Server) observeCodexStandalone(ctx context.Context, a *coordinator.AgentState, obs codexObservation) codexObservation {
-	obs.thread, obs.reason = s.standalonePrimary(ctx, a, obs.probe)
+	obs.thread, obs.reason = s.standalonePrimary(ctx, a, obs.probe, obs.title)
 	if obs.reason != "" {
 		return obs
 	}
@@ -135,19 +142,31 @@ func (s *Server) observeCodexStandalone(ctx context.Context, a *coordinator.Agen
 	}
 	obs.report = after.SessionRaw // Diagnostic input only; never standalone proof.
 	current, reason := s.inspectCodexProcess(ctx, a)
-	if reason != "" || current.mode != obs.probe.mode || current.pid != obs.probe.pid || current.process != obs.probe.process || current.root != obs.probe.root || !maps.Equal(current.writers, obs.probe.writers) {
+	if reason != "" || current.mode != obs.probe.mode || current.titleID != obs.probe.titleID || current.pid != obs.probe.pid || current.process != obs.probe.process || current.root != obs.probe.root || !maps.Equal(current.writers, obs.probe.writers) {
 		obs.reason = "runtime_changed"
 		return obs
 	}
-	second, reason := s.standalonePrimary(ctx, a, current)
+	second, reason := s.standalonePrimary(ctx, a, current, after.TerminalTitle)
 	if reason != "" || second.ID != obs.thread.ID || second.CWD != obs.thread.CWD || ctx.Err() != nil {
 		obs.reason = "runtime_changed"
 		return obs
 	}
 	final, reason := s.inspectCodexProcess(ctx, a)
-	if reason != "" || final.mode != current.mode || final.pid != current.pid || final.process != current.process || final.root != current.root || !maps.Equal(final.writers, current.writers) || ctx.Err() != nil {
+	if reason != "" || final.mode != current.mode || final.titleID != current.titleID || final.pid != current.pid || final.process != current.process || final.root != current.root || !maps.Equal(final.writers, current.writers) || ctx.Err() != nil {
 		obs.reason = "runtime_changed"
 		return obs
+	}
+	if obs.probe.titleID {
+		last, err := s.herdrC.PaneGet(ctx, a.PaneID)
+		if err != nil || !codexPaneMatches(last, a) {
+			obs.reason = "runtime_changed"
+			return obs
+		}
+		selected, reason := selectCodexTitle(last.TerminalTitle, []codexruntime.Thread{obs.thread})
+		if reason != "" || selected.ID != obs.thread.ID || ctx.Err() != nil {
+			obs.reason = "runtime_changed"
+			return obs
+		}
 	}
 	obs.runtime = "standalone-writer:" + obs.probe.writers[obs.thread.ID]
 	return obs
