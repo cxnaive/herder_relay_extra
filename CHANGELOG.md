@@ -14,6 +14,9 @@ project follows [Semantic Versioning](https://semver.org/).
 - Codex associated-history and manual-pin overrides, terminal status-line identity parsing and automatic `/status` probing.
 
 ### Added
+- Desktop Agent creation, rename, stop/restart, context clearing, ordering, and live Codex model/reasoning settings through native project and Agent menus. Show Relay-provided default title arguments separately from user startup arguments.
+- Desktop approval and question cards, verified attachments from file selection, drag/drop and clipboard, incremental conversations and encrypted recent-history caches. Preserve uncertain writes across restarts to prevent duplicate operations.
+- Desktop project/Worktree and paired-device management, Git diffs, conversation/terminal search, slash commands, diagnostics, activity, and completion/attention notifications with per-Agent mute.
 - A native Windows/macOS desktop client with computer/project/Agent navigation, conversations, a direct interactive terminal, workspace browsing and verified file downloads. Paired credentials and conversation drafts are encrypted locally.
 - Enter optional startup arguments when creating an Agent from Android, separately from the initial prompt. Preserve those arguments when restarting Relay-created agents, and require Relay support instead of silently ignoring them.
 - Read-only session binding diagnostics for paired devices, with a versioned structured payload and an Android viewer for future detailed evidence. Diagnostics never select or confirm a primary session.

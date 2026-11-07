@@ -23,6 +23,14 @@ func (a *application) selected() (*machine, *conversation) {
 						chat = &conversation{agent: agent, folds: map[string]*bool{}}
 						if a.store != nil {
 							chat.draft, chat.uncertain = a.store.draft(key)
+							chat.attachments = a.store.attachments(key)
+							cached := a.store.cachedHistory(key)
+							chat.entries = cached.Entries
+							chat.revision = cached.Revision
+							chat.replaceHistory = true
+							if len(chat.entries) > 0 {
+								chat.message = "正在同步，当前显示最近保存的对话"
+							}
 						}
 						a.chats[key] = chat
 					}
@@ -45,6 +53,12 @@ func (a *application) saveCurrentDraft() {
 }
 func (a *application) selectAgent(m *machine, agent relay.Agent) {
 	a.saveCurrentDraft()
+	if previous, old := a.selected(); old != nil {
+		a.stopConversationUpdates(previous, old)
+	}
+	if _, old := a.selected(); old != nil && old.uploadCancel != nil {
+		old.uploadCancel()
+	}
 	if _, old := a.selected(); old != nil && old.files != nil {
 		old.files.closePDF()
 	}
@@ -92,6 +106,14 @@ func (a *application) pair() {
 func (a *application) connect(m *machine) {
 	for key, chat := range a.chats {
 		if strings.HasPrefix(key, m.config.ID+":") {
+			chat.replaceHistory = true
+			chat.subscription = ""
+			if chat.updateCancel != nil {
+				chat.updateCancel()
+			}
+			if chat.uploadCancel != nil {
+				chat.uploadCancel()
+			}
 			if f := chat.files; f != nil {
 				f.closePDF()
 				if f.cancel != nil {
@@ -123,6 +145,11 @@ func (a *application) connect(m *machine) {
 		m.remote = nil
 	}
 	m.opening = false
+	m.inventoryReady = false
+	m.protocol = 0
+	m.capabilities = nil
+	m.profiles = nil
+	m.launchDefaults = nil
 	m.epoch++
 	epoch := m.epoch
 	ctx, cancel := context.WithCancel(a.ctx)
@@ -190,9 +217,20 @@ func (a *application) connect(m *machine) {
 }
 func (a *application) event(m *machine, event relay.Message) {
 	switch relay.Text(event, "type") {
+	case "activity_history":
+		if p := a.toolsPanel; p != nil && p.kind == "activity" && p.machine == m && p.busy {
+			p.busy = false
+			p.data = event
+		}
+	case "inventory_status":
+		m.inventoryReady = relay.Text(event, "state") == "ready"
 	case "workspaces":
 		m.workspaces = relay.ParseWorkspaces(event["workspaces"])
 	case "push_config":
+		m.protocol = relay.Number(event, "protocol")
+		m.inventoryReady = relay.Text(relay.Object(event["inventory"]), "state") == "ready"
+		m.profiles = relay.Decode[[]relay.Profile](event["agent_profiles"])
+		m.launchDefaults = relay.Decode[map[string][]string](event["agent_launch_defaults"])
 		m.capabilities = map[string]bool{}
 		if names, ok := event["capabilities"].([]any); ok {
 			for _, n := range names {
@@ -202,7 +240,9 @@ func (a *application) event(m *machine, event relay.Message) {
 			}
 		}
 	case "agents":
-		m.agents = relay.ParseAgents(event["agents"])
+		next := relay.ParseAgents(event["agents"])
+		a.notifyAgentChanges(m, next)
+		m.agents = next
 		slices.SortStableFunc(m.agents, func(x, y relay.Agent) int { return strings.Compare(x.WorkspaceID, y.WorkspaceID) })
 		if m.term != nil && !slices.ContainsFunc(m.agents, func(agent relay.Agent) bool { return agent.Identity() == m.termIdentity }) {
 			m.term.Close()
@@ -243,9 +283,13 @@ func (a *application) loadHistory(older bool) {
 	c.historyEpoch++
 	historyEpoch := c.historyEpoch
 	c.loading = true
+	if !older {
+		a.stopConversationUpdates(m, c)
+	}
 	agent, s, epoch := c.agent, m.session, m.epoch
 	request := agent.Request("get_conversation_history")
 	request["limit"] = 60
+	request["observe"] = !older
 	if older {
 		request["cursor"] = c.next
 	}
@@ -308,29 +352,19 @@ func (a *application) loadHistory(older bool) {
 				return
 			}
 			if older {
-				seen := map[string]bool{}
-				for _, e := range incoming {
-					seen[e.ID] = true
-				}
-				for _, e := range c.entries {
-					if !seen[e.ID] {
-						incoming = append(incoming, e)
-					}
-				}
-				c.entries = incoming
+				c.entries = mergeHistory(c.entries, incoming, true)
 				c.next = relay.Text(page, "next_cursor")
 			} else {
-				index := map[string]int{}
-				for i, e := range c.entries {
-					index[e.ID] = i
+				if c.replaceHistory {
+					c.entries = nil
+					c.next = ""
+					c.replaceHistory = false
 				}
-				for _, e := range incoming {
-					if i, ok := index[e.ID]; ok {
-						c.entries[i] = e
-					} else {
-						c.entries = append(c.entries, e)
-					}
-				}
+				c.entries = mergeHistory(c.entries, incoming, false)
+				c.subscription = relay.Text(page, "subscription_id")
+				c.sequence = relay.Number(page, "sequence")
+				provisional := relay.Decode[[]entry](page["provisional"])
+				c.entries = mergeHistory(c.entries, provisional, false)
 				if c.next == "" {
 					c.next = relay.Text(page, "next_cursor")
 				}
@@ -339,16 +373,23 @@ func (a *application) loadHistory(older bool) {
 				c.entries = c.entries[len(c.entries)-2000:]
 			}
 			c.message = ""
+			a.cacheHistory(m, c)
 		})
 	}()
 }
 func (a *application) send() {
 	m, c := a.selected()
-	if m == nil || c == nil || m.session == nil || c.pending || c.uncertain || !c.agent.CanChat() || m.config.Auth.Role != "controller" {
+	if m == nil || c == nil || a.store == nil || !a.agentWriteAllowed(m, c.agent, "submit_prompt") || c.agent.Status == "blocked" || c.uploading {
 		return
 	}
 	text := strings.TrimSpace(c.draft)
-	if text == "" {
+	if text == "" && len(c.attachments) == 0 {
+		return
+	}
+	var attachmentErr error
+	text, attachmentErr = relay.PromptWithAttachments(text, c.attachments, time.Now())
+	if attachmentErr != nil {
+		c.message = attachmentErr.Error()
 		return
 	}
 	key := m.config.ID + ":" + c.agent.Identity()
@@ -367,13 +408,27 @@ func (a *application) send() {
 		_, err := s.Request(ctx, request)
 		a.win.Update(func() {
 			c.pending = false
+			if !slices.Contains(a.machines, m) {
+				return
+			}
 			if err != nil {
+				if !relay.UnknownOutcome(err) {
+					if saveErr := a.store.saveDraft(key, c.draft, false); saveErr == nil {
+						c.uncertain = false
+					}
+				}
 				c.message = err.Error()
 				return
 			}
 			c.uncertain = false
 			c.draft = ""
 			c.message = ""
+			if err = a.store.saveAttachments(key, nil); err != nil {
+				c.uncertain = true
+				c.message = err.Error()
+				return
+			}
+			c.attachments = nil
 			if err = a.store.saveDraft(key, "", false); err != nil {
 				c.uncertain = true
 				c.message = err.Error()

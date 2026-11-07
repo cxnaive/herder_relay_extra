@@ -88,8 +88,24 @@ func toolValue(v any) string {
 func (a *application) timelineView(c *ui.Context, m *machine, chat *conversation) {
 	a.configureChatMarkdown(m, chat)
 	blocks := conversationBlocks(chat.entries)
+	if query := strings.ToLower(strings.TrimSpace(chat.search)); query != "" {
+		filtered := []timelineBlock{}
+		for _, block := range blocks {
+			content := ""
+			if block.message != nil {
+				content = block.message.Text
+			}
+			for _, tool := range block.tools {
+				content += toolValue(tool.value)
+			}
+			if strings.Contains(strings.ToLower(content), query) {
+				filtered = append(filtered, block)
+			}
+		}
+		blocks = filtered
+	}
 	chat.list.Key = func(i int) any { return blocks[i].key }
-	chat.list.FollowEnd = true
+	chat.list.FollowEnd = chat.search == ""
 	ui.List(c.Key(m.config.ID+chat.agent.Identity()), &chat.list, len(blocks), func(i int) {
 		block := blocks[i]
 		bc := c.Key(block.key)

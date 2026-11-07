@@ -13,10 +13,65 @@ import (
 )
 
 type savedState struct {
-	Computers []relay.Computer
-	Drafts    map[string]string
-	Uncertain map[string]bool
-	Collapsed map[string]bool
+	Computers   []relay.Computer
+	Drafts      map[string]string
+	Uncertain   map[string]bool
+	Collapsed   map[string]bool
+	Operations  map[string]string
+	Attachments map[string][]relay.Attachment
+	History     map[string]cachedConversation
+}
+
+func (s *storage) attachments(key string) []relay.Attachment {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]relay.Attachment{}, s.state.Attachments[key]...)
+}
+func (s *storage) saveAttachments(key string, attachments []relay.Attachment) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.state.Attachments == nil {
+		s.state.Attachments = map[string][]relay.Attachment{}
+	}
+	old := s.state.Attachments[key]
+	s.state.Attachments[key] = attachments
+	if err := s.vault.Save(s.state); err != nil {
+		s.state.Attachments[key] = old
+		return err
+	}
+	return nil
+}
+
+func (s *storage) operations() map[string]string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	copy := map[string]string{}
+	for k, v := range s.state.Operations {
+		copy[k] = v
+	}
+	return copy
+}
+func (s *storage) saveOperation(key, action string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.state.Operations == nil {
+		s.state.Operations = map[string]string{}
+	}
+	old := s.state.Operations[key]
+	if action == "" {
+		delete(s.state.Operations, key)
+	} else {
+		s.state.Operations[key] = action
+	}
+	if err := s.vault.Save(s.state); err != nil {
+		if old == "" {
+			delete(s.state.Operations, key)
+		} else {
+			s.state.Operations[key] = old
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *storage) sidebarGroups() map[string]bool {

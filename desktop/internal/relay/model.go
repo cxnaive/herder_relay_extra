@@ -15,21 +15,28 @@ type Target struct {
 }
 type Agent struct {
 	Target
-	Agent          string `json:"agent"`
-	Name           string `json:"name"`
-	TabLabel       string `json:"tab_label"`
-	TabName        string `json:"tab_name"`
-	TabID          string `json:"tab_id"`
-	TabOrder       int    `json:"tab_order"`
-	TabNumber      int    `json:"tab_number"`
-	SessionName    string `json:"session_name"`
-	Status         string `json:"status"`
-	Cwd            string `json:"cwd"`
-	WorkspaceID    string `json:"workspace_id"`
-	WorkspaceLabel string `json:"workspace_label"`
-	Project        string `json:"project"`
-	BindingState   string `json:"binding_state"`
-	BindingReason  string `json:"binding_reason"`
+	Agent               string       `json:"agent"`
+	Name                string       `json:"name"`
+	TabLabel            string       `json:"tab_label"`
+	TabName             string       `json:"tab_name"`
+	TabID               string       `json:"tab_id"`
+	TabOrder            int          `json:"tab_order"`
+	TabNumber           int          `json:"tab_number"`
+	SessionName         string       `json:"session_name"`
+	Status              string       `json:"status"`
+	Cwd                 string       `json:"cwd"`
+	WorkspaceID         string       `json:"workspace_id"`
+	WorkspaceLabel      string       `json:"workspace_label"`
+	Project             string       `json:"project"`
+	BindingState        string       `json:"binding_state"`
+	BindingReason       string       `json:"binding_reason"`
+	Attention           string       `json:"attention_kind"`
+	Prompt              string       `json:"prompt"`
+	Command             string       `json:"command"`
+	Options             []string     `json:"options"`
+	EventID             string       `json:"event_id"`
+	ApprovalFingerprint string       `json:"approval_fingerprint"`
+	Interaction         *Interaction `json:"interaction"`
 }
 
 func (a Agent) Title() string {
@@ -83,7 +90,7 @@ func (a Agent) Identity() string {
 	return string(b)
 }
 func (a Agent) Request(action string) Message {
-	return Message{"type": action, "pane_id": a.PaneID, "target": a.Target, "server_session_id": a.ServerSessionID}
+	return Message{"type": action, "pane_id": a.PaneID, "target": a.Target, "server_session_id": a.ServerSessionID, "cwd": a.Cwd}
 }
 func ParseAgents(v any) []Agent {
 	b, _ := json.Marshal(v)

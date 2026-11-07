@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"net"
+	"strings"
 	"sync"
 	"time"
 )
@@ -223,7 +224,7 @@ func (s *Session) readLoop() {
 		s.mu.Lock()
 		ch := s.pending[id]
 		s.mu.Unlock()
-		if ch != nil && (Text(m, "type") == "command_result" || Text(m, "type") == "error") {
+		if ch != nil && (strings.HasSuffix(Text(m, "type"), "_result") || Text(m, "type") == "error" || Text(m, "type") == "activity_history") {
 			select {
 			case ch <- m:
 			default:
@@ -261,6 +262,9 @@ func (s *Session) Send(m Message) error {
 
 // Request never retries writes. Callers retain drafts when delivery is unknown.
 func (s *Session) Request(ctx context.Context, m Message) (Message, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, &RequestError{false, "请求已取消"}
+	}
 	copy := Message{}
 	for k, v := range m {
 		copy[k] = v
@@ -290,12 +294,5 @@ func (s *Session) Request(ctx context.Context, m Message) (Message, error) {
 		}
 	case reply = <-ch:
 	}
-	if Text(reply, "type") == "error" || reply["ok"] == false {
-		return nil, fmt.Errorf("请求未完成：%v", reply["error"])
-	}
-	phase := Text(reply, "phase")
-	if phase == "dispatched_unknown" || phase == "unconfirmed" || phase == "awaiting_evidence" {
-		return nil, errors.New("投递结果未确认，请先核对终端")
-	}
-	return unwrap(reply), nil
+	return commandReply(reply)
 }

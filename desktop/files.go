@@ -38,6 +38,8 @@ type fileBrowser struct {
 	pdf                                               *pdfview.Viewer
 	pdfLoading                                        bool
 	expanded                                          bool
+	showHidden                                        bool
+	jumpPath                                          string
 }
 
 func (f *fileBrowser) closePDF() {
@@ -398,6 +400,20 @@ func (a *application) fileView(c *ui.Context, m *machine, chat *conversation) {
 				ui.Text(c, f.path).FontSize(12).Selectable()
 			}
 			ui.TextInput(c, &f.query).Placeholder("筛选当前目录").Label("筛选文件")
+			ui.Checkbox(c, &f.showHidden, "显示隐藏文件")
+			ui.Row(c).Gap(6).Children(func() {
+				ui.TextInput(c, &f.jumpPath).Label("文件路径").Placeholder("文件路径；目录以 / 结尾").Grow(1)
+				if ui.Button(c, "打开路径").Disabled(f.loading || strings.TrimSpace(f.jumpPath) == "").Clicked() {
+					p, _, err := workspaceReference(chat.agent.Cwd, "", strings.TrimSpace(f.jumpPath))
+					if err != nil {
+						f.message = err.Error()
+					} else if strings.HasSuffix(f.jumpPath, "/") {
+						a.loadDirectory(m, chat, p, false)
+					} else {
+						a.openFile(m, chat, p)
+					}
+				}
+			})
 			if f.message != "" {
 				ui.Text(c, f.message).TextColor(t.Warning).FontSize(12)
 			}
@@ -407,7 +423,7 @@ func (a *application) fileView(c *ui.Context, m *machine, chat *conversation) {
 			}
 			entries := make([]relay.FileEntry, 0, len(f.page.Entries))
 			for _, e := range f.page.Entries {
-				if strings.Contains(strings.ToLower(e.Name), strings.ToLower(f.query)) {
+				if (f.showHidden || !strings.HasPrefix(e.Name, ".")) && strings.Contains(strings.ToLower(e.Name), strings.ToLower(f.query)) {
 					entries = append(entries, e)
 				}
 			}

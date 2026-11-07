@@ -1,71 +1,62 @@
 # Android 与桌面端功能核对
 
-核对日期：2026-11-07。以当前仓库 Kotlin 客户端的实际入口、请求与能力检查为依据，对比当前桌面源码。这里的“已实现”表示已有桌面实现和对应本地验证，不表示已完成真实部署联调或 macOS 实机验收。
+核对日期：2026-11-07。以 Kotlin 客户端的实际入口、协议和权限检查为依据。“已接入”表示桌面已有实现和本地测试，不表示操作过用户的真实 Agent 或完成 macOS 实机验收。
 
-## 本轮补齐
+## 已接入
 
-| 功能 | 桌面端结果 | Android 依据 |
+| 功能 | 桌面入口与行为 | 实现 |
 | --- | --- | --- |
-| 电脑 → 项目 → Agent | 电脑、项目两级独立折叠并保存；搜索临时展开匹配项，清空搜索后恢复 | `AgentListPresentation.kt`、`AgentGroupHeader.kt` |
-| 项目名称与顺序 | 读取独立的 `workspaces` 列表，包含空项目，按服务端顺序显示 | `AgentPresentation.kt` |
-| Agent 名称 | 优先 `tab_label`、`tab_name`，再使用名称等后备字段；提供方单独显示 | `AgentPresentation.title()` |
-| 消息加载反馈 | 转圈、整理历史的实际进度、加载更早消息和取消等待；保留当前内容 | `HistoryLoadView.kt`、`ConversationHistoryRequest` |
-| Agent 状态和用时 | 选中 Agent 每 5 秒读取状态；只使用可靠的本轮用时，断线、替换或超过 15 秒未确认时停止推算 | `AgentRunPresentation.kt` |
-| 两级工具折叠 | 连续的工具事件合并为组；组内独立展开每次调用的输入、输出，展开状态按会话保留 | `ConversationTimeline.kt`、`NativeToolGroup.kt` |
-| Codex 文件引用 | 将 `:codex-file-citation{path="…"}` 显示成可点击文件引用；代码块和转义示例保持原样 | `CodexFileCitations.kt` |
-| 文件链接 | 当前远端工作区的绝对路径、相对路径、`file:///` 链接及 Markdown 内相对链接 | `ReviewReference.kt` |
-| Markdown 预览 | 渲染正文、表格、代码、图片和链接；可展开阅读区域，支持标题锚点 | `DocumentReviewer.kt` |
-| PDF 预览 | 应用内嵌系统阅读器，翻页、缩放；Windows 已在隐藏窗口实际渲染验证，Mac 待实机验证 | `DocumentReviewer.kt`、`ReviewViewport.kt` |
-| 对话图片 | 识别 Markdown、图片字段和工具中的图片路径；通过当前 Agent 的授权连接读取，支持放大查看 | `ConversationPresentation.kt`、`ConversationImages.kt` |
+| 电脑 → 项目 → Agent | 两级独立折叠、保存状态、搜索临时展开，服务端名称与排序 | `sidebar.go` |
+| 名称与 ID | 标签名称优先；详情显示会话 ID，管理菜单复制 ID | `view.go`、`management.go` |
+| 新建 Agent | 项目旁「＋」/项目右键：提供方、名称、初始任务、额外 argv | `management.go` |
+| Codex 默认参数 | 显示 Relay 公布的默认参数；客户端只提交额外 argv。Relay 自动附加 `-c tui.terminal_title=["thread-id","thread-name"]`，重启沿用且不重复 | `internal/relay/management.go`、根模块 `internal/coordinator/launch_args.go` |
+| Agent 管理 | Agent 右键/顶部「管理」：改名、停止、重启、清空、排序；停止/重启/清空先确认目标 | `management.go` |
+| 模型/思考强度 | 动态读取 Codex 模型目录及设置版本，保存后验证有效值，未知结果重新读取 | `management.go` |
+| 审批 | 对话卡片显示请求/命令/选项；携带精确目标、事件 ID 和审批指纹 | `interaction.go` |
+| 结构化问答 | 单选、多选、自定义答案、上一题、进一步讨论；问题变化时清除旧表单 | `interaction.go` |
+| 附件 | 「＋ 附件」选择文件、粘贴图片/文件，资源管理器/Finder 拖入；分块进度、散列校验、取消 | `attachments.go`、`internal/relay/upload.go` |
+| 附件草稿 | 引用和有效期加密保存，随提示发送；每次最多 8 个、单个 20 MiB、总计 50 MiB | `storage.go` |
+| 可靠操作 | 写入前保存待核对标记；明确拒绝可重试，超时/断线不自动重发；创建按项目防重复，Agent 操作按身份互斥 | `management.go`、`internal/relay/outcome.go` |
+| 增量消息 | 根据订阅 ID、版本和序号合并更新，漏序/重置后重新取页，无订阅时回退读取 | `history.go` |
+| 最近历史缓存 | 加密缓存最近 8 个会话，每个最多 300 条/1 MiB；重连确认实时内容，更早消息分页读取 | `history.go` |
+| 历史加载 | 转圈、整理历史的实际进度、分页、取消等待、保留当前内容 | `controller.go`、`view.go` |
+| 状态和用时 | 选中 Agent 每 5 秒读取可靠状态；超过 15 秒、断线或身份变化后停止推算 | `run_state.go` |
+| 工具调用 | 连续事件分组，组/单次调用两级折叠，查看输入输出 | `timeline.go` |
+| 通知 | 应用运行期间，所有连接的 Agent 完成/待处理事件触发系统通知；单独静音，点击进入会话 | `tools_panel.go` |
+| 指令和搜索 | 斜杠指令列表、已加载对话/工具内容搜索、原生终端查找和前后定位、复制最新回复 | `tools_panel.go`、`view.go` |
+| Git、诊断、活动 | 逐文件 diff、只读绑定诊断、电脑活动记录 | `tools_panel.go` |
+| 项目 | 电脑菜单添加；项目右键改名、排序、关闭；支持空项目 | `projects.go` |
+| Worktree | 列出、打开、创建和移除；删除确认具体目录，始终不使用 force | `projects.go` |
+| 已配对电脑 | 本地改名、移除、刷新、重连；移除清理该电脑的本地凭据/草稿/缓存，远端继续运行 | `projects.go` |
+| 配对设备 | 查看设备/角色、改名、撤销授权、生成只读或控制者邀请并复制 | `devices.go` |
+| 文件列表 | 分页、筛选、隐藏文件开关、路径输入和上下级导航 | `files.go` |
+| 文件引用 | Codex citation、绝对/相对路径 Markdown 链接，遵守当前工作区边界 | `citations.go` |
+| 预览 | Markdown、源码、图片、内嵌 PDF；Markdown 相对链接/标题锚点，图片放大 | `files.go`、`media.go` |
+| 下载 | 系统保存对话框、原文件分块下载、版本/散列校验、进度和取消 | `internal/relay/files.go` |
+| 原生终端 | 键盘、鼠标、中文、复制和尺寸同步，连接当前远端 Agent | `internal/relay/terminal.go` |
 
-## 仍有差距
+## 仍未对齐与明确限制
 
-优先级 P0 表示会影响日常操作闭环，P1 表示常用配套功能，P2 表示后续体验增强。
+| 优先级 | 差距 | 当前边界 |
+| --- | --- | --- |
+| P1 | WSS、多网关、WebRTC | 当前仍是单 TCP 网关和 `herdr-tcp://` 邀请；需单独完成传输、邀请解析和重连验证 |
+| P1 | 工作区外只读访问 | 固定在 Agent 工作区，尚无 Android 的设备级显式全盘只读授权 |
+| P1 | 完整长历史恢复 | 最近窗口已缓存并增量同步；离线期间超出最近页的大量新增消息仍可能需要手动加载，未实现全部跨页补洞策略 |
+| P1 | Pi/OMP 专用投递 | 未接 `get_pi_prompt_capability` / `send_pi_prompt_unconfirmed` 确认流程，请使用原生终端；这两类 Agent 的附件入口禁用 |
+| P1 | 更多文件引用与定位 | 尚未从工具输出/裸路径提取文件卡片，未接 PDF 引用页码和源码行号定位 |
+| P1 | 后台常驻 | 已有运行期间的事件通知；尚无托盘常驻/关闭窗口后监控，也不声称后台精确计时 |
+| P2 | 阅读体验 | 未持久化阅读位置、跨文件前进后退和系统分享；放大/下载已有 |
+| P2 | Relay 运维 | 尚无检查更新、Pi 集成开关的图形设置页 |
+| P2 | 语音、扫码 | 尚无本机 TTS、二维码图片识别；支持粘贴邀请 |
+| 服务端限制 | 独立 Codex 设置 | `--no-daemon` 不公开外部设置端点时显示 Relay 原因，需在终端修改 |
+| 服务端限制 | 编辑文件、续传 | Relay 未公开 `workspace_file_write`，Android 的禁用入口不算可用功能；两端均无断点续传 |
+| 平台验证 | macOS | 已交叉构建 Apple silicon / Intel universal；系统通知、文件选择/拖放/剪贴板和终端仍需 Mac 实机验收 |
 
-| 领域 | Android 已有 | 桌面现状与差距 | 建议 |
-| --- | --- | --- | --- |
-| 审批与问答 | 审批按钮、单选/多选/自定义回答、问题导航，携带事件指纹 | 尚无对应卡片；当前只能进入终端手动处理 | P0 |
-| 新建 Agent | 按工作区选择 Agent 配置、初始提示、额外启动参数，保留不确定创建状态 | 尚无新建入口 | P0 |
-| Agent 管理 | 重命名、停止、重启、清空、标签排序 | 只有展示名称，没有管理操作 | P0 |
-| 模型配置 | 读取动态模型目录，修改模型和思考强度，验证回读结果 | 尚无设置入口 | P0 |
-| 附件上传 | 选择文件/图片，分块上传、校验、取消，再随提示发送 | 只支持纯文本提示；无上传、拖入和粘贴图片发送 | P0 |
-| 增量对话 | 订阅更新、补丁、失效恢复、临时内容、历史缓存 | 当前为每 3 秒读取选中对话；未接增量订阅，重启后不恢复正文缓存 | P0 |
-| 可靠发送 | 状态跟踪、明确拒绝与未知结果区分、草稿保留 | 不自动重发并保存不确定状态；仍将部分明确失败保守地当作未知结果 | P1 |
-| 状态监控 | 后台监控多会话、通知分类、静音、完成/等待提醒 | 只轮询当前选中 Agent；无后台监控或完成通知 | P1 |
-| 指令与查找 | Agent 斜杠指令列表，对话/终端文本搜索，复制最新回复 | 无斜杠菜单、对话搜索和复制最新回复按钮；正文与工具文本可选择复制 | P1 |
-| 会话诊断 | 主会话绑定说明、只读诊断证据、活动记录 | 有未确认状态提示；尚无详细诊断和活动列表 | P1 |
-| 文件访问范围 | 控制者为当前设备显式开启工作区外只读访问；根目录和绝对路径跳转 | 固定为选中 Agent 工作区；不自动提升范围，工作区外引用会提示无法打开 | P1 |
-| 文件列表 | 隐藏文件切换、目录分页、筛选、路径跳转 | 已有分页、筛选、上下级导航；无隐藏文件开关和手填路径入口 | P1 |
-| 精确文档定位 | PDF 指定页、源码行号、标题锚点 | 已有 Markdown 锚点；引用里的 PDF 页码和源码行号尚未接入 | P1 |
-| 文件引用发现 | 还会从裸绝对路径、代码片段及工具输出中提取文件卡片 | 当前处理正文/文档中的 Markdown 链接和 Codex 引用；裸路径和工具输出的自动文件卡片尚未补齐 | P1 |
-| 文档阅读 | 全屏、缩放、阅读位置恢复、历史跳转、系统分享 | 可展开预览、图像缩放和下载；缺少跨文件前进/后退、长期阅读位置与系统分享 | P2 |
-| 下载 | 独立原文件下载、进度、取消、版本校验 | 已有；两端均不提供断点续传 | 已有 |
-| 编辑文件 | 源码保留编辑 UI，但由 `canEdit()` 和服务端能力控制 | 当前配套 Relay 未公开 `workspace_file_write`，不能把 Android 的旧入口算成可用编辑功能；桌面保持只读 | 待服务端支持 |
-| Git | 工作区 Git 状态和逐文件 diff | 尚无 Git 面板 | P1 |
-| 项目/Worktree 管理 | 创建、重命名、关闭、排序、列出/创建/打开/移除 Worktree | 仅展示已有项目和 Agent | P1 |
-| 已配对电脑 | 本地改名、删除/忘记电脑、恢复连接 | 支持添加和重连；缺少改名、移除入口 | P1 |
-| 配对设备管理 | 已配对设备列表、角色、重命名、撤销、邀请新设备 | 仅能使用已有邀请配对并遵守角色权限 | P1 |
-| 连接方式 | HTTPS 邀请/WSS、多个网关、TCP，支持直连协商 | 当前只支持 `herdr-tcp://` 单网关 | P1 |
-| Relay 运维 | 检查更新、版本能力、Pi 集成开关 | 无这些管理页面 | P2 |
-| 语音 | 本机朗读最新回复、停止朗读 | 未实现 | P2 |
-| 扫码与分享 | 相机扫码、Android 分享入口 | 桌面已支持粘贴邀请；可后续增加二维码图片识别和系统分享 | P2 |
+## 桌面布局与验证
 
-## 桌面应保持不同的部分
+- 管理操作使用电脑/项目/Agent 菜单和原生对话框；审批、问答留在对话区域。
+- 附件使用系统文件选择、拖放和粘贴。终端直接接收键盘鼠标，不复制手机的补充按键栏、快照分页和独立输入框。
+- 远端操作以服务端精确目标为准，不以名称推断身份；只读角色不能提交写操作。
+- 测试覆盖过期目标、未知写入持久化、默认 argv 隔离、管理菜单、问答指纹、分块校验/取消、加密上传回复路由、增量漏序、缓存边界和电脑数据隔离。无窗口截图检查布局，未自动操作用户真实 Agent。
 
-- 原生终端直接接收键盘、鼠标、中文输入和尺寸变化，不搬运手机的独立输入框、补充按键栏、快照分页和换行补偿。
-- 通知应使用桌面通知/托盘与按会话静音，不照搬 Android 前台服务和省电设置。
-- 文件入口使用系统保存对话框；后续上传应支持拖入与粘贴图片。
-- PDF 使用操作系统内嵌阅读引擎；菜单、对话和终端继续使用 MyGo 原生 UI。
-
-## 建议下一批实现顺序
-
-1. 结构化审批/问答、Agent 新建/管理、模型与思考强度。
-2. 附件上传、增量消息订阅和可靠的历史恢复。
-3. 完成/等待通知、诊断与活动、Git diff。
-4. 设备/项目/Worktree 管理，再扩展 WSS 和多网关。
-
-## 核对源码
-
-Android 主要入口在 [`NativeAgents.kt`](../herdr-android/app/src/main/java/dev/herdr/companion/NativeAgents.kt)、[`MainActivity.kt`](../herdr-android/app/src/main/java/dev/herdr/companion/MainActivity.kt)。分组、计时、引用、图片分别由 [`AgentPresentation.kt`](../herdr-android/app/src/main/java/dev/herdr/companion/AgentPresentation.kt)、[`AgentRunPresentation.kt`](../herdr-android/app/src/main/java/dev/herdr/companion/AgentRunPresentation.kt)、[`ReviewReference.kt`](../herdr-android/app/src/main/java/dev/herdr/companion/ReviewReference.kt)、[`ConversationImages.kt`](../herdr-android/app/src/main/java/dev/herdr/companion/ConversationImages.kt) 实现。监控入口在 [`AgentMonitor.kt`](../herdr-android/app/src/main/java/dev/herdr/companion/AgentMonitor.kt)，配对入口在 [`PairingLink.kt`](../herdr-android/app/src/main/java/dev/herdr/companion/PairingLink.kt)。
-
-桌面当前实现对应 `sidebar.go`、`timeline.go`、`media.go`、`citations.go`、`run_state.go`、`files.go` 和 `internal/pdfview/`。所有写操作扩展都应继续携带精确目标，不通过标题推断会话身份。
+Android 依据：`AgentManagement.kt`、`AgentManagementDialogs.kt`、`AgentLaunchArguments.kt`、`AgentProtocol.kt`、`PrimarySessionBinding.kt`、`NativeAgents.kt`、`MainActivity.kt`。创建、管理、提问、上传和订阅均按现有接口接入。

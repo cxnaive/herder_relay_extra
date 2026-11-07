@@ -49,21 +49,41 @@ type conversation struct {
 	historyEpoch                uint64
 	images                      map[string]*conversationImage
 	markdownCache               map[string]renderedText
+	question                    questionForm
+	attachments                 []relay.Attachment
+	uploading                   bool
+	uploadCancel                context.CancelFunc
+	uploadProgress              float64
+	uploadLabel                 string
+	subscription                string
+	sequence                    int64
+	updating                    bool
+	updateCancel                context.CancelFunc
+	lastCached                  time.Time
+	replaceHistory              bool
+	searchOpen                  bool
+	search                      string
+	terminalSearch              string
+	terminalSearchOpen          bool
 }
 type machine struct {
-	config       relay.Computer
-	session      *relay.Session
-	cancel       context.CancelFunc
-	agents       []relay.Agent
-	workspaces   []relay.Workspace
-	status       string
-	capabilities map[string]bool
-	remote       *relay.TerminalConn
-	term         *terminal.Terminal
-	termIdentity string
-	termState    string
-	opening      bool
-	epoch        uint64
+	config         relay.Computer
+	session        *relay.Session
+	cancel         context.CancelFunc
+	agents         []relay.Agent
+	workspaces     []relay.Workspace
+	status         string
+	capabilities   map[string]bool
+	profiles       []relay.Profile
+	launchDefaults map[string][]string
+	inventoryReady bool
+	protocol       int64
+	remote         *relay.TerminalConn
+	term           *terminal.Terminal
+	termIdentity   string
+	termState      string
+	opening        bool
+	epoch          uint64
 }
 type application struct {
 	win                            *mygo.Window
@@ -87,11 +107,17 @@ type application struct {
 	imagePreview                   *conversationImage
 	imageZoom                      float64
 	demo                           bool
+	management                     *managementDialog
+	toolsPanel                     *toolsPanel
+	projectDialog                  *projectDialog
+	deviceDialog                   *deviceDialog
+	operations                     map[string]string
+	busyOperations                 map[string]bool
 }
 
 func newApplication(demo bool) *application {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &application{ctx: ctx, cancel: cancel, sidebar: 260, chats: map[string]*conversation{}, collapsed: map[string]bool{}, demo: demo, status: "正在打开本机凭据…"}
+	return &application{ctx: ctx, cancel: cancel, sidebar: 260, chats: map[string]*conversation{}, collapsed: map[string]bool{}, operations: map[string]string{}, busyOperations: map[string]bool{}, demo: demo, status: "正在打开本机凭据…"}
 }
 func main() {
 	log.Println("Herdr Desktop starting")
@@ -118,6 +144,11 @@ func main() {
 		}
 		app.win.OnReadyToShow(func() { app.win.Show() })
 		app.win.OnClosed(app.shutdown)
+		app.win.OnFileDrop(func(e *mygo.FileDropEvent) {
+			if app.mode == 0 && !app.pairing && app.management == nil && app.projectDialog == nil && app.deviceDialog == nil && app.toolsPanel == nil && app.imagePreview == nil {
+				app.uploadPaths(e.Paths)
+			}
+		})
 		if app.demo {
 			app.loadDemo()
 			app.win.Invalidate()
@@ -132,6 +163,7 @@ func main() {
 				}
 				app.store = s
 				app.collapsed = s.sidebarGroups()
+				app.operations = s.operations()
 				app.status = ""
 				for _, c := range s.computers() {
 					m := &machine{config: c, status: "未连接"}
@@ -154,8 +186,8 @@ func main() {
 					app.win.Update(func() {
 						app.refreshCount++
 						app.refreshRun()
-						if app.mode == 0 && !app.pairing && app.refreshCount%3 == 0 {
-							app.loadHistory(false)
+						if app.mode == 0 && !app.pairing {
+							app.syncConversation()
 						}
 					})
 				}

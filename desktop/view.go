@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/egoist/mygo/plugins/terminal"
@@ -39,6 +40,10 @@ func (a *application) view(c *ui.Context) {
 		}
 	})
 	a.imageDialog(c)
+	a.managementView(c)
+	a.toolsView(c)
+	a.projectView(c)
+	a.devicesView(c)
 }
 func statusLabel(s string) string {
 	switch s {
@@ -103,6 +108,7 @@ func (a *application) workspaceView(c *ui.Context) {
 		ui.Column(c).Padding(18, 24).Gap(8).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
 			ui.Row(c).AlignItems(ui.Center).Gap(12).Children(func() {
 				ui.Text(c, chat.agent.Title()).FontSize(20).Bold().Grow(1)
+				ui.MenuButton(c, "管理", func(menu *ui.Menu) { a.agentMenu(menu, m, chat.agent) })
 				ui.Segmented(c, &a.mode, "对话", "终端").Label("主视图")
 				if ui.Button(c, "文件").Selected(a.files).Clicked() {
 					a.files = !a.files
@@ -129,6 +135,7 @@ func (a *application) workspaceView(c *ui.Context) {
 					ui.Text(c, "示例数据").FontSize(12).TextColor(t.Warning)
 				}
 			})
+			a.operationNotice(c, operationKey(m, chat.agent))
 		})
 		ui.Row(c).Grow(1).Children(func() {
 			if !a.files || !filesFor(chat).expanded {
@@ -155,6 +162,15 @@ func (a *application) chatView(c *ui.Context, m *machine, chat *conversation) {
 		ui.Text(c, chat.message).FontSize(12).TextColor(t.Warning).Padding(10, 24).Selectable()
 	}
 	ui.Row(c).Padding(7, 24).Gap(8).Children(func() {
+		if ui.Button(c, "查找").Selected(chat.searchOpen).Clicked() {
+			chat.searchOpen = !chat.searchOpen
+			if !chat.searchOpen {
+				chat.search = ""
+			}
+		}
+		if ui.Button(c, "指令").Disabled(m.session == nil || !chat.agent.CanChat()).Clicked() {
+			a.openTools(m, chat.agent, "commands")
+		}
 		if chat.next != "" && ui.Button(c, "加载更早消息").Disabled(chat.loading).Clicked() {
 			a.loadHistory(true)
 		}
@@ -182,8 +198,13 @@ func (a *application) chatView(c *ui.Context, m *machine, chat *conversation) {
 			}
 		}
 	})
+	if chat.searchOpen {
+		ui.TextInput(c, &chat.search).Label("查找对话").Placeholder("查找已加载的消息和工具输出").Margin(6, 24)
+	}
 	a.timelineView(c, m, chat)
+	a.interactionView(c, m, chat)
 	ui.Column(c).Padding(14, 24, 20, 24).Gap(9).Children(func() {
+		a.attachmentsView(c, m, chat)
 		if chat.uncertain {
 			ui.Row(c).Gap(8).Children(func() {
 				ui.Text(c, "上次投递尚未确认。").FontSize(12).TextColor(t.Warning).Grow(1)
@@ -206,7 +227,15 @@ func (a *application) chatView(c *ui.Context, m *machine, chat *conversation) {
 			}
 			return false
 		})
-		ui.Row(c).AlignItems(ui.Center).Children(func() {
+		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+			ui.MenuButton(c, "＋ 附件", func(menu *ui.Menu) {
+				if menu.Item("选择文件…").Chosen() {
+					a.pickAttachments(m, chat)
+				}
+				if menu.Item("粘贴图片或文件").Chosen() {
+					a.pasteAttachments(m, chat)
+				}
+			}).Disabled(!uploadEnabled(m, chat))
 			hint := "Enter 发送 · Shift+Enter 换行"
 			if !chat.agent.CanChat() {
 				hint = "主会话未确认，可使用终端"
@@ -215,7 +244,7 @@ func (a *application) chatView(c *ui.Context, m *machine, chat *conversation) {
 				hint = "演示模式"
 			}
 			ui.Text(c, hint).TextColor(t.TextMuted).FontSize(12).Grow(1)
-			canSend := m.session != nil && m.config.Auth.Role == "controller" && chat.agent.CanChat() && !chat.pending && !chat.uncertain && strings.TrimSpace(chat.draft) != ""
+			canSend := a.agentWriteAllowed(m, chat.agent, "submit_prompt") && !chat.uploading && chat.agent.Status != "blocked" && (strings.TrimSpace(chat.draft) != "" || len(chat.attachments) > 0)
 			if chat.pending {
 				ui.Spinner(c).Size(16, 16)
 			}
@@ -233,6 +262,12 @@ func (a *application) terminalView(c *ui.Context, m *machine, chat *conversation
 			label = "尚未连接"
 		}
 		ui.Text(c, label).FontSize(12).TextColor(t.TextMuted).Grow(1)
+		if m.term != nil && ui.Button(c, "查找终端").Selected(chat.terminalSearchOpen).Clicked() {
+			chat.terminalSearchOpen = !chat.terminalSearchOpen
+			if !chat.terminalSearchOpen {
+				m.term.EndSearch()
+			}
+		}
 		if m.term != nil && ui.Button(c, "断开终端").Clicked() {
 			m.term.Close()
 			m.term = nil
@@ -244,6 +279,23 @@ func (a *application) terminalView(c *ui.Context, m *machine, chat *conversation
 		}
 	})
 	if m.term != nil && m.termIdentity == chat.agent.Identity() {
+		if chat.terminalSearchOpen {
+			ui.Row(c).Padding(6, 20).Gap(8).AlignItems(ui.Center).Children(func() {
+				before := chat.terminalSearch
+				ui.TextInput(c, &chat.terminalSearch).Label("终端查找内容").Placeholder("查找终端输出").Grow(1)
+				if before != chat.terminalSearch {
+					m.term.Search(chat.terminalSearch)
+				}
+				state := m.term.SearchStatus()
+				ui.Text(c, fmt.Sprintf("%d / %d", state.Selected, state.Total)).FontSize(12)
+				if ui.Button(c, "上一个").Clicked() {
+					m.term.SearchPrevious()
+				}
+				if ui.Button(c, "下一个").Clicked() {
+					m.term.SearchNext()
+				}
+			})
+		}
 		terminal.View(c.Key("terminal:"+m.termIdentity), m.term).Grow(1).FillWidth().AutoFocus()
 		return
 	}
@@ -263,7 +315,7 @@ func (a *application) detailView(c *ui.Context, m *machine, chat *conversation) 
 	t := c.Theme()
 	ui.Scroll(c).Width(290).FillHeight().Padding(20).Gap(14).BorderWidth(0, 0, 0, 1).BorderColor(t.Border).Children(func() {
 		ui.Text(c, "会话详情").Bold().FontSize(15)
-		for _, row := range [][2]string{{"电脑", m.config.Name}, {"项目", chat.agent.Project}, {"工作目录", chat.agent.Cwd}, {"Agent", chat.agent.Agent}, {"连接", m.status}} {
+		for _, row := range [][2]string{{"电脑", m.config.Name}, {"项目", chat.agent.Project}, {"工作目录", chat.agent.Cwd}, {"Agent", chat.agent.Agent}, {"会话 ID", chat.agent.AgentSessionID}, {"连接", m.status}} {
 			rc := c.Key(row[0])
 			ui.Text(rc, row[0]).FontSize(11).TextColor(t.TextMuted)
 			ui.Text(rc, row[1]).FontSize(12).Selectable()

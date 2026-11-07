@@ -14,6 +14,7 @@ type agentGroup struct {
 	key, title, cwd string
 	order           int
 	agents          []relay.Agent
+	workspace       relay.Workspace
 }
 
 func groupKey(parts ...string) string { b, _ := json.Marshal(parts); return string(b) }
@@ -30,7 +31,7 @@ func machineGroups(m *machine) []agentGroup {
 			title = "未命名项目"
 		}
 		positions[key] = len(groups)
-		groups = append(groups, agentGroup{key: key, title: title, cwd: w.Cwd, order: w.Number})
+		groups = append(groups, agentGroup{key: key, title: title, cwd: w.Cwd, order: w.Number, workspace: w})
 	}
 	for _, agent := range m.agents {
 		id := agent.WorkspaceID
@@ -153,6 +154,7 @@ func (a *application) sidebarView(c *ui.Context) {
 							ui.Spinner(mc).Size(12, 12)
 						}
 						ui.Text(mc, m.status).FontSize(10).TextColor(t.TextMuted).Grow(1)
+						ui.MenuButton(mc, "⋯", func(menu *ui.Menu) { a.computerMenu(menu, m) }).Label("管理电脑 "+m.config.Name).Padding(2, 6)
 						if !a.demo && m.session == nil && ui.Button(mc, "重连").FontSize(10).Clicked() {
 							a.connect(m)
 						}
@@ -163,11 +165,22 @@ func (a *application) sidebarView(c *ui.Context) {
 					for _, g := range visible {
 						gc := mc.Key(g.key)
 						closed := a.collapsed[g.key] && query == ""
-						ui.Column(gc).Padding(2, 0, 0, 12).Gap(3).Children(func() {
-							if disclosure(gc, g.title, closed, len(g.agents)) && query == "" {
-								a.toggleGroup(g.key)
-								closed = a.collapsed[g.key]
+						ui.Column(gc).Padding(2, 0, 0, 12).Gap(3).ContextMenu(func(menu *ui.Menu) {
+							if g.workspace.ID != "" {
+								a.projectMenu(menu, m, g.workspace)
 							}
+						}).Children(func() {
+							ui.Row(gc).AlignItems(ui.Center).Children(func() {
+								ui.Column(gc).Grow(1).Children(func() {
+									if disclosure(gc, g.title, closed, len(g.agents)) && query == "" {
+										a.toggleGroup(g.key)
+										closed = a.collapsed[g.key]
+									}
+								})
+								if g.workspace.ID != "" && ui.Button(gc, "＋").Label("在 "+g.title+" 新建 Agent").Disabled(!managementReady(m) || g.workspace.ServerSessionID != "primary" || len(m.profiles) == 0).Clicked() {
+									a.openLaunch(m, g.workspace)
+								}
+							})
 							if closed {
 								return
 							}
@@ -175,6 +188,7 @@ func (a *application) sidebarView(c *ui.Context) {
 								ac := gc.Key(agent.PaneID)
 								selected := a.selectedMachine == m.config.ID && a.selectedAgent == agent.PaneID
 								button := ui.Button(ac, "").Label(agent.Title()).Selected(selected).FillWidth().BorderWidth(0).Background(t.Surface).Padding(9, 12).Justify(ui.Start)
+								button.ContextMenu(func(menu *ui.Menu) { a.agentMenu(menu, m, agent) })
 								if selected {
 									button.Background(t.Background).TextColor(t.Accent)
 								}
