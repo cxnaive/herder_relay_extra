@@ -14,6 +14,7 @@ project follows [Semantic Versioning](https://semver.org/).
 - Codex associated-history and manual-pin overrides, terminal status-line identity parsing and automatic `/status` probing.
 
 ### Added
+- A native Windows/macOS desktop client with computer/project/Agent navigation, conversations, a direct interactive terminal, workspace browsing and verified file downloads. Paired credentials and conversation drafts are encrypted locally.
 - Enter optional startup arguments when creating an Agent from Android, separately from the initial prompt. Preserve those arguments when restarting Relay-created agents, and require Relay support instead of silently ignoring them.
 - Read-only session binding diagnostics for paired devices, with a versioned structured payload and an Android viewer for future detailed evidence. Diagnostics never select or confirm a primary session.
 - Read-only current Codex turn status and timing, using bounded metadata-only queries to distinguish running, waiting, finished and interrupted work without loading conversation bodies.
@@ -22,6 +23,7 @@ project follows [Semantic Versioning](https://semver.org/).
 - Read-only, exact-workspace document downloads in 512 KiB verified chunks (up to 12 MiB per file), enabling native PDF/Markdown/image reviewers without raising transport limits or granting file-write access.
 
 ### Fixed
+- Show desktop Agent tab names, restore independent computer/project folding, open Codex file citations and PDF/Markdown previews, group consecutive tool calls with two levels of folding, and display image previews and verified run timing.
 - Recognize Codex embedded runtimes selected by title configuration overrides without requiring `--no-daemon`, using actual TUI-owned writer locks. Validate the uniquely title-selected primary on its own so unrelated unmaterialized writers do not block resumed history; an unmaterialized selected thread still waits for metadata.
 - Show Relay-provided default launch arguments separately from optional extra arguments on Android, display confirmed session IDs, and distinguish title/runtime failures from a missing first turn.
 - Keep explicit terminal input, keys and Stop/Restart available when Codex conversation identity is unresolved. Recheck the exact terminal before dispatch without granting history, conversation prompts or structured approval authority; reject stale targets and retain uncertain-delivery protection.

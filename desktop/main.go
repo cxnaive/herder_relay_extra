@@ -1,0 +1,191 @@
+package main
+
+import (
+	"context"
+	_ "embed"
+	"flag"
+	"log"
+	"time"
+
+	"github.com/cxnaive/herdr-desktop/internal/pdfview"
+	"github.com/cxnaive/herdr-desktop/internal/relay"
+	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/plugins/terminal"
+	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/markdown"
+)
+
+//go:embed resources/icon.png
+var appIcon []byte
+
+var brandIcon, _ = ui.DecodeBitmap(appIcon)
+
+type entry struct {
+	ID     string           `json:"id"`
+	Role   string           `json:"role"`
+	Text   string           `json:"text"`
+	Tools  []map[string]any `json:"tools"`
+	Images []any            `json:"images"`
+}
+type conversation struct {
+	agent                       relay.Agent
+	entries                     []entry
+	draft                       string
+	next                        string
+	revision                    string
+	message                     string
+	loading, pending, uncertain bool
+	list                        ui.ListState
+	md                          *markdown.Options
+	mdTarget                    relay.Target
+	mdEpoch                     uint64
+	folds                       map[string]*bool
+	files                       *fileBrowser
+	run                         runPresentation
+	preparing                   bool
+	historyOlder                bool
+	historyProgress             float64
+	historyCancel               context.CancelFunc
+	historyEpoch                uint64
+	images                      map[string]*conversationImage
+	markdownCache               map[string]renderedText
+}
+type machine struct {
+	config       relay.Computer
+	session      *relay.Session
+	cancel       context.CancelFunc
+	agents       []relay.Agent
+	workspaces   []relay.Workspace
+	status       string
+	capabilities map[string]bool
+	remote       *relay.TerminalConn
+	term         *terminal.Terminal
+	termIdentity string
+	termState    string
+	opening      bool
+	epoch        uint64
+}
+type application struct {
+	win                            *mygo.Window
+	ctx                            context.Context
+	cancel                         context.CancelFunc
+	store                          *storage
+	machines                       []*machine
+	chats                          map[string]*conversation
+	selectedMachine, selectedAgent string
+	sidebar                        float32
+	mode                           int
+	query                          string
+	pairing                        bool
+	pairName, pairLink             string
+	pairBusy                       bool
+	status                         string
+	details                        bool
+	files                          bool
+	collapsed                      map[string]bool
+	refreshCount                   int
+	imagePreview                   *conversationImage
+	imageZoom                      float64
+	demo                           bool
+}
+
+func newApplication(demo bool) *application {
+	ctx, cancel := context.WithCancel(context.Background())
+	return &application{ctx: ctx, cancel: cancel, sidebar: 260, chats: map[string]*conversation{}, collapsed: map[string]bool{}, demo: demo, status: "正在打开本机凭据…"}
+}
+func main() {
+	log.Println("Herdr Desktop starting")
+	demo := flag.Bool("demo", false, "show isolated example conversations and an explicitly local native terminal")
+	flag.Parse()
+	app := newApplication(*demo)
+	if err := pdfview.Register(); err != nil {
+		log.Fatal(err)
+	}
+	mygo.App.SetName("Herdr Desktop")
+	mygo.App.SetVersion("0.1.0")
+	mygo.App.SetMenu(mygo.NewMenu([]*mygo.MenuItem{
+		{Role: mygo.RoleAppMenu}, {Role: mygo.RoleEditMenu},
+		{Label: "视图", Submenu: []*mygo.MenuItem{
+			{Label: "对话", Accelerator: "CmdOrCtrl+1", Click: func(_ *mygo.MenuItem, _ *mygo.Window) { app.mode = 0; app.win.Invalidate() }},
+			{Label: "终端", Accelerator: "CmdOrCtrl+2", Click: func(_ *mygo.MenuItem, _ *mygo.Window) { app.mode = 1; app.win.Invalidate() }},
+		}}, {Role: mygo.RoleWindowMenu},
+	}))
+	mygo.App.WhenReady(func() {
+		log.Println("Creating native window")
+		app.win = mygo.NewWindow(mygo.WindowOptions{Title: "Herdr Desktop", Width: 1280, Height: 840, MinWidth: 800, MinHeight: 560, StateKey: "main", Content: ui.View(app.view)})
+		if err := app.win.SetIcon(appIcon); err != nil {
+			log.Printf("window icon: %v", err)
+		}
+		app.win.OnReadyToShow(func() { app.win.Show() })
+		app.win.OnClosed(app.shutdown)
+		if app.demo {
+			app.loadDemo()
+			app.win.Invalidate()
+			return
+		}
+		go func() {
+			s, err := openStorage()
+			app.win.Update(func() {
+				if err != nil {
+					app.status = "无法打开本机加密存储：" + err.Error()
+					return
+				}
+				app.store = s
+				app.collapsed = s.sidebarGroups()
+				app.status = ""
+				for _, c := range s.computers() {
+					m := &machine{config: c, status: "未连接"}
+					app.machines = append(app.machines, m)
+					app.connect(m)
+				}
+				if len(app.machines) == 0 {
+					app.pairing = true
+				}
+			})
+		}()
+		go func() {
+			tick := time.NewTicker(time.Second)
+			defer tick.Stop()
+			for {
+				select {
+				case <-app.ctx.Done():
+					return
+				case <-tick.C:
+					app.win.Update(func() {
+						app.refreshCount++
+						app.refreshRun()
+						if app.mode == 0 && !app.pairing && app.refreshCount%3 == 0 {
+							app.loadHistory(false)
+						}
+					})
+				}
+			}
+		}()
+	})
+	if err := mygo.App.Run(); err != nil {
+		log.Fatal(err)
+	}
+}
+func (a *application) shutdown() {
+	a.cancel()
+	for _, chat := range a.chats {
+		if chat.files != nil {
+			chat.files.closePDF()
+		}
+	}
+	for _, m := range a.machines {
+		if m.cancel != nil {
+			m.cancel()
+		}
+		if m.remote != nil {
+			m.remote.Close()
+		}
+		if m.term != nil {
+			m.term.Close()
+		}
+		if m.session != nil {
+			m.session.Close()
+		}
+	}
+	a.saveCurrentDraft()
+}

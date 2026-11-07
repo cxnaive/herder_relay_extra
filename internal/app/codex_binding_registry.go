@@ -122,7 +122,7 @@ func codexTerminalMutation(action protocol.ActionMetadata) bool {
 		return false
 	}
 	switch action.Operation {
-	case "send_terminal_text", "send_text", "send_keys", "send_input", "send_filter_text", "send_secret", "lease_pane_size", "agent_stop", "agent_restart", "agent_clear":
+	case "terminal_open", "terminal_input", "terminal_resize", "terminal_scroll", "send_terminal_text", "send_text", "send_keys", "send_input", "send_filter_text", "send_secret", "lease_pane_size", "agent_stop", "agent_restart", "agent_clear":
 		return true
 	default:
 		return false

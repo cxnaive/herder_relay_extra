@@ -32,7 +32,7 @@ func unresolvedTerminal(t *testing.T) (*Server, *reportPaneFixture, *coordinator
 }
 
 func TestCodexUnresolvedTerminalAndLifecycleHaveIndependentAuthority(t *testing.T) {
-	for _, name := range []string{"send_terminal_text", "send_text", "send_keys", "send_input", "send_filter_text", "send_secret", "lease_pane_size", "agent_stop", "agent_restart", "agent_clear"} {
+	for _, name := range []string{"terminal_open", "terminal_input", "terminal_resize", "terminal_scroll", "send_terminal_text", "send_text", "send_keys", "send_input", "send_filter_text", "send_secret", "lease_pane_size", "agent_stop", "agent_restart", "agent_clear"} {
 		t.Run(name, func(t *testing.T) {
 			s, f, a := unresolvedTerminal(t)
 			action, _ := protocol.ClassifyAction(name)

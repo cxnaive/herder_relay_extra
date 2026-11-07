@@ -1,4 +1,7 @@
 .build/
+.tools/
+desktop/build/
+desktop/.mygo/
 bin/
 dist/
 /run-artifacts/

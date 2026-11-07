@@ -26,8 +26,9 @@ jobs:
                 --workflow check.yml \
                 --commit "$GITHUB_SHA" \
                 --limit 20 \
-                --json status,conclusion \
+                --json status,conclusion,displayTitle \
                 --jq '
+                  map(select(.displayTitle == "check · deep")) |
                   if any(.[]; .conclusion == "success") then "success"
                   elif length == 0 or any(.[]; .status != "completed") then "pending"
                   else "failed"
@@ -39,7 +40,7 @@ jobs:
                 exit 0
                 ;;
               failed)
-                echo "Tagged commit $GITHUB_SHA has no successful check.yml run." >&2
+                echo "Tagged commit $GITHUB_SHA needs a successful manual check.yml run with full=true." >&2
                 exit 1
                 ;;
             esac

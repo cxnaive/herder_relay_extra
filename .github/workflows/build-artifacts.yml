@@ -2,18 +2,43 @@ name: build-artifacts
 
 on:
   push:
+    branches: [main, dev, feat/android-file-companion]
   pull_request:
+    branches: [main, dev, feat/android-file-companion]
   workflow_dispatch:
+    inputs:
+      components:
+        description: Components to build (manual runs can build both from one commit)
+        type: choice
+        default: all
+        options: [all, native, android]
 
 permissions:
   contents: read
 
 concurrency:
   group: build-artifacts-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Select changed components
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    outputs:
+      native: ${{ steps.paths.outputs.native }}
+      android: ${{ steps.paths.outputs.android }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: paths
+        uses: ./.github/actions/changed-components
+
   native-binaries:
+    needs: changes
+    if: needs.changes.outputs.native == 'true'
     name: Native binaries (${{ matrix.target }})
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -102,6 +127,8 @@ jobs:
           retention-days: 1
 
   native-bundles:
+    needs: changes
+    if: needs.changes.outputs.native == 'true'
     name: Native Linux amd64 bundles and smoke test
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -129,6 +156,8 @@ jobs:
           retention-days: 1
 
   android-apk:
+    needs: changes
+    if: needs.changes.outputs.android == 'true'
     name: Android Debug and Release APKs
     runs-on: ubuntu-24.04
     timeout-minutes: 30

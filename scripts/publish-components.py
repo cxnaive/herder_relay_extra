@@ -302,7 +302,7 @@ def notes(plan, key):
     checks = [r for r in checks if r.get("path", "").split("@", 1)[0] == ".github/workflows/check.yml"]
     state = max(checks, key=lambda r: r["id"]).get("conclusion") if checks else None
     body += ["", "验证：Actions ZIP digest、逐文件校验和、精确源码/版本；APK 原证书与 ABI；Native 隔离启动和配对冒烟。",
-             f"独立完整 check：`{state or '未取得完整通过结果'}`。构建成功不等同网页/PWA 或用户真机验收完成。",
+             f"独立 check：`{state or '未取得通过结果'}`（可能仅含相关组件检查）。构建成功不等同深度检查、网页/PWA 或用户真机验收完成。",
              "旧 Release、标签与附件不覆盖。", "", "附件：", *[f"- `{name}`" for name in spec["names"]], ""]
     return "\n".join(body)
 

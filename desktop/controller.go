@@ -1,0 +1,488 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"slices"
+	"strings"
+	"time"
+
+	"github.com/cxnaive/herdr-desktop/internal/relay"
+	"github.com/egoist/mygo/plugins/terminal"
+)
+
+func (a *application) selected() (*machine, *conversation) {
+	for _, m := range a.machines {
+		if m.config.ID == a.selectedMachine {
+			for _, agent := range m.agents {
+				if agent.PaneID == a.selectedAgent {
+					key := m.config.ID + ":" + agent.Identity()
+					chat := a.chats[key]
+					if chat == nil {
+						chat = &conversation{agent: agent, folds: map[string]*bool{}}
+						if a.store != nil {
+							chat.draft, chat.uncertain = a.store.draft(key)
+						}
+						a.chats[key] = chat
+					}
+					chat.agent = agent
+					return m, chat
+				}
+			}
+		}
+	}
+	return nil, nil
+}
+func (a *application) saveCurrentDraft() {
+	m, c := a.selected()
+	if m == nil || c == nil || a.store == nil {
+		return
+	}
+	if err := a.store.saveDraft(m.config.ID+":"+c.agent.Identity(), c.draft, c.uncertain); err != nil {
+		a.status = err.Error()
+	}
+}
+func (a *application) selectAgent(m *machine, agent relay.Agent) {
+	a.saveCurrentDraft()
+	if _, old := a.selected(); old != nil && old.files != nil {
+		old.files.closePDF()
+	}
+	a.imagePreview = nil
+	a.selectedMachine = m.config.ID
+	a.selectedAgent = agent.PaneID
+	a.pairing = false
+	a.loadHistory(false)
+	a.refreshRun()
+	if a.files {
+		_, chat := a.selected()
+		if chat != nil {
+			a.ensureFiles(m, chat)
+		}
+	}
+}
+func (a *application) pair() {
+	if a.pairBusy || a.store == nil {
+		return
+	}
+	c, err := relay.ParseInvitation(a.pairLink, a.pairName, time.Now())
+	if err != nil {
+		a.status = err.Error()
+		return
+	}
+	a.pairBusy = true
+	go func() {
+		err := a.store.saveComputer(c)
+		a.win.Update(func() {
+			a.pairBusy = false
+			if err != nil {
+				a.status = err.Error()
+				return
+			}
+			m := &machine{config: c, status: "未连接"}
+			a.machines = append(a.machines, m)
+			a.pairing = false
+			a.pairLink = ""
+			a.pairName = ""
+			a.status = ""
+			a.connect(m)
+		})
+	}()
+}
+func (a *application) connect(m *machine) {
+	for key, chat := range a.chats {
+		if strings.HasPrefix(key, m.config.ID+":") {
+			if f := chat.files; f != nil {
+				f.closePDF()
+				if f.cancel != nil {
+					f.cancel()
+				}
+				if f.cancelDownload != nil {
+					f.cancelDownload()
+				}
+			}
+			chat.files = nil
+			chat.images = nil
+			chat.md = nil
+			chat.run = runPresentation{}
+		}
+	}
+	if m.cancel != nil {
+		m.cancel()
+	}
+	if m.session != nil {
+		m.session.Close()
+		m.session = nil
+	}
+	if m.term != nil {
+		m.term.Close()
+		m.term = nil
+	}
+	if m.remote != nil {
+		m.remote.Close()
+		m.remote = nil
+	}
+	m.opening = false
+	m.epoch++
+	epoch := m.epoch
+	ctx, cancel := context.WithCancel(a.ctx)
+	m.cancel = cancel
+	m.status = "正在连接…"
+	config := m.config
+	go func() {
+		var auth = config.Auth
+		s, err := relay.Connect(ctx, config, func(next relay.Auth) error {
+			if err := a.store.auth(config.ID, next); err != nil {
+				return err
+			}
+			auth = next
+			return nil
+		})
+		a.win.Update(func() {
+			if epoch != m.epoch || ctx.Err() != nil {
+				if s != nil {
+					s.Close()
+				}
+				return
+			}
+			m.config.Auth = auth
+			if err != nil {
+				m.status = "连接失败"
+				a.status = err.Error()
+				return
+			}
+			m.session = s
+			m.status = "已加密连接"
+			a.status = ""
+		})
+		if err != nil {
+			return
+		}
+		for event := range s.Events {
+			a.win.Update(func() {
+				if epoch == m.epoch && ctx.Err() == nil {
+					a.event(m, event)
+				}
+			})
+		}
+		a.win.Update(func() {
+			if epoch == m.epoch {
+				m.status = "连接已断开"
+				m.session = nil
+				if m.remote != nil {
+					m.remote.Close()
+					m.remote = nil
+				}
+				m.termState = "连接中断，请重新连接"
+			}
+		})
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(4 * time.Second):
+			a.win.Update(func() {
+				if m.epoch == epoch && ctx.Err() == nil {
+					a.connect(m)
+				}
+			})
+		}
+	}()
+}
+func (a *application) event(m *machine, event relay.Message) {
+	switch relay.Text(event, "type") {
+	case "workspaces":
+		m.workspaces = relay.ParseWorkspaces(event["workspaces"])
+	case "push_config":
+		m.capabilities = map[string]bool{}
+		if names, ok := event["capabilities"].([]any); ok {
+			for _, n := range names {
+				if s, ok := n.(string); ok {
+					m.capabilities[s] = true
+				}
+			}
+		}
+	case "agents":
+		m.agents = relay.ParseAgents(event["agents"])
+		slices.SortStableFunc(m.agents, func(x, y relay.Agent) int { return strings.Compare(x.WorkspaceID, y.WorkspaceID) })
+		if m.term != nil && !slices.ContainsFunc(m.agents, func(agent relay.Agent) bool { return agent.Identity() == m.termIdentity }) {
+			m.term.Close()
+			m.term = nil
+			if m.remote != nil {
+				m.remote.Close()
+				m.remote = nil
+			}
+			m.termState = "终端身份已变化，请重新连接"
+		}
+		if a.selectedMachine == "" && len(m.agents) > 0 {
+			a.selectAgent(m, m.agents[0])
+		}
+	case "agent_update":
+		// Read a complete inventory after incremental changes; never infer identity.
+		if m.session != nil {
+			go m.session.Send(relay.Message{"type": "refresh_agents", "protocol": 3})
+		}
+	case "terminal_output", "terminal_closed":
+		if m.remote != nil {
+			m.remote.Accept(event)
+		}
+	}
+}
+func (a *application) loadHistory(older bool) {
+	m, c := a.selected()
+	if m == nil || c == nil || m.session == nil || c.loading || a.demo {
+		return
+	}
+	if !c.agent.CanChat() {
+		c.message = "Relay 尚未确认主会话，可切换终端直接操作。"
+		return
+	}
+	if c.preparing {
+		older = c.historyOlder
+	}
+	c.historyOlder = older
+	c.historyEpoch++
+	historyEpoch := c.historyEpoch
+	c.loading = true
+	agent, s, epoch := c.agent, m.session, m.epoch
+	request := agent.Request("get_conversation_history")
+	request["limit"] = 60
+	if older {
+		request["cursor"] = c.next
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 20*time.Second)
+	c.historyCancel = cancel
+	go func() {
+		defer cancel()
+		page, err := s.Request(ctx, request)
+		a.win.Update(func() {
+			if c.historyEpoch != historyEpoch {
+				return
+			}
+			c.loading = false
+			if epoch != m.epoch {
+				return
+			}
+			current := slices.ContainsFunc(m.agents, func(v relay.Agent) bool { return v.Target == agent.Target && v.CanChat() })
+			if !current {
+				return
+			}
+			if err != nil {
+				c.message = err.Error()
+				return
+			}
+			c.preparing = relay.Text(page, "state") == "preparing" || relay.Text(page, "state") == "building"
+			if page["available"] == false || c.preparing {
+				c.message = "对话暂不可用，请稍后重试"
+				if c.preparing {
+					c.message = "正在整理历史消息…"
+					if next := relay.Text(page, "next_cursor"); next != "" {
+						c.next = next
+					}
+					progress := relay.Object(page["progress"])
+					total := relay.Number(progress, "source_bytes")
+					scanned := relay.Number(progress, "scanned_bytes")
+					c.historyProgress = 0
+					if total > 0 && scanned >= 0 {
+						c.historyProgress = min(1, float64(scanned)/float64(total))
+					}
+				}
+				return
+			}
+			c.preparing = false
+			c.historyProgress = 0
+			revision := relay.Text(page, "source_revision")
+			if c.revision != "" && revision != "" && c.revision != revision {
+				if older {
+					c.next = ""
+					c.message = "对话已更新，请刷新后重新加载历史"
+					return
+				}
+				c.entries = nil
+				c.next = ""
+			}
+			c.revision = revision
+			b, _ := json.Marshal(page["entries"])
+			var incoming []entry
+			if err = json.Unmarshal(b, &incoming); err != nil {
+				c.message = "对话格式无法解析"
+				return
+			}
+			if older {
+				seen := map[string]bool{}
+				for _, e := range incoming {
+					seen[e.ID] = true
+				}
+				for _, e := range c.entries {
+					if !seen[e.ID] {
+						incoming = append(incoming, e)
+					}
+				}
+				c.entries = incoming
+				c.next = relay.Text(page, "next_cursor")
+			} else {
+				index := map[string]int{}
+				for i, e := range c.entries {
+					index[e.ID] = i
+				}
+				for _, e := range incoming {
+					if i, ok := index[e.ID]; ok {
+						c.entries[i] = e
+					} else {
+						c.entries = append(c.entries, e)
+					}
+				}
+				if c.next == "" {
+					c.next = relay.Text(page, "next_cursor")
+				}
+			}
+			if len(c.entries) > 2000 {
+				c.entries = c.entries[len(c.entries)-2000:]
+			}
+			c.message = ""
+		})
+	}()
+}
+func (a *application) send() {
+	m, c := a.selected()
+	if m == nil || c == nil || m.session == nil || c.pending || c.uncertain || !c.agent.CanChat() || m.config.Auth.Role != "controller" {
+		return
+	}
+	text := strings.TrimSpace(c.draft)
+	if text == "" {
+		return
+	}
+	key := m.config.ID + ":" + c.agent.Identity()
+	if err := a.store.saveDraft(key, c.draft, true); err != nil {
+		a.status = err.Error()
+		return
+	}
+	c.pending = true
+	c.uncertain = true
+	s, agent := m.session, c.agent
+	go func() {
+		ctx, cancel := context.WithTimeout(a.ctx, 30*time.Second)
+		defer cancel()
+		request := agent.Request("submit_prompt")
+		request["text"] = text
+		_, err := s.Request(ctx, request)
+		a.win.Update(func() {
+			c.pending = false
+			if err != nil {
+				c.message = err.Error()
+				return
+			}
+			c.uncertain = false
+			c.draft = ""
+			c.message = ""
+			if err = a.store.saveDraft(key, "", false); err != nil {
+				c.uncertain = true
+				c.message = err.Error()
+			}
+			a.loadHistory(false)
+		})
+	}()
+}
+func (a *application) openTerminal() {
+	m, c := a.selected()
+	if m == nil || c == nil || m.opening {
+		return
+	}
+	if m.term != nil && m.termIdentity == c.agent.Identity() {
+		return
+	}
+	if m.term != nil {
+		m.term.Close()
+		m.term = nil
+	}
+	if m.remote != nil {
+		m.remote.Close()
+		m.remote = nil
+	}
+	if a.demo {
+		term, err := terminal.New(terminal.Options{NoClipboardWrite: true})
+		if err != nil {
+			m.termState = err.Error()
+			return
+		}
+		m.term = term
+		m.termIdentity = c.agent.Identity()
+		m.termState = "本机终端 · 演示"
+		return
+	}
+	if m.session == nil {
+		m.termState = "请先连接电脑"
+		return
+	}
+	if !m.capabilities["desktop_terminal_v1"] {
+		m.termState = "请更新这台电脑上的 Relay 后再连接终端"
+		return
+	}
+	if m.config.Auth.Role != "controller" {
+		m.termState = "当前设备为只读权限"
+		return
+	}
+	m.opening = true
+	m.termState = "正在连接终端…"
+	remote := relay.NewTerminalConn(m.session, c.agent)
+	m.remote = remote
+	identity, epoch := c.agent.Identity(), m.epoch
+	go func() {
+		ctx, cancel := context.WithTimeout(a.ctx, 15*time.Second)
+		defer cancel()
+		err := remote.Open(ctx)
+		a.win.Update(func() {
+			m.opening = false
+			if m.epoch != epoch || m.remote != remote {
+				remote.Close()
+				return
+			}
+			if err != nil {
+				m.termState = err.Error()
+				m.remote = nil
+				return
+			}
+			term, termErr := terminal.New(terminal.Options{Conn: remote, ResizeByConn: true, NoClipboardWrite: true,
+				OnScroll: func(lines int) bool { go remote.Scroll(lines); return true },
+				OnExit: func(_ int) {
+					a.win.Update(func() {
+						if m.epoch == epoch && m.remote == remote {
+							if m.term != nil {
+								m.term.Close()
+							}
+							m.term = nil
+							m.remote = nil
+							m.termState = "终端已断开，可重新连接"
+						}
+					})
+				},
+			})
+			if termErr != nil {
+				remote.Close()
+				m.termState = termErr.Error()
+				m.remote = nil
+				return
+			}
+			remote.Start(term.Resize)
+			m.term = term
+			m.termIdentity = identity
+			m.termState = "终端已连接"
+		})
+	}()
+}
+func (a *application) loadDemo() {
+	a.status = ""
+	for i, name := range []string{"研究工作站", "训练服务器"} {
+		m := &machine{config: relay.Computer{ID: fmt.Sprint(i), Name: name}, status: "演示"}
+		for j, title := range []string{"评测报告", "结果复核"} {
+			agent := relay.Agent{Target: relay.Target{ServerSessionID: "primary", PaneID: fmt.Sprintf("pane-%d", j), TerminalID: fmt.Sprintf("term-%d", j), AgentSessionID: "demo"}, Name: title, Agent: "codex", Cwd: "/work/robotics", Project: "机器人研究", WorkspaceID: "robotics", Status: []string{"working", "blocked"}[j], BindingState: "verified"}
+			m.agents = append(m.agents, agent)
+			a.chats[m.config.ID+":"+agent.Identity()] = &conversation{agent: agent, folds: map[string]*bool{}, entries: []entry{
+				{ID: "user", Role: "user", Text: "检查评测结果，整理一份简短报告。"},
+				{ID: "assistant", Role: "assistant", Text: "已完成首轮核对。\n\n### 评测摘要\n\n成功率 **96.0%**，较基线提高 4 个百分点。\n\n验证集划分一致，没有发现数据泄漏。接下来复查失败样例。", Tools: []map[string]any{{"name": "read_file", "input": "eval-summary.json", "output": "校验完成"}}},
+			}}
+		}
+		a.machines = append(a.machines, m)
+	}
+	a.selectedMachine = "0"
+	a.selectedAgent = "pane-0"
+}

@@ -1,11 +1,20 @@
 # Native build CI and Android signing
 
-The `build-artifacts` workflow runs on pushes, pull requests and manual dispatch.
-It builds Relay/Gateway for Linux and macOS, each on amd64 and arm64, and Herdr
-Pocket for `armeabi-v7a`, `arm64-v8a`, and `x86_64`. It does not deploy services,
-create tags or publish/replace GitHub Releases. All Actions artifacts expire after **one day**, following the repository-wide
-retention policy. Download successful build output before it expires; published
-Release assets are independent of Actions retention.
+The `build-artifacts` workflow selects changed components on pushes to the default
+branch and pull requests. Desktop-only and documentation-only changes skip the
+Android and Relay builds. Manual dispatch selects `all`, `native`, or `android`.
+Selected builds produce Relay/Gateway for Linux/macOS amd64/arm64 or Herdr Pocket
+for three Android ABIs. Existing Android signing and publication checks remain in
+place. This workflow does not deploy or publish releases. Android/native build
+artifacts expire after **one day**; Windows desktop ZIPs expire after **seven days**.
+
+## 日常 CI 与深度检查
+
+- `check` 按改动范围运行 Go 格式/vet/测试、Shell 与打包脚本测试、或前端 lint/类型检查/单测/build。只改桌面 UI 时不启动这些服务端/网页任务。
+- 完整竞态检测、journald 验收、浏览器、多平台发布包、手机测试分片与 Android/iOS 模拟器改为 **Actions → check → Run workflow → full=true**。测试内容和发布验收标准没有删减。
+- 新提交取消相同分支/PR 尚未完成的旧 CI，保留最新提交。正式发布依然使用完成且成功的精确构建；上游 `v*` 发布要求成功的 `check · deep`。
+- `build-artifacts` 自动构建发生变化的组件；同时发布 Android 与 Native 时，可手动选择 `all` 从同一提交生成两类产物。
+- Windows 客户端由独立的 `desktop-windows` 自动测试并打包，下载入口见 [桌面 CI](../desktop/README.md#自动构建)。
 
 ## Release 发布：只走 GitHub Actions
 
@@ -14,7 +23,7 @@ Release assets are independent of Actions retention.
 它不会重新跑 Gradle/Go 构建，也不读取签名私钥；大文件只在 GitHub runner 和 GitHub 之间传输。
 每次 push 仍只构建，不会擅自发布新版本。
 
-1. 修改需要发布的组件版本，commit/push 原分支，等 `build-artifacts` 成功。
+1. 修改需要发布的组件版本，commit/push 原分支，等对应 `build-artifacts` 成功；需同时取得两个组件时手动选择 `components=all`。
 2. 在 **Actions → publish-components → Run workflow** 填入这个构建的 run ID。
 3. 先保持 `publish=false` 进行只读验证；确认成功后，用同一 run ID 设 `publish=true` 发布。
    两个组件都变更选 `both`，只更新 App 选 `android`，只更新服务端选 `native`。
@@ -100,9 +109,8 @@ does not publish a Release on every push.
 The fixed signing job runs only for a **push or manual workflow dispatch on
 `feat/android-file-companion` in `cxnaive/herder_relay_extra`**. This is the
 existing default branch, not an additional signing branch. PRs, other branches,
-tags, and forks do not run that job or receive its secrets. The full `check`
-workflow also runs for pushes and PRs targeting this default branch, alongside
-its existing `main` and `dev` triggers.
+tags, and forks do not run that job or receive its secrets. Routine `check` runs
+only affected components; full validation is an explicit manual dispatch.
 
 The expected certificate SHA-256 is recorded in `VERSION.json`:
 

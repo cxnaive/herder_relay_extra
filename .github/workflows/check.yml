@@ -1,16 +1,46 @@
 name: check
+run-name: "check · ${{ github.event_name == 'workflow_dispatch' && inputs.full && 'deep' || 'changed components' }}"
 
 on:
   push:
     branches: [main, dev, feat/android-file-companion]
   pull_request:
+    branches: [main, dev, feat/android-file-companion]
+  workflow_dispatch:
+    inputs:
+      full:
+        description: Run deep validation (race, browsers, four-platform bundles and mobile devices)
+        type: boolean
+        default: false
+        required: false
+
+permissions:
+  contents: read
 
 concurrency:
-  group: check-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: check-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Select changed components
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    outputs:
+      go: ${{ steps.paths.outputs.go }}
+      shell: ${{ steps.paths.outputs.shell }}
+      frontend: ${{ steps.paths.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: paths
+        uses: ./.github/actions/changed-components
+
   go:
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
     name: Go quality
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -23,13 +53,14 @@ jobs:
           go-version: 1.27.3
           cache: true
       - name: Format
-        run: test -z "$(gofmt -l $(find . -name '*.go' -not -path './frontend/node_modules/*'))"
+        run: test -z "$(git ls-files '*.go' ':!:desktop/**' | xargs gofmt -l)"
       - run: go vet ./...
       # Serialize package test binaries: lifecycle subprocess tests use bounded
       # one-second contexts and must not compete with unrelated packages.
       - run: go test -p 1 ./...
 
   journal:
+    if: github.event_name == 'workflow_dispatch' && inputs.full
     name: Linux journald logging acceptance
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -50,6 +81,7 @@ jobs:
   # unrelated to it. Both used to sit behind `go test` in one serial job and
   # decided when every later job could start.
   race:
+    if: github.event_name == 'workflow_dispatch' && inputs.full
     name: Go race detector
     runs-on: ubuntu-latest
     # Leave room for setup and the remaining serial packages, not only conversation.
@@ -67,6 +99,8 @@ jobs:
       - run: go test -race -p 1 -timeout=20m ./...
 
   shell:
+    needs: changes
+    if: needs.changes.outputs.shell == 'true'
     name: Shell and production paths
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -82,8 +116,11 @@ jobs:
           go-version: 1.27.3
           cache: true
       - run: make shell-check production-path-audit
+      - run: python3 -m unittest discover -s scripts/tests -p 'test_*.py'
 
   frontend:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
     name: Frontend and mobile browsers
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -112,7 +149,8 @@ jobs:
       # assertion in the suite depends on the image's font set. Ubuntu is a
       # supported install-deps target; Fedora is not, which is why the
       # container path in run-browser-tests.sh stays for local Fedora runs.
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - if: github.event_name == 'workflow_dispatch' && inputs.full
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('frontend/bun.lock') }}
@@ -120,26 +158,34 @@ jobs:
       # WebKit system packages, so the downloaded packages are cached as well.
       # They are saved right after the install, even if a later check fails.
       - id: playwright-apt
+        if: github.event_name == 'workflow_dispatch' && inputs.full
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/playwright-apt
           key: playwright-apt-${{ runner.os }}-${{ hashFiles('frontend/bun.lock') }}
       - name: Keep browser system packages for the cache
+        if: github.event_name == 'workflow_dispatch' && inputs.full
         run: |
           set -euo pipefail
           mkdir -p "$HOME/.cache/playwright-apt/partial"
           printf 'Dir::Cache::Archives "%s";\nAPT::Keep-Downloaded-Packages "true";\n' "$HOME/.cache/playwright-apt" \
             | sudo tee /etc/apt/apt.conf.d/90-playwright-archives >/dev/null
-      - run: cd frontend && bun x playwright install --with-deps chromium webkit
+      - if: github.event_name == 'workflow_dispatch' && inputs.full
+        run: cd frontend && bun x playwright install --with-deps chromium webkit
       - name: Let the cache read the browser system packages
+        if: github.event_name == 'workflow_dispatch' && inputs.full
         run: sudo chown -R "$(id -u):$(id -g)" "$HOME/.cache/playwright-apt"
-      - if: steps.playwright-apt.outputs.cache-hit != 'true'
+      - if: github.event_name == 'workflow_dispatch' && inputs.full && steps.playwright-apt.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/playwright-apt
           key: ${{ steps.playwright-apt.outputs.cache-primary-key }}
       - run: make PATH="$PATH" frontend-check
-      - run: make PATH="$PATH" web-release-check
+      - if: github.event_name == 'workflow_dispatch' && inputs.full
+        run: make PATH="$PATH" web-release-check
+      - name: Verify committed web bundle
+        if: github.event_name != 'workflow_dispatch' || !inputs.full
+        run: make PATH="$PATH" web-bundle-check
       # A hung browser leaves only a timeout in the log. The failing tests'
       # Playwright traces (synthetic fixture data) show what the page was doing.
       - if: failure()
@@ -154,6 +200,7 @@ jobs:
   # publishes, so they no longer wait behind the test jobs: a red run fails on
   # its own job and a green run stops paying for the serial hop.
   release:
+    if: github.event_name == 'workflow_dispatch' && inputs.full
     name: Complete release bundles
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -223,6 +270,7 @@ jobs:
             "${target%_*}/${target#*_}"
 
   mobile-host-check:
+    if: github.event_name == 'workflow_dispatch' && inputs.full
     name: Mobile harness checks
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -248,6 +296,7 @@ jobs:
       - run: make PATH="$PATH" mobile-ci-common-check
 
   mobile-unit-prepare:
+    if: github.event_name == 'workflow_dispatch' && inputs.full
     name: Prepare source-bound mobile unit shards
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -396,7 +445,7 @@ jobs:
 
   mobile-unit-aggregate:
     name: Complete mobile unit shard gate
-    if: always()
+    if: always() && github.event_name == 'workflow_dispatch' && inputs.full
     needs: [mobile-unit-prepare, mobile-unit-shards]
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -467,6 +516,7 @@ jobs:
           --groups-result "$UNIT_GROUPS_RESULT"
 
   mobile-inspection-check:
+    if: github.event_name == 'workflow_dispatch' && inputs.full
     name: Android installed inspection controls
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -488,9 +538,7 @@ jobs:
 
   mobile:
     name: Mobile device CI
-    if: >-
-      (github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feat/android-file-companion')) ||
-      (github.event_name == 'pull_request' && (github.event.pull_request.base.ref == 'main' || github.event.pull_request.base.ref == 'dev' || github.event.pull_request.base.ref == 'feat/android-file-companion'))
+    if: github.event_name == 'workflow_dispatch' && inputs.full
     needs: [release, mobile-host-check, mobile-inspection-check, mobile-unit-aggregate]
     uses: ./.github/workflows/mobile-ci.yml
     with:

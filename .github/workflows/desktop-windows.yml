@@ -1,0 +1,83 @@
+name: desktop-windows
+
+on:
+  push:
+    branches: [feat/android-file-companion, main, dev]
+    paths:
+      - 'desktop/**'
+      - '!desktop/**/*.md'
+      - 'contracts/**'
+      - 'internal/protocol/**'
+      - 'internal/directterminal/**'
+      - 'internal/transport/**'
+      - 'internal/gateway/**'
+      - 'internal/app/desktop_terminal.go'
+      - 'internal/app/server.go'
+      - '.github/workflows/desktop-windows.yml'
+  pull_request:
+    branches: [feat/android-file-companion, main, dev]
+    paths:
+      - 'desktop/**'
+      - '!desktop/**/*.md'
+      - 'contracts/**'
+      - 'internal/protocol/**'
+      - 'internal/directterminal/**'
+      - 'internal/transport/**'
+      - 'internal/gateway/**'
+      - 'internal/app/desktop_terminal.go'
+      - 'internal/app/server.go'
+      - '.github/workflows/desktop-windows.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-windows-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Windows client tests and portable build
+    runs-on: windows-2025
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: desktop/go.mod
+          cache-dependency-path: desktop/go.sum
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/AppData/Local/mygo/natives
+          key: mygo-windows-amd64-${{ hashFiles('desktop/go.sum', 'desktop/mygo.json') }}
+      - name: Format and vet
+        run: |
+          $files = @(git ls-files -- '*.go' | Where-Object { $_ -notlike 'build/*' })
+          gofmt -w @files
+          if ($LASTEXITCODE -ne 0) { throw 'Go formatting failed.' }
+          git -c core.safecrlf=false diff --exit-code -- @files
+          if ($LASTEXITCODE -ne 0) { throw 'Run gofmt before committing.' }
+          go vet ./...
+          if ($LASTEXITCODE -ne 0) { throw 'Go vet failed.' }
+      - name: Build Windows app with native terminal library and icon
+        run: ./scripts/build.ps1 -Platform windows/amd64
+      - name: Test native UI, terminal, transport and downloads
+        run: |
+          go test -count=1 -timeout=5m ./...
+          if ($LASTEXITCODE -ne 0) { throw 'Desktop tests failed.' }
+      - name: Package app, build metadata and checksums
+        run: ./scripts/package-windows.ps1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: herdr-desktop-windows-amd64-${{ github.run_number }}
+          path: desktop/build/artifacts/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0

@@ -1,6 +1,6 @@
 # Mobile device lane
 
-`.github/workflows/mobile-ci.yml` installs a published release on an Android emulator (pinned Chrome) and an iOS simulator (Home Screen web app), upgrades it to the build under test and runs the release scenario on both platforms in parallel. `check.yml` calls it for pushes to `dev`, `main`, and this fork’s `feat/android-file-companion` default branch, and for pull requests into those branches. A new push to a pull request cancels that pull request's previous run. Every push to a branch gets its own run and is never cancelled.
+`.github/workflows/mobile-ci.yml` installs a published release on an Android emulator (pinned Chrome) and an iOS simulator (Home Screen web app), upgrades it to the build under test and runs the release scenario on both platforms in parallel. At the user's request, routine pushes/PRs run component checks only. `check.yml` calls the full device lane only for manual dispatch with `full=true`; the upstream release lane retains its device qualification. A newer push or pull-request run cancels the superseded run for that branch/PR. Product acceptance assertions remain unchanged.
 
 ## Release baselines
 

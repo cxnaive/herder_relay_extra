@@ -76,6 +76,8 @@ type speechRequest struct {
 }
 
 type Server struct {
+	desktopTerminalMu sync.Mutex
+	desktopTerminals  map[string]*desktopTerminal
 	codexBindings     codexBindingRegistry
 	codexDiscoveryMu  sync.Mutex
 	codexProcessProbe func(context.Context, *coordinator.AgentState) (codexRuntimeProbe, string)
@@ -384,7 +386,7 @@ func validateExactPaneTarget(state *coordinator.State, inbound protocol.Inbound,
 	if inbound.PaneID == "" {
 		return nil
 	}
-	if inbound.Type == "unwatch_pane" || inbound.Type == "unwatch_conversation" || inbound.Type == "release_pane_size" || inbound.Type == "cancel_speech" {
+	if inbound.Type == "terminal_close" || inbound.Type == "unwatch_pane" || inbound.Type == "unwatch_conversation" || inbound.Type == "release_pane_size" || inbound.Type == "cancel_speech" {
 		if target != nil && target.PaneID != inbound.PaneID {
 			apiErr := protocol.NewApiError(protocol.ErrorInvalidRequest, map[string]any{"field": "target.pane_id"})
 			return &apiErr
@@ -673,6 +675,7 @@ func (s *Server) Run(ctx context.Context) error {
 	s.hub.SetOnConnect(s.sendConnectionSnapshot)
 
 	s.hub.SetOnDisconnect(func(client *transport.ClientConn) {
+		s.closeDesktopTerminal(client.ID(), "")
 		s.stopConversationFeed(client.ID(), "")
 		s.stopPaneWatch(client.ID(), "")
 		if identity, authenticated := client.Identity(); authenticated && s.pushM != nil {
@@ -775,6 +778,8 @@ func (s *Server) Run(ctx context.Context) error {
 			return nil
 		})
 		switch action {
+		case "terminal_open", "terminal_input", "terminal_resize", "terminal_scroll", "terminal_close":
+			s.handleDesktopTerminal(commandCtx, client, inbound, admitted)
 		case "file_access_get", "file_access_set":
 			s.handleFileAccess(client, inbound, msg)
 		case protocol.SessionBindingDiagnosticsAction:
@@ -1586,6 +1591,9 @@ func (s *Server) effectiveCapabilitiesFor(herdrStatus herdr.ServerStatus) []stri
 	capabilities := append([]string(nil), protocol.Capabilities...)
 	capabilities = append(capabilities, "pi_prompt_unconfirmed")
 	capabilities = append(capabilities, "primary_session_binding_v1")
+	if desktopTerminalAvailable(herdrStatus) {
+		capabilities = append(capabilities, "desktop_terminal_v1")
+	}
 	// Never the legacy pane_size_lease names: apps up to 0.22.7 lease
 	// automatically when they see them.
 	if s.paneSizeM.Available() {

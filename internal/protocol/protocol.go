@@ -104,6 +104,11 @@ func mutateAction(operation string, coordinated, audited bool) ActionMetadata {
 }
 
 var actionCatalog = map[string]ActionMetadata{
+	"terminal_open":                 mutateAction("terminal_open", true, true),
+	"terminal_input":                mutateAction("terminal_input", true, false),
+	"terminal_resize":               mutateAction("terminal_resize", true, false),
+	"terminal_scroll":               mutateAction("terminal_scroll", true, false),
+	"terminal_close":                readAction("terminal_close"),
 	SessionBindingDiagnosticsAction: readAction(SessionBindingDiagnosticsAction),
 	"get_agent_run_state":           readAction("get_agent_run_state"),
 	"get_agent_settings":            readAction("get_agent_settings"),
@@ -195,6 +200,8 @@ var actionCatalog = map[string]ActionMetadata{
 }
 
 type Inbound struct {
+	StreamID             string          `json:"stream_id,omitempty"`
+	TerminalSequence     uint64          `json:"terminal_sequence,omitempty"`
 	FileScope            string          `json:"file_scope,omitempty"`
 	FilesystemRead       *bool           `json:"filesystem_read,omitempty"`
 	Model                string          `json:"model,omitempty"`

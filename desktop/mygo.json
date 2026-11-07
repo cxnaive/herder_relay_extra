@@ -1,0 +1,9 @@
+{
+  "name": "Herdr Desktop",
+  "identifier": "dev.herdr.desktop",
+  "version": "0.1.0",
+  "main": ".",
+  "out": "build",
+  "icon": "resources/icon.png",
+  "license": "AGPL-3.0-or-later"
+}

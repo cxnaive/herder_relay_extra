@@ -1,0 +1,21 @@
+name: Changed components
+description: Select checks from the full push or pull-request diff
+outputs:
+  go:
+    value: ${{ steps.changes.outputs.go }}
+  native:
+    value: ${{ steps.changes.outputs.native }}
+  android:
+    value: ${{ steps.changes.outputs.android }}
+  frontend:
+    value: ${{ steps.changes.outputs.frontend }}
+  shell:
+    value: ${{ steps.changes.outputs.shell }}
+  desktop:
+    value: ${{ steps.changes.outputs.desktop }}
+runs:
+  using: composite
+  steps:
+    - id: changes
+      shell: bash
+      run: python3 scripts/ci-changes.py

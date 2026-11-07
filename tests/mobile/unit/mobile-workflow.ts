@@ -16,7 +16,8 @@ type Context = Record<string, any>;
 type Row = { platform: 'android' | 'ios'; product: 'PASS' | 'FAIL' | 'INDETERMINATE'; environment: 'PASS' | 'FAIL' | 'UNKNOWN' | 'NOT_APPLICABLE'; complete: boolean; artifact: boolean; current?: boolean };
 const needed = ['provenance', 'prepare', 'device', 'environment_report', 'gate'];
 
-function expression(source: string, context: Context): any {
+function expression(source: string | boolean, context: Context): any {
+  if (typeof source === 'boolean') return source;
   const text = source.replace(/^\s*\$\{\{\s*|\s*\}\}\s*$/gu, '');
   const tokens: string[] = [];
   let position = 0;
@@ -128,7 +129,7 @@ function auditUnitShardWorkflow(check: any, source: string): void {
   assert.equal(shards.strategy['max-parallel'], 12);
   assert.equal(shards.strategy.matrix, '${{ fromJSON(needs.mobile-unit-prepare.outputs.matrix) }}');
   assert.equal(preparation.outputs.matrix, '${{ steps.prepare.outputs.matrix }}');
-  assert.equal(aggregate.if, 'always()');
+  assert.equal(aggregate.if, "always() && github.event_name == 'workflow_dispatch' && inputs.full");
   assert.deepEqual(aggregate.needs, ['mobile-unit-prepare', 'mobile-unit-shards']);
   for (const job of [preparation, shards, aggregate]) {
     const cache = job.steps.find((step: any) => step.id === 'mobile-unit-cache');
@@ -209,10 +210,10 @@ function audit(workflow: any, action: any, release: any, check: any, shardSource
   assert.match(timing, /if \[ "\$WORKFLOW_PLATFORM" = ios \]; then printf 'MOBILE_TIMING_SCALE=3/u);
   assert.equal(timing.match(/MOBILE_TIMING_SCALE/gu)?.length, 1);
   assert.deepEqual(workflow.permissions, { contents: 'read', actions: 'read' });
-  for (const document of [workflow, check]) {
-    assert.equal(document.concurrency['cancel-in-progress'], "${{ github.event_name == 'pull_request' }}");
-    assert.match(document.concurrency.group, /\$\{\{ github.event.pull_request.number \|\| github.run_id \}\}/u);
-  }
+  assert.equal(workflow.concurrency['cancel-in-progress'], "${{ github.event_name == 'pull_request' }}");
+  assert.match(workflow.concurrency.group, /\$\{\{ github.event.pull_request.number \|\| github.run_id \}\}/u);
+  assert.equal(check.concurrency['cancel-in-progress'], true);
+  assert.match(check.concurrency.group, /\$\{\{ github.event.pull_request.number \|\| github.ref \}\}/u);
   assert.notEqual(workflow.concurrency.group, check.concurrency.group);
   for (const inputs of [workflow.on.workflow_call.inputs, workflow.on.workflow_dispatch.inputs, check.jobs.mobile.with, release.jobs.mobile.with]) {
     for (const key of ['suite', 'baseline_set', 'platform']) assert.equal(inputs[key], undefined);
@@ -271,13 +272,15 @@ function audit(workflow: any, action: any, release: any, check: any, shardSource
   assert.deepEqual(check.jobs.mobile.needs, ['release', 'mobile-host-check', 'mobile-inspection-check', 'mobile-unit-aggregate']);
   assert.equal(check.jobs.mobile.uses, './.github/workflows/mobile-ci.yml');
   for (const ref of ['dev', 'main', 'feat/android-file-companion', 'ci-mobile', 'feature']) {
-    assert.equal(condition(check.jobs.mobile.if, { needs: {}, github: { ref: 'refs/heads/' + ref, event_name: 'push' }, success: true }), ['dev', 'main', 'feat/android-file-companion'].includes(ref));
+    assert.equal(condition(check.jobs.mobile.if, { needs: {}, github: { ref: 'refs/heads/' + ref, event_name: 'push' }, success: true }), false);
   }
   for (const base of ['dev', 'main', 'feat/android-file-companion', 'other']) for (const head of ['ci-mobile', 'feature']) for (const repository of ['public/repo', 'foreign/repo']) {
     const github = { ref: 'refs/pull/25/merge', event_name: 'pull_request', repository: 'public/repo', event: { pull_request: { base: { ref: base }, head: { ref: head, repo: { full_name: repository } } } } };
-    assert.equal(condition(check.jobs.mobile.if, { needs: {}, success: true, github }), base !== 'other');
+    assert.equal(condition(check.jobs.mobile.if, { needs: {}, success: true, github }), false);
     assert.equal(condition(check.jobs.mobile.if, { needs: {}, success: false, github }), false);
   }
+  assert.equal(condition(check.jobs.mobile.if, { needs: {}, github: { event_name: 'workflow_dispatch' }, inputs: { full: true }, success: true }), true);
+  assert.equal(condition(check.jobs.mobile.if, { needs: {}, github: { event_name: 'workflow_dispatch' }, inputs: { full: false }, success: true }), false);
   assert.deepEqual(release.jobs.publish.needs, ['verify', 'build', 'native-smoke', 'mobile']);
   assert.equal(release.jobs.mobile.needs, 'build');
   assert.equal(release.jobs['native-smoke'].needs, 'build');
@@ -358,7 +361,7 @@ export const mobileWorkflowTests: Array<[string, () => Promise<void>]> = [
     for (const [id, job] of Object.entries(workflow.jobs) as Array<[string, any]>) {
       if (id !== 'android-sign') assert.doesNotMatch(JSON.stringify(job), /secrets\./u);
       for (const step of job.steps) {
-        if (step.uses) assert.match(step.uses, /@[0-9a-f]{40}$/u);
+        if (step.uses && !step.uses.startsWith('./')) assert.match(step.uses, /@[0-9a-f]{40}$/u);
         if (step.uses?.startsWith('actions/upload-artifact@')) {
           assert.equal(step.with['retention-days'], 1);
           assert.doesNotMatch(step.with.path, /keystore|runner\.temp|\.gradle/u);
@@ -901,8 +904,9 @@ if (mode === operation + '-timeout') process.exit(124);
       assert.equal(render(document.concurrency.group, pr), render(document.concurrency.group, { ...pr, sha: 'new-push', run_id: 99 }));
       assert.notEqual(render(document.concurrency.group, pr), render(document.concurrency.group, { ...pr, event: { pull_request: { number: 26 } } }));
       const push = { event_name: 'push', ref: 'refs/heads/dev', run_id: 25 };
-      assert.equal(expression(document.concurrency['cancel-in-progress'], { github: push }), false);
-      assert.notEqual(render(document.concurrency.group, push), render(document.concurrency.group, { ...push, sha: 'new-push', run_id: 26 }));
+      assert.equal(expression(document.concurrency['cancel-in-progress'], { github: push }), document === check);
+      if (document === check) assert.equal(render(document.concurrency.group, push), render(document.concurrency.group, { ...push, sha: 'new-push', run_id: 26 }));
+      else assert.notEqual(render(document.concurrency.group, push), render(document.concurrency.group, { ...push, sha: 'new-push', run_id: 26 }));
       assert.notEqual(render(document.concurrency.group, push), render(document.concurrency.group, pr));
     }
     const mutations: Array<(w: any, a: any, r: any, k: any) => void> = [
@@ -933,7 +937,7 @@ if (mode === operation + '-timeout') process.exit(124);
       (_w, _a, r) => r.jobs.publish.needs.pop(),
       (_w, _a, _r, k) => k.jobs.mobile.needs.pop(),
       (_w, _a, _r, k) => k.jobs.mobile.if = 'always()',
-      (_w, _a, _r, k) => k.concurrency.group = 'check-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}',
+      (_w, _a, _r, k) => k.concurrency.group = 'check-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}',
       (_w, _a, _r, k) => k.jobs['mobile-unit-aggregate'].if = 'success()',
       (_w, _a, _r, k) => k.jobs['mobile-unit-aggregate'].needs.pop(),
       (_w, _a, _r, k) => delete k.jobs['mobile-unit-shards'].if,
