@@ -20,8 +20,8 @@ android {
         applicationId = "dev.herdr.companion"
         minSdk = 28
         targetSdk = 35
-        versionCode = 33
-        versionName = "0.2.30"
+        versionCode = 34
+        versionName = "0.2.31"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }

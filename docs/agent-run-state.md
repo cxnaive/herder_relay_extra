@@ -1,7 +1,7 @@
 # Native conversation run status and elapsed time
 
-Local extension: Android **0.2.10 (versionCode 13)** + computer Relay
-**0.23.5+codexfix.8**. Gateway and pairing are unchanged.
+Current extension: Android **0.2.31 (versionCode 34)** + computer Relay
+**0.23.5+codexfix.19**. Gateway and pairing are unchanged.
 
 ## What the phone shows
 
@@ -30,7 +30,7 @@ New read-only authenticated command `get_agent_run_state` and capability
 `agent_run_state_v1`. Request includes the exact existing pane target tuple.
 Both readers and controllers may read it; it performs no mutations.
 
-For Codex, the Relay resolves the exact configured local daemon using the same
+For shared-runtime Codex, the Relay resolves the exact terminal-owned local daemon using the same
 live pane/process/thread guard as model settings. It reads:
 
 1. `thread/read` with `includeTurns:false` (metadata only);
@@ -38,15 +38,33 @@ live pane/process/thread guard as model settings. It reads:
 3. another metadata read and the live target/authorization guard.
 
 It never reads full turn items, resumes/starts a thread, alters model settings,
-sends terminal input or parses a large conversation for status. RPC messages are
+or sends terminal input. RPC messages are
 bounded to 128 KiB, each request has a four-second budget and four local query
 slots. Unsupported turn-header APIs still allow a status without a fabricated timer.
 Concurrent status transitions discard the uncertain timing. The start/end seconds
 and supplied duration milliseconds are validated; completed duration stays fixed.
 
+For standalone/embedded Codex (including `--no-daemon`), there is no external
+turn endpoint. The Relay verifies the existing TUI/writer/primary binding and
+reads **lifecycle metadata only** from that exact rollout: `task_started` /
+`task_complete` (and `turn_started` / `turn_complete` aliases), `turn_aborted`,
+turn ID, start/end/duration and error presence. Transcript/tool text is not used
+as proof. Each new read is bounded to a 4 MiB tail; a 128-entry inode/size/mtime
+cache parses bounded appends incrementally, retaining a known start through long
+tool output. Rotation, partial appends, conflicts and missing records do not
+reuse a previous completion. A fresh reader whose start lies outside the window
+may report unknown timing until another lifecycle record arrives.
+
+Inventory includes optional `run_state` for desktop notifications. Its lifecycle
+state is reconciled with shared-runtime status when present. Terminal idle/done
+cannot end a lifecycle-active standalone turn; a positive busy signal vetoes an
+old persisted completion. A recorded unmatched old start cannot itself prove
+liveness after a crash/resume; these records are not an atomic TUI status API.
+
 Response fields include `status`, `source`, optional `attention_kind`/`turn_id`,
 `started_at`/`finished_at` (epoch ms), `elapsed_ms` (nullable), `ticking`,
-`observed_at` and `timing` (`turn_elapsed` or `unknown`). These are observation-time
+`observed_at`, `evidence` (`runtime_turn`, `rollout_lifecycle`, `unavailable`),
+`completion_confirmed`, `completion_pending` and `timing` (`turn_elapsed` or `unknown`). These are observation-time
 snapshots, not promises that the remote process remains running afterward.
 
 The phone polls only the open agent, roughly every five seconds with at most one
@@ -57,6 +75,28 @@ fenced to view epoch, request identity, pane/session tuple and intervening statu
 changes. Leaving the page or backgrounding stops timers; reconnect cannot revive
 an old callback. A tick updates the status strip only, without rebuilding history
 or moving its scroll position.
+
+## Completion notification boundary
+
+- Only a verified exact target may supply Codex completion evidence. An idle
+  snapshot is not a completion record. Success must include a valid turn ID;
+  failed/aborted turns never emit successful completion.
+- A just-finished turn stays pending (`completion_pending:true`) for at least three seconds to suppress
+  immediate continuations. Android/desktop require observing that **same turn**
+  working/blocked on the same binding, with the same evidence source, followed
+  by `done` plus `completion_confirmed`. A pending snapshot cannot establish a
+  new active baseline. Unknown observations invalidate it.
+- Android active observations expire after 90 seconds, are not restored from
+  disk, and are cleared on disconnect/rebinding. Durable recent completion IDs
+  still suppress duplicate delivery. Desktop clears run observations on reconnect.
+- Very short turns entirely between polls, offline completions and missing
+  lifecycle records can miss notifications. This deliberately favors avoiding
+  false completion over speculative catch-up. Other agent providers keep their
+  existing Herdr rules. Old Relays cannot supply trusted Codex completion proof.
+- A notification means **this turn completed**, not that an entire goal/workflow
+  cannot continue. Neither polling nor a three-second grace can predict a future
+  autonomous continuation. `--no-daemon` timing is whole-turn wall time, including
+  tools/approvals, not token-generation or CPU time.
 
 ## Validation
 

@@ -2,7 +2,7 @@
 
 与本仓库电脑 Relay 配套的原生 Android 客户端，不使用 WebView 运行 Agent 界面。
 
-当前源码 `0.2.30` / versionCode `33` 配合 Relay codexfix.18，按 [Codex 终端主会话策略](../docs/primary-session-binding.md) 展示 runtime 唯一主线程，或以匹配的 Herdr 上报消除多主线程歧义；无法确认时提示可尝试 `--no-daemon`，其他 agent 不改变流程；同会话缓存会刷新，换会话撤销旧请求并切换缓存。下载版本及构建来源以下方已发布记录为准。
+当前源码 `0.2.31` / versionCode `34` 配合 Relay codexfix.19，按 [Codex 终端主会话策略](../docs/primary-session-binding.md) 展示 runtime 唯一主线程，或以匹配的 Herdr 上报消除多主线程歧义；无法确认时提示可尝试 `--no-daemon`，其他 agent 不改变流程；同会话缓存会刷新，换会话撤销旧请求并切换缓存。下载版本及构建来源以下方已发布记录为准。
 
 新建 Codex 时会显示 Relay 上报的“电脑端默认附加”参数；下面的“额外启动参数”留空也会使用默认值，不需要手填或复制。已确认主会话时在页面显示完整 Session ID，运行时/标题失败与首轮尚无元数据分别说明。
 

@@ -13,7 +13,24 @@ type Target struct {
 	AgentSessionID  string `json:"agent_session_id"`
 	BindingEpoch    uint64 `json:"binding_epoch"`
 }
+
+// RunEvidence is metadata for the exact foreground turn, not a terminal-idle guess.
+type RunEvidence struct {
+	Status              string `json:"status"`
+	Source              string `json:"source"`
+	Evidence            string `json:"evidence"`
+	TurnID              string `json:"turn_id"`
+	CompletionPending   bool   `json:"completion_pending"`
+	CompletionConfirmed bool   `json:"completion_confirmed"`
+	ObservedAt          int64  `json:"observed_at"`
+}
+
+func (r *RunEvidence) Trusted() bool {
+	return r != nil && r.Source == "codex_runtime" && r.TurnID != "" && (r.Evidence == "runtime_turn" || r.Evidence == "rollout_lifecycle")
+}
+
 type Agent struct {
+	RunState *RunEvidence `json:"run_state,omitempty"`
 	Target
 	Agent               string       `json:"agent"`
 	Name                string       `json:"name"`

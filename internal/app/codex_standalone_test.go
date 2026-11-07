@@ -227,7 +227,7 @@ func TestCodexStandaloneNeverUsesSharedSettingsOrTiming(t *testing.T) {
 	}
 	in := protocol.Inbound{Type: "get_agent_run_state", PaneID: a.PaneID, Target: &target}
 	state, err := s.agentRunState(t.Context(), in)
-	if err != nil || state.Source != "herdr" || state.Timing != "unknown" {
+	if err != nil || state.Source != "codex_runtime" || state.Timing != "unknown" {
 		t.Fatalf("invented standalone timing: %+v %v", state, err)
 	}
 	diagnostics, err := s.sessionBindingDiagnostics(t.Context(), in)

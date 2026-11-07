@@ -31,7 +31,9 @@ type codexObservation struct {
 	probe           codexRuntimeProbe
 	report          herdr.AgentSession
 	title           string
+	herdrStatus     string
 	thread          codexruntime.Thread
+	run             *codexruntime.RunState
 	runtime, reason string
 }
 type codexStoreResult struct {
@@ -204,6 +206,7 @@ func (s *Server) observeCodexRuntime(ctx context.Context, agents []*coordinator.
 			observations[a.PaneID] = obs
 			continue
 		}
+		obs.herdrStatus = pane.Status
 		obs.report = pane.SessionRaw
 		obs.title = pane.TerminalTitle
 		if len(observations) > 128 {
@@ -261,6 +264,10 @@ func (s *Server) observeCodexRuntime(ctx context.Context, agents []*coordinator.
 				}
 			}
 		}
+		if obs.reason == "" {
+			run := s.recordedCodexRun(ctx, a, obs.probe, obs.thread.ID, obs.herdrStatus, obs.thread.AgentStatus())
+			obs.run = &run
+		}
 		after, err := s.herdrC.PaneGet(ctx, a.PaneID)
 		if err != nil || !codexPaneMatches(after, a) {
 			obs.reason = "runtime_changed"
@@ -290,6 +297,7 @@ func (s *Server) enrichCodexRuntime(ctx context.Context, agents []*coordinator.A
 		if !managed {
 			continue
 		}
+		a.RunState = nil
 		a.ReportedSession = obs.report
 		a.Session = ""
 		a.SessionKind = ""
@@ -322,8 +330,12 @@ func (s *Server) enrichCodexRuntime(ctx context.Context, agents []*coordinator.A
 		a.ConversationSource = codexBindingSource(obs.probe) + obs.thread.ID
 		a.BindingState = "verified"
 		a.BindingVerifiedAt = time.Now().UnixMilli()
+		a.RunState = obs.run
 		if status := obs.thread.AgentStatus(); status != "" {
 			a.Status = status
+		}
+		if obs.run != nil {
+			a.Status = obs.run.Status
 		}
 	}
 }

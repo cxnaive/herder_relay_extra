@@ -188,3 +188,24 @@ func TestCurrentRunUnknownTimingOnTransitionUnsupportedOrUnexpectedPage(t *testi
 		})
 	}
 }
+
+func TestCompletionProofRequiresSettledConsistentTurn(t *testing.T) {
+	turn := &runTurn{ID: "a", Status: "completed", Started: stamp(100), Completed: stamp(110), ItemsView: "notLoaded"}
+	pending := deriveRunState(runtimeStatus{Type: "idle"}, turn, time.Unix(111, 0))
+	if !pending.CompletionPending || pending.CompletionConfirmed {
+		t.Fatalf("not pending %+v", pending)
+	}
+	done := deriveRunState(runtimeStatus{Type: "idle"}, turn, time.Unix(114, 0))
+	if done.CompletionPending || !done.CompletionConfirmed {
+		t.Fatalf("no proof %+v", done)
+	}
+	for _, status := range []string{"active", "notLoaded", "systemError"} {
+		if s := deriveRunState(runtimeStatus{Type: status}, turn, time.Unix(114, 0)); s.CompletionConfirmed {
+			t.Fatal("inconsistent completion")
+		}
+	}
+	turn.Completed = stamp(90)
+	if s := deriveRunState(runtimeStatus{Type: "idle"}, turn, time.Unix(114, 0)); s.CompletionConfirmed {
+		t.Fatal("invalid timestamps confirmed")
+	}
+}

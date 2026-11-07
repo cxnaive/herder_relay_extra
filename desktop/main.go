@@ -72,6 +72,7 @@ type conversation struct {
 	terminalSearchOpen          bool
 }
 type machine struct {
+	notifiedTurns  map[string]string
 	config         relay.Computer
 	session        *relay.Session
 	cancel         context.CancelFunc

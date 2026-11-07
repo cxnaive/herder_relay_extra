@@ -5,7 +5,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class CompletionLedgerTest {
-    private fun sample(status: String, turn: String = "turn-a", source: String = "codex_runtime") = JSONObject().put("status", status).put("turn_id", turn).put("source", source)
+    private fun sample(status: String, turn: String = "turn-a", source: String = "codex_runtime") = JSONObject().put("status", status).put("turn_id", turn).put("source", source).put("evidence", "runtime_turn").put("completion_confirmed", status == "done")
     @Test fun firstSnapshotIsBaselineAndEachCompletedTurnAlertsOnceAcrossRestart() {
         val ledger = CompletionLedger()
         assertFalse(ledger.observe("agent", sample("done"), 1000))
@@ -14,8 +14,8 @@ class CompletionLedgerTest {
         assertFalse(ledger.observe("agent", sample("done", "turn-b"), 4000))
         val restarted = CompletionLedger(ledger.encode())
         assertFalse(restarted.observe("agent", sample("done", "turn-b"), 5000))
-        // A short whole turn between polls still alerts by its new turn ID.
-        assertTrue(restarted.observe("agent", sample("done", "turn-c"), 6000))
+        // An unobserved whole turn cannot prove that the current task stopped.
+        assertFalse(restarted.observe("agent", sample("done", "turn-c"), 6000))
     }
     @Test fun staleWorkingObservationCannotRetriggerDeliveredCompletion() {
         val ledger = CompletionLedger()
@@ -52,6 +52,36 @@ class CompletionLedgerTest {
         val serialized = ledger.encode()
         repeat(5) { ledger.observe("a", sample("working"), 2000); ledger.observe("b", sample("working"), 2000) }
         assertEquals(serialized, ledger.encode())
+    }
+    @Test fun codexRequiresSameObservedTurnExplicitProofAndFreshConnection() {
+        for (evidence in listOf("runtime_turn", "rollout_lifecycle")) {
+            val ledger = CompletionLedger()
+            fun state(status: String, id: String = "a") = sample(status, id).put("evidence", evidence)
+            ledger.observe("a", state("working"), 1000)
+            assertFalse(ledger.observe("a", state("done", "b"), 2000))
+            ledger.observe("a", state("working"), 3000)
+            assertFalse(ledger.observe("a", state("done").put("completion_confirmed", false), 4000))
+            ledger.observe("b", state("working"), 5000)
+            ledger.observe("b", state("unknown"), 6000)
+            assertFalse(ledger.observe("b", state("done"), 7000))
+            ledger.observe("c", state("working"), 8000); ledger.invalidate("c")
+            assertFalse(ledger.observe("c", state("done"), 9000))
+            ledger.observe("d", state("working"), 10000)
+            assertFalse(ledger.observe("d", state("done"), 101000))
+            ledger.observe("e", state("working"), 11000)
+            assertFalse(CompletionLedger(ledger.encode()).observe("e", state("done"), 12000))
+            ledger.observe("f", state("working"), 13000)
+            assertTrue(ledger.observe("f", state("done"), 14000))
+        }
+    }
+    @Test fun pendingCompletionCannotInventAnObservedActiveTurn() {
+        val ledger = CompletionLedger()
+        val pending = sample("working").put("completion_pending", true)
+        ledger.observe("new", pending, 1000)
+        assertFalse(ledger.observe("new", sample("done"), 2000))
+        ledger.observe("known", sample("working"), 1000)
+        ledger.observe("known", pending, 2000)
+        assertTrue(ledger.observe("known", sample("done"), 3000))
     }
     private fun agent() = JSONObject().put("agent_session_id", "session-a").put("terminal_id", "terminal-a").put("workspace_id", "workspace-a").put("pane_id", "pane-a").put("generation", 1)
     @Test fun identitySurvivesRenameAndRelayGenerationButNotAnotherSessionOrWorkspace() {

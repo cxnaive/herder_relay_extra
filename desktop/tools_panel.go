@@ -156,13 +156,20 @@ func notificationTransition(before, after relay.Agent) string {
 	if after.Status == "blocked" && (before.Status != "blocked" || before.EventID != after.EventID || before.ApprovalFingerprint != after.ApprovalFingerprint) {
 		return "需要你的处理"
 	}
+	if after.Agent == "codex" {
+		b, n := before.RunState, after.RunState
+		if before.Target == after.Target && before.CanChat() && after.CanChat() && b.Trusted() && !b.CompletionPending && n.Trusted() && b.Evidence == n.Evidence && b.TurnID == n.TurnID && (b.Status == "working" || b.Status == "blocked") && n.Status == "done" && n.CompletionConfirmed && n.ObservedAt >= b.ObservedAt && n.ObservedAt-b.ObservedAt <= 90000 {
+			return "已完成本轮任务"
+		}
+		return ""
+	}
 	if (before.Status == "working" || before.Status == "running") && (after.Status == "done" || after.Status == "completed" || after.Status == "idle") {
 		return "已完成本轮任务"
 	}
 	return ""
 }
 func (a *application) notifyAgentChanges(m *machine, next []relay.Agent) {
-	if a.demo || a.win == nil {
+	if a.demo || a.win == nil || !m.inventoryReady {
 		return
 	}
 	for _, agent := range next {
@@ -176,6 +183,15 @@ func (a *application) notifyAgentChanges(m *machine, next []relay.Agent) {
 			message := notificationTransition(old, agent)
 			if message == "" {
 				break
+			}
+			if agent.Agent == "codex" && agent.RunState.Trusted() && agent.RunState.Status == "done" {
+				if m.notifiedTurns == nil {
+					m.notifiedTurns = map[string]string{}
+				}
+				if m.notifiedTurns[agent.Identity()] == agent.RunState.TurnID {
+					break
+				}
+				m.notifiedTurns[agent.Identity()] = agent.RunState.TurnID
 			}
 			n := mygo.NewNotification(mygo.NotificationOptions{ID: groupKey(m.config.ID, agent.Identity()), Title: agent.Title(), Body: m.config.Name + " · " + message, Group: m.config.ID})
 			n.OnClick(func() {

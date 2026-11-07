@@ -152,6 +152,9 @@ func (a *application) connect(m *machine) {
 	}
 	m.opening = false
 	m.inventoryReady = false
+	for i := range m.agents {
+		m.agents[i].RunState = nil
+	}
 	m.protocol = 0
 	m.capabilities = nil
 	m.profiles = nil
@@ -231,6 +234,11 @@ func (a *application) event(m *machine, event relay.Message) {
 		}
 	case "inventory_status":
 		m.inventoryReady = relay.Text(event, "state") == "ready"
+		if !m.inventoryReady {
+			for i := range m.agents {
+				m.agents[i].RunState = nil
+			}
+		}
 	case "workspaces":
 		m.workspaces = relay.ParseWorkspaces(event["workspaces"])
 	case "push_config":

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/0cv/herdr-mobile-relay/internal/codexruntime"
+	"github.com/0cv/herdr-mobile-relay/internal/conversation"
 	"github.com/0cv/herdr-mobile-relay/internal/coordinator"
 	"github.com/0cv/herdr-mobile-relay/internal/herdr"
 	"github.com/0cv/herdr-mobile-relay/internal/protocol"
@@ -35,24 +36,33 @@ func (s *Server) agentRunState(ctx context.Context, in protocol.Inbound) (codexr
 	if agent.BindingState != "" && agent.BindingState != "verified" {
 		return codexruntime.RunState{Status: "unknown", Source: "unverified_primary", ObservedAt: time.Now().UnixMilli(), Timing: "unknown"}, nil
 	}
-	if agent.BindingMode == "standalone" {
-		if !s.codexPrimaryCurrent(ctx, agent) || validateExactPaneTarget(s.state, in, true) != nil || herdr.CheckDispatch(ctx) != nil {
-			return codexruntime.RunState{}, codexruntime.ErrRunStateUnavailable
-		}
-		return fallback, nil
-	}
+	// Keep generic Herdr idle/done out of Codex completion authority.
+	codexFallback := recordedRunState(conversation.CodexTurn{}, agent.Status, "", time.Now())
 	select {
 	case runStateSlots <- struct{}{}:
 		defer func() { <-runStateSlots }()
 	default:
 		return codexruntime.RunState{}, codexruntime.ErrRunStateUnavailable
 	}
+	if agent.BindingMode == "standalone" {
+		if !s.codexPrimaryCurrent(ctx, agent) || validateExactPaneTarget(s.state, in, true) != nil || herdr.CheckDispatch(ctx) != nil {
+			return codexruntime.RunState{}, codexruntime.ErrRunStateUnavailable
+		}
+		if s.conversationM == nil {
+			return codexFallback, nil
+		}
+		obs, ok := s.observeCodexRuntime(ctx, []*coordinator.AgentState{agent})[agent.PaneID]
+		if !ok || obs.reason != "" || obs.thread.ID != agent.SessionID || obs.run == nil || !s.codexBindings.current(agent) || herdr.CheckDispatch(ctx) != nil || validateExactPaneTarget(s.state, in, true) != nil {
+			return codexruntime.RunState{}, codexruntime.ErrRunStateUnavailable
+		}
+		return *obs.run, nil
+	}
 	socket, id, cwd, guard, err := s.codexRuntimeTarget(ctx, in)
 	if err != nil {
 		if ctx.Err() != nil || errors.Is(err, coordinator.ErrPaneReplaced) || !s.codexBindings.current(agent) || herdr.CheckDispatch(ctx) != nil || validateExactPaneTarget(s.state, in, true) != nil {
 			return codexruntime.RunState{}, codexruntime.ErrRunStateUnavailable
 		}
-		return fallback, nil
+		return codexFallback, nil
 	}
 	result, err := codexruntime.CurrentRun(ctx, socket, id, cwd, guard)
 	if err != nil {
@@ -60,7 +70,7 @@ func (s *Server) agentRunState(ctx context.Context, in protocol.Inbound) (codexr
 		if ctx.Err() != nil || guard() != nil {
 			return codexruntime.RunState{}, codexruntime.ErrRunStateUnavailable
 		}
-		return fallback, nil
+		return codexFallback, nil
 	}
 	return result, nil
 }

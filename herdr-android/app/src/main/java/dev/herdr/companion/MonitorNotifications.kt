@@ -89,10 +89,10 @@ object MonitorNotifications {
         if (!completionsAllowed(context)) return
         val key = MonitorIdentity.key(relay, agent)
         fun clean(value: String) = value.filterNot { it.isISOControl() }.take(80)
-        val title = "${clean(AgentPresentation.title(agent))} · 已完成"
+        val title = "${clean(AgentPresentation.title(agent))} · 本轮完成"
         val location = listOf(shared.relayName(relay), shared.workspaceName(relay, agent)).filter { it.isNotBlank() }.joinToString(" · ", transform = ::clean)
         val duration = if (state.optString("source") == "codex_runtime" && state.optString("timing") == "turn_elapsed" && !state.isNull("elapsed_ms")) " · 用时 ${AgentRunPresentation.duration(state.optLong("elapsed_ms"))}" else ""
-        val public = NotificationCompat.Builder(context, COMPLETION_CHANNEL).setSmallIcon(R.drawable.ic_monitor).setContentTitle("Herdr Agent 已完成").setContentText("解锁查看对应对话").build()
+        val public = NotificationCompat.Builder(context, COMPLETION_CHANNEL).setSmallIcon(R.drawable.ic_monitor).setContentTitle("Herdr Agent 本轮完成").setContentText("解锁查看对应对话").build()
         val notification = completionBuilder(context, title, location + duration).setPublicVersion(public)
             .setContentIntent(PendingIntent.getActivity(context, 0, routeIntent(context, relay, agent), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)).build()
         context.getSystemService(NotificationManager::class.java).notify("completed:$key", 1, notification)

@@ -16,16 +16,19 @@ import (
 var ErrRunStateUnavailable = errors.New("current Codex turn state is unavailable")
 
 type RunState struct {
-	Status     string `json:"status"`
-	Source     string `json:"source"`
-	Attention  string `json:"attention_kind,omitempty"`
-	TurnID     string `json:"turn_id,omitempty"`
-	StartedAt  int64  `json:"started_at,omitempty"`
-	FinishedAt int64  `json:"finished_at,omitempty"`
-	ElapsedMS  *int64 `json:"elapsed_ms"`
-	Ticking    bool   `json:"ticking"`
-	ObservedAt int64  `json:"observed_at"`
-	Timing     string `json:"timing"`
+	Evidence            string `json:"evidence,omitempty"`
+	CompletionPending   bool   `json:"completion_pending,omitempty"`
+	CompletionConfirmed bool   `json:"completion_confirmed"`
+	Status              string `json:"status"`
+	Source              string `json:"source"`
+	Attention           string `json:"attention_kind,omitempty"`
+	TurnID              string `json:"turn_id,omitempty"`
+	StartedAt           int64  `json:"started_at,omitempty"`
+	FinishedAt          int64  `json:"finished_at,omitempty"`
+	ElapsedMS           *int64 `json:"elapsed_ms"`
+	Ticking             bool   `json:"ticking"`
+	ObservedAt          int64  `json:"observed_at"`
+	Timing              string `json:"timing"`
 }
 type runtimeStatus struct {
 	Type  string   `json:"type"`
@@ -110,6 +113,7 @@ func deriveRunState(status runtimeStatus, turn *runTurn, now time.Time) RunState
 		}
 	}
 	result.TurnID = turn.ID
+	result.Evidence = "runtime_turn"
 	if turn.Started == nil || *turn.Started <= 0 || *turn.Started > now.Unix()+1 {
 		return result
 	}
@@ -127,6 +131,13 @@ func deriveRunState(status runtimeStatus, turn *runTurn, now time.Time) RunState
 			return result
 		}
 		result.FinishedAt = *turn.Completed * 1000
+		if result.Status == "done" {
+			result.CompletionConfirmed = now.UnixMilli()-result.FinishedAt >= 3000
+			if !result.CompletionConfirmed {
+				result.Status = "working"
+				result.CompletionPending = true
+			}
+		}
 		elapsed = result.FinishedAt - start
 		// The runtime's ms precision is preferable to rounded second timestamps.
 		if turn.Duration != nil && *turn.Duration >= 0 && *turn.Duration <= elapsed+2000 {

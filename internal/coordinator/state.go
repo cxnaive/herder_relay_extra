@@ -11,20 +11,22 @@ import (
 	"sync"
 	"time"
 
+	"github.com/0cv/herdr-mobile-relay/internal/codexruntime"
 	"github.com/0cv/herdr-mobile-relay/internal/herdr"
 	"github.com/0cv/herdr-mobile-relay/internal/question"
 )
 
 type AgentState struct {
-	BindingSelection  string             `json:"-"`
-	BindingMode       string             `json:"-"`
-	BindingRuntime    string             `json:"-"`
-	ReportedSession   herdr.AgentSession `json:"-"`
-	BindingState      string             `json:"binding_state,omitempty"`
-	BindingReason     string             `json:"binding_reason,omitempty"`
-	BindingEpoch      uint64             `json:"binding_epoch,omitempty"`
-	BindingVerifiedAt int64              `json:"binding_verified_at,omitempty"`
-	BindingStoreID    string             `json:"binding_store_id,omitempty"`
+	RunState          *codexruntime.RunState `json:"run_state,omitempty"`
+	BindingSelection  string                 `json:"-"`
+	BindingMode       string                 `json:"-"`
+	BindingRuntime    string                 `json:"-"`
+	ReportedSession   herdr.AgentSession     `json:"-"`
+	BindingState      string                 `json:"binding_state,omitempty"`
+	BindingReason     string                 `json:"binding_reason,omitempty"`
+	BindingEpoch      uint64                 `json:"binding_epoch,omitempty"`
+	BindingVerifiedAt int64                  `json:"binding_verified_at,omitempty"`
+	BindingStoreID    string                 `json:"binding_store_id,omitempty"`
 
 	PaneID                       string                 `json:"pane_id"`
 	RawPaneID                    string                 `json:"raw_pane_id"`
@@ -449,7 +451,7 @@ func (s *State) commitTopologyLocked(agents []*AgentState, baseRev int64) {
 			topology[index] = incoming
 			continue
 		}
-		cp := *incoming
+		cp := *cloneAgentState(incoming)
 		if incoming.BindingState == "" {
 			cp.Status = existing.Status
 		}
@@ -509,7 +511,7 @@ func (s *State) commitInventoryLocked(agents []*AgentState, baseRev int64) {
 	for _, incoming := range agents {
 		seen[incoming.PaneID] = true
 
-		cp := *incoming
+		cp := *cloneAgentState(incoming)
 		existing, exists := s.agents[incoming.PaneID]
 		replaced := exists && paneSessionReplaced(existing, incoming)
 		if exists && !replaced && existing.SessionID != incoming.SessionID {
@@ -1130,6 +1132,14 @@ func cloneAgentState(agent *AgentState) *AgentState {
 		return nil
 	}
 	copy := *agent
+	if agent.RunState != nil {
+		run := *agent.RunState
+		if run.ElapsedMS != nil {
+			elapsed := *run.ElapsedMS
+			run.ElapsedMS = &elapsed
+		}
+		copy.RunState = &run
+	}
 	copy.Options = append([]string(nil), agent.Options...)
 	if agent.Interaction != nil {
 		interaction := *agent.Interaction

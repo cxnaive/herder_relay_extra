@@ -126,9 +126,11 @@ old leases. Bound history/send/approval still work; no mobile selection API is
 added. Mode and proof source are included in the existing diagnostic snapshot.
 
 Standalone has no externally queryable settings/turn endpoint in the tested
-version: model changes must be made in the computer TUI. Run status uses Herdr with
-**unknown timing**, after revalidating the binding. Neither operation may query or
-write a same-store shared server just because that socket exists.
+version: model changes must be made in the computer TUI. Run status (codexfix.19) reads lifecycle metadata from the exact verified primary
+rollout after revalidating ownership. Start/complete/abort records provide whole-turn
+elapsed time; absent, partial or conflicting records keep timing unknown. Herdr
+idle is not completion proof. Neither operation may query or write a same-store
+shared server just because that socket exists. See [run state](agent-run-state.md).
 
 To clear retained multiple roots, the user can normally exit the old TUI and run
 `codex --no-daemon resume <thread-id>`. A session still owned by another backend

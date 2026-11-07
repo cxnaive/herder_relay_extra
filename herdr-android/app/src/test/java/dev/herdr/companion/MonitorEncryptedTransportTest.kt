@@ -61,8 +61,14 @@ class MonitorEncryptedTransportTest {
                 waitUntil { fixture.connected.get() >= 2 && shared.ready("fixture") }
                 val count = fixture.requests.count { it == "a" }; waitUntil { fixture.requests.count { it == "a" } > count }
                 assertTrue("reconnect notified an old completion", completions().isEmpty())
-                // New complete turn between polls is detected even without observing its running phase.
-                fixture.turn["a"] = "turn-a-next"
+                // A new completion without an observed active turn is only a baseline.
+                fixture.turn["a"] = "turn-a-unobserved"
+                val baselineCount = fixture.requests.count { it == "a" }
+                waitUntil { fixture.requests.count { it == "a" } > baselineCount }
+                assertTrue(completions().isEmpty())
+                fixture.turn["a"] = "turn-a-next"; fixture.states["a"] = "working"
+                waitUntil { JSONObject(preferences.ledger()).optJSONObject(MonitorIdentity.key("fixture", fixture.agent("a")))?.let { it.optString("turn") == "turn-a-next" && it.optString("status") == "working" } == true }
+                fixture.states["a"] = "done"
                 waitUntil { completions().size == 1 }
                 assertTrue(fixture.failures.toString(), fixture.failures.isEmpty())
                 service.onStartCommand(Intent(context, AgentMonitorService::class.java).setAction(AgentMonitorService.STOP), 0, 3)

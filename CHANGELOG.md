@@ -28,6 +28,8 @@ project follows [Semantic Versioning](https://semver.org/).
 - Read-only, exact-workspace document downloads in 512 KiB verified chunks (up to 12 MiB per file), enabling native PDF/Markdown/image reviewers without raising transport limits or granting file-write access.
 
 ### Fixed
+- Read exact Codex standalone/embedded turn lifecycle records for running status and elapsed time. A temporary Herdr idle snapshot no longer ends an active turn; missing or conflicting evidence remains unknown.
+- Require an observed active Codex turn and explicit same-turn completion proof for Android and desktop completion notifications. Disconnections, replacement bindings, failures and unobserved old turns no longer generate successful completion alerts; notifications describe a single turn, not the entire ongoing task.
 - Show desktop Agent tab names, restore independent computer/project folding, open Codex file citations and PDF/Markdown previews, group consecutive tool calls with two levels of folding, and display image previews and verified run timing.
 - Recognize Codex embedded runtimes selected by title configuration overrides without requiring `--no-daemon`, using actual TUI-owned writer locks. Validate the uniquely title-selected primary on its own so unrelated unmaterialized writers do not block resumed history; an unmaterialized selected thread still waits for metadata.
 - Show Relay-provided default launch arguments separately from optional extra arguments on Android, display confirmed session IDs, and distinguish title/runtime failures from a missing first turn.

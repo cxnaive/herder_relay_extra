@@ -113,7 +113,7 @@ class MockTcpMonitorRelay : AutoCloseable {
             requests += pane
             val status = states.getValue(pane)
             send(JSONObject().put("type", "command_result").put("request_id", request.getString("request_id")).put("ok", true).put("phase", "completed")
-                .put("data", JSONObject().put("source", "codex_runtime").put("status", status).put("turn_id", turn.getValue(pane))
+                .put("data", JSONObject().put("source", "codex_runtime").put("evidence", "runtime_turn").put("completion_confirmed", status == "done").put("status", status).put("turn_id", turn.getValue(pane))
                     .put("timing", "turn_elapsed").put("elapsed_ms", 42000).put("ticking", status == "working")))
         }
     }

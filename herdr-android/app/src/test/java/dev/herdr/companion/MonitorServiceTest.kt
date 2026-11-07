@@ -115,13 +115,23 @@ class MonitorServiceTest {
             assertEquals(listOf("pane-new"), alerts)
         } finally { monitor.stop() }
     }
+    @Test fun codexWithoutRuntimeProofDoesNotUseHerdrIdleCompletion() {
+        val shared = SharedRelay.get(context); val prefs = MonitorPreferences(context)
+        val monitor = AgentMonitor(shared, prefs, { _, _, _ -> fail("Codex idle was reported as completion") }, {})
+        val a = agent().put("agent", "codex").put("binding_state", "verified")
+        try {
+            monitor.start(); publish(shared, JSONArray().put(a)); shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(1))
+            publish(shared, JSONArray().put(JSONObject(a.toString()).put("status", "idle")))
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(16))
+        } finally { monitor.stop() }
+    }
     @Test fun notificationContainsOnlyLabelsAndRoutesExactSessionWithoutBody() {
         val shared = SharedRelay.get(context); val a = agent().put("prompt", "PRIVATE PROMPT").put("command", "PRIVATE COMMAND")
         MonitorNotifications.createChannels(context)
         MonitorNotifications.completed(context, shared, "relay", a, JSONObject().put("source", "codex_runtime").put("timing", "turn_elapsed").put("elapsed_ms", 123000))
         val notifications = shadowOf(context.getSystemService(NotificationManager::class.java)).allNotifications
         assertEquals(1, notifications.size)
-        val notification = notifications.single(); assertEquals("writer-a · 已完成", notification.extras.getCharSequence("android.title").toString())
+        val notification = notifications.single(); assertEquals("writer-a · 本轮完成", notification.extras.getCharSequence("android.title").toString())
         assertFalse(notification.extras.toString().contains("PRIVATE")); assertNotNull(notification.publicVersion)
         assertEquals(android.app.Notification.VISIBILITY_PRIVATE, notification.visibility)
         val intent = shadowOf(notification.contentIntent).savedIntent

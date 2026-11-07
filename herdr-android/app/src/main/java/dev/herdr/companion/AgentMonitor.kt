@@ -20,6 +20,7 @@ class AgentMonitor(
     private var inFlight = false
     private var ledger = CompletionLedger(preferences.ledger())
     private val next = mutableMapOf<String, Long>()
+    private val lastTargets = mutableMapOf<String, WorkspaceBinding>()
     private val lastSuccess = mutableMapOf<String, Long>()
     private var persisted = ledger.encode()
     private var scheduledAt = Long.MAX_VALUE
@@ -34,12 +35,16 @@ class AgentMonitor(
         if (running) return
         running = true; generation++
         shared.attachMonitor(this) { event ->
+            if (event.optString("type") in listOf("status", "removed")) {
+                targets().filter { it.relay == event.optString("relayId") }.forEach { ledger.invalidate(it.key) }
+            }
             if (event.optString("type") in listOf("message", "status", "removed")) schedule(200)
         }
         schedule(0)
     }
     fun stop() {
         if (!running) return
+        ledger.invalidateAll()
         running = false; generation++; handler.removeCallbacks(pump); scheduledAt = Long.MAX_VALUE; shared.detachMonitor(this)
     }
     fun reset(key: String) {
@@ -59,6 +64,13 @@ class AgentMonitor(
         if (!running) return
         val now = SystemClock.elapsedRealtime()
         val all = targets(); val keys = all.map { it.key }.toSet()
+        all.filter { !shared.ready(it.relay) || !PrimarySessionBinding.live(it.agent) || preferences.muted(it.key) }.forEach { ledger.invalidate(it.key) }
+        next.keys.filter { it !in keys }.forEach { ledger.invalidate(it) }
+        lastTargets.keys.retainAll(keys)
+        all.forEach { target ->
+            val tuple = WorkspaceBinding.fromAgent(target.relay, target.agent)
+            if (lastTargets.put(target.key, tuple)?.let { it != tuple } == true) ledger.invalidate(target.key)
+        }
         next.keys.retainAll(keys); lastSuccess.keys.retainAll(keys)
         val audible = all.filterNot { preferences.muted(it.key) }
         val connected = shared.online.size
@@ -90,14 +102,18 @@ class AgentMonitor(
                 val alert = ledger.observe(target.key, data, System.currentTimeMillis())
                 try { persist() } catch (_: Exception) { preferences.setError("监控记录无法保存，已停止以避免重复提醒"); stop(); fatal("监控记录保存失败，请重新开启"); return }
                 if (alert) completed(target.relay, current.agent, data)
+            } else {
+                ledger.invalidate(target.key)
             }
             schedule(150)
         }
         if (snapshot.optString("agent") == "codex" && runtime) {
             inFlight = true
             shared.engine.requestMonitor(target.relay, AgentProtocol.command(target.relay, snapshot, "get_agent_run_state"), ::accept)
+        } else if (snapshot.optString("agent") == "codex") {
+            accept(JSONObject().put("source", "unverified_primary").put("status", "unknown"), null)
         } else {
-            // Older relays/other agents use observed Herdr transitions; no turn completion is fabricated.
+            // Other agents use observed Herdr transitions; no turn completion is fabricated.
             accept(JSONObject().put("source", "herdr").put("status", snapshot.optString("status")), null)
         }
     }

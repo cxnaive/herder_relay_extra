@@ -43,36 +43,45 @@ class MonitorPreferences(context: Context) {
 /** Durable at-most-once observations. First snapshots establish a baseline, not old alerts. */
 class CompletionLedger(raw: String = "{}") {
     private val rows = linkedMapOf<String, JSONObject>()
+    private data class ActiveTurn(val id: String, val evidence: String, val observedAt: Long)
+    // Active evidence is connection-local. Persisted rows only suppress replays.
+    private val active = mutableMapOf<String, ActiveTurn>()
     init { runCatching {
         require(raw.length <= 2 * 1024 * 1024)
         val data = JSONObject(raw)
         data.keys().asSequence().take(1024).forEach { key -> data.optJSONObject(key)?.let { rows[key] = it } }
     } }
-    fun forget(key: String) { rows.remove(key) }
+    fun forget(key: String) { rows.remove(key); active.remove(key) }
+    fun invalidate(key: String) { active.remove(key) }
+    fun invalidateAll() { active.clear() }
     fun encode(): String = JSONObject().apply { rows.forEach { (key, value) -> put(key, value) } }.toString()
     fun observe(key: String, state: JSONObject, now: Long): Boolean {
         val source = state.optString("source")
         val status = state.optString("status")
         val turn = state.optString("turn_id")
-        if (turn.length > 128 || turn.any { it.isISOControl() }) return false
+        if (turn.length > 128 || turn.any { it.isISOControl() }) { invalidate(key); return false }
         val previous = rows[key]?.takeIf { now - it.optLong("seen_at") in 0..RETENTION }
         val known = status in setOf("working", "blocked", "done", "idle", "completed", "finished", "interrupted", "failed", "stopped")
-        if (!known || source !in setOf("codex_runtime", "herdr")) return false
-        // Runtime completion requires a real turn ID; generic idle is not proof of completion.
-        if (source == "codex_runtime" && status == "done" && (turn.isBlank() || turn.length > 128)) return false
-        if (source == "codex_runtime" && status in setOf("working", "blocked") && turn.isBlank()) return false
+        if (!known || source !in setOf("codex_runtime", "herdr")) { invalidate(key); return false }
+        val evidence = state.optString("evidence")
+        val proof = source == "codex_runtime" && turn.isNotBlank() && evidence in setOf("runtime_turn", "rollout_lifecycle")
+        val observed = active.remove(key)?.takeIf { now - it.observedAt in 0..90000 }
+        if (proof && status in setOf("working", "blocked")) {
+            if (!state.optBoolean("completion_pending")) active[key] = ActiveTurn(turn, evidence, now)
+            else if (observed?.id == turn && observed.evidence == evidence) active[key] = observed
+        }
         val sameSource = previous?.optString("source") == source
         val completedTurns = previous?.optJSONArray("completed")?.let { values -> (0 until values.length()).map { values.optString(it) }.takeLast(8).toMutableList() } ?: mutableListOf()
         val completed = if (source == "codex_runtime") {
-            status == "done" && turn !in completedTurns && sameSource && (previous!!.optString("turn") != turn || previous.optString("status") in setOf("working", "blocked"))
+            status == "done" && proof && state.optBoolean("completion_confirmed") && turn !in completedTurns && observed?.id == turn && observed?.evidence == evidence
         } else {
             status in setOf("done", "idle", "completed", "finished") && sameSource && previous!!.optString("status") in setOf("working", "blocked")
         }
-        if (source == "codex_runtime" && status == "done" && turn !in completedTurns) completedTurns.add(turn)
+        if (source == "codex_runtime" && status == "done" && turn.isNotBlank() && turn !in completedTurns) completedTurns.add(turn)
         val seenAt = previous?.optLong("seen_at")?.takeIf { now - it in 0..3600000 } ?: now
         rows[key] = JSONObject().put("source", source).put("status", status).put("turn", turn).put("seen_at", seenAt).put("completed", JSONArray(completedTurns.takeLast(8)))
         rows.entries.removeAll { now - it.value.optLong("seen_at") > RETENTION }
-        while (rows.size > 1024) rows.remove(rows.keys.first())
+        while (rows.size > 1024) { val oldest = rows.keys.first(); rows.remove(oldest); active.remove(oldest) }
         return completed
     }
     companion object { private const val RETENTION = 30L * 24 * 60 * 60 * 1000 }

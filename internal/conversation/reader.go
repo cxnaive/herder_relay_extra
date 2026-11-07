@@ -100,6 +100,7 @@ type locationKey struct {
 }
 
 type Reader struct {
+	codexTurns      codexTurnCache
 	home            string
 	mu              sync.Mutex
 	locations       map[locationKey]locationCacheEntry

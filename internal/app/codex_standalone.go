@@ -151,10 +151,17 @@ func (s *Server) observeCodexStandalone(ctx context.Context, a *coordinator.Agen
 	if obs.reason != "" {
 		return obs
 	}
+	run := s.recordedCodexRun(ctx, a, obs.probe, obs.thread.ID, obs.herdrStatus, "")
+	obs.run = &run
 	after, err := s.herdrC.PaneGet(ctx, a.PaneID)
 	if err != nil || !codexPaneMatches(after, a) {
 		obs.reason = "runtime_changed"
 		return obs
+	}
+	if obs.run.Status == "done" && (after.Status == "working" || after.Status == "blocked") {
+		obs.run.Status, obs.run.CompletionConfirmed = after.Status, false
+		obs.run.TurnID, obs.run.ElapsedMS, obs.run.Ticking = "", nil, false
+		obs.run.Timing, obs.run.Evidence = "unknown", "unavailable"
 	}
 	obs.report = after.SessionRaw // Diagnostic input only; never standalone proof.
 	current, reason := s.inspectCodexProcess(ctx, a)

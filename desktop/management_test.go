@@ -253,3 +253,44 @@ func TestNotificationStateTransitions(t *testing.T) {
 		t.Fatal("duplicate notification")
 	}
 }
+
+func TestCodexCompletionRequiresExactObservedTurn(t *testing.T) {
+	before := relay.Agent{Agent: "codex", BindingState: "verified", Target: relay.Target{PaneID: "p", TerminalID: "t", AgentSessionID: "s", BindingEpoch: 1}, Status: "working", RunState: &relay.RunEvidence{Source: "codex_runtime", Evidence: "rollout_lifecycle", Status: "working", TurnID: "a", ObservedAt: 1000}}
+	after := before
+	after.Status = "done"
+	r := *before.RunState
+	r.Status = "done"
+	r.CompletionConfirmed = true
+	r.ObservedAt = 5000
+	after.RunState = &r
+	if notificationTransition(before, after) == "" {
+		t.Fatal("proven completion missing")
+	}
+	for _, kind := range []string{"idle", "different turn", "no proof", "unknown", "replaced", "stale", "no runtime"} {
+		t.Run(kind, func(t *testing.T) {
+			b, n := before, after
+			br, nr := *b.RunState, *n.RunState
+			b.RunState = &br
+			n.RunState = &nr
+			switch kind {
+			case "idle":
+				nr.Status = "idle"
+			case "different turn":
+				nr.TurnID = "b"
+			case "no proof":
+				nr.CompletionConfirmed = false
+			case "unknown":
+				br.Status = "unknown"
+			case "replaced":
+				n.BindingEpoch++
+			case "stale":
+				nr.ObservedAt = 100000
+			case "no runtime":
+				n.RunState = nil
+			}
+			if notificationTransition(b, n) != "" {
+				t.Fatal("unproven completion")
+			}
+		})
+	}
+}

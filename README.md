@@ -29,9 +29,9 @@
 
 | 组件 | 当前源码版本 | 位置 |
 | --- | --- | --- |
-| 电脑 Relay | `0.23.5+codexfix.18` | 仓库根目录，`cmd/herdr-mobile-relay` |
+| 电脑 Relay | `0.23.5+codexfix.19` | 仓库根目录，`cmd/herdr-mobile-relay` |
 | 原生 TCP Gateway | `0.23.5+codexfix.6` | `cmd/herdr-gateway`，`deploy/native-tcp/` |
-| Herdr Pocket Android | `0.2.30` / versionCode `33` | `herdr-android/` |
+| Herdr Pocket Android | `0.2.31` / versionCode `34` | `herdr-android/` |
 | Herdr Desktop Windows / macOS | `0.1.0` 开发预览 | [`desktop/`](desktop/README.md) |
 
 桌面版采用原生界面，左侧按电脑、项目和 Agent 导航，中间切换对话与交互终端，右侧浏览工作区文件并下载。构建与使用方法见 [Herdr Desktop](desktop/README.md)。尚未发布正式安装包。
@@ -44,7 +44,9 @@ Windows 便携包由 [desktop-windows CI](https://github.com/cxnaive/herder_rela
 
 当前源码仅对 **Codex** 使用终端范围内的 runtime 主会话发现：先排除有明确父子关系的子代理，主线程唯一时直接采用；共享模式仍有多个主线程时，只用匹配候选的 Herdr 上报 ID 消除歧义。无法确认时不猜选，提示可尝试 `codex --no-daemon` 并检查 hook（不保证修复）。其他 agent 保持原有 Herdr Relay 流程；不执行 `/status`、动态 hook 或修改 Codex。相同 ID 刷新缓存，不同 ID 撤销旧请求并隔离历史，详见[会话身份与缓存边界](docs/primary-session-binding.md)。
 
-**`--no-daemon` 已有独立关联路径**：只读验证该 TUI 进程实际持有的会话写锁及精确 ID 元数据，不查询共享后台。主线程唯一即可绑定，不依赖 hook；新会话可能要等首轮输入落下元数据。若 `/new`、`/resume` 后仍持有多个主线程，旧 hook 上报不作消歧依据；codexfix.17 可用明确配置的标题 ID 消歧，否则保持未确认。独立模式模型设置请在电脑端操作，运行计时不冒用共享后台；其他 agent 不受影响。
+**`--no-daemon` 已有独立关联路径**：只读验证该 TUI 进程实际持有的会话写锁及精确 ID 元数据，不查询共享后台。主线程唯一即可绑定，不依赖 hook；新会话可能要等首轮输入落下元数据。若 `/new`、`/resume` 后仍持有多个主线程，旧 hook 上报不作消歧依据；codexfix.17 可用明确配置的标题 ID 消歧，否则保持未确认。独立模式模型设置请在电脑端操作；codexfix.19 从已验证主会话的起止记录读取本轮用时，不借用共享后台。缺少记录时仍明确显示用时未知；其他 agent 不受影响。
+
+Pocket **`0.2.31` / Relay `codexfix.19`**：修复 Codex 短暂空闲误报完成，`--no-daemon` / 自动内嵌模式可读取已绑定主会话的本轮起止记录。完成提醒要求先观察到同一轮运行，再读到明确成功结束；未知、断连、失败、旧轮记录不算完成。非常短的任务可能漏提醒，这是避免误报的明确取舍。通知表示“本轮完成”，不保证后续不会有新一轮任务。详见[运行状态与计时](docs/agent-run-state.md)。
 
 Pocket `0.2.27` 修复终端输出刷新打断手机输入法编辑：普通快照/增量不再重设输入框类型，保留拼音编辑状态、光标与草稿；密码输入仍单独处理。本次只更新 App，Relay codexfix.14 / Gateway codexfix.6 不变。
 
