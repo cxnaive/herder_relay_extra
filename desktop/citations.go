@@ -163,6 +163,9 @@ func citationMarkdown(src string) string {
 
 // Paths here belong to the remote POSIX workspace, even on a Windows client.
 func workspaceReference(cwd, base, raw string) (relative, anchor string, err error) {
+	return fileReference(cwd, base, raw, false)
+}
+func fileReference(cwd, base, raw string, filesystem bool) (relative, anchor string, err error) {
 	bad := errors.New("文件不在当前工作区内")
 	if strings.HasPrefix(raw, "herdr-file://open?") {
 		u, e := url.Parse(raw)
@@ -198,14 +201,24 @@ func workspaceReference(cwd, base, raw string) (relative, anchor string, err err
 		return "", "", bad
 	}
 	root := path.Clean(cwd)
-	if !path.IsAbs(root) || p == "" {
+	if !path.IsAbs(root) || p == "" || strings.ContainsRune(p, '\\') {
 		return "", "", bad
+	}
+	if filesystem {
+		root = "/"
 	}
 	full := p
 	if !path.IsAbs(full) {
-		full = path.Join(root, path.Dir(base), full)
+		if base == "" {
+			full = path.Join(cwd, full)
+		} else {
+			full = path.Join(root, path.Dir(base), full)
+		}
 	}
 	full = path.Clean(full)
+	if filesystem && full == "/" {
+		return "", anchor, nil
+	}
 	prefix := strings.TrimRight(root, "/") + "/"
 	if !strings.HasPrefix(full, prefix) || full == root {
 		return "", "", bad

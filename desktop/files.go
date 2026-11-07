@@ -40,6 +40,8 @@ type fileBrowser struct {
 	expanded                                          bool
 	showHidden                                        bool
 	jumpPath                                          string
+	filesystem                                        bool
+	fileEpoch                                         uint64
 }
 
 func (f *fileBrowser) closePDF() {
@@ -70,17 +72,18 @@ func filesFor(chat *conversation) *fileBrowser {
 func (a *application) ensureFiles(m *machine, chat *conversation) {
 	f := filesFor(chat)
 	if !f.attempted {
-		a.loadDirectory(m, chat, "", false)
+		a.loadDirectory(m, chat, fileHome(m, chat.agent), false)
 	}
 	if f.document != nil && f.document.Kind == "pdf" && f.pdf == nil && f.previewMessage == "" {
 		a.preparePDF(f)
 	}
 }
 func (a *application) fileRequestCurrent(m *machine, chat *conversation, f *fileBrowser, epoch, operation uint64) bool {
-	return m.epoch == epoch && chat.files == f && f.operation == operation && slices.ContainsFunc(m.agents, func(agent relay.Agent) bool { return agent.Target == f.agent.Target && agent.Cwd == f.agent.Cwd })
+	return m.epoch == epoch && m.fileEpoch == f.fileEpoch && m.filesystemRead == f.filesystem && chat.files == f && f.operation == operation && slices.ContainsFunc(m.agents, func(agent relay.Agent) bool { return agent.Target == f.agent.Target && agent.Cwd == f.agent.Cwd })
 }
 func (a *application) loadDirectory(m *machine, chat *conversation, p string, more bool) {
 	f := filesFor(chat)
+	f.filesystem, f.fileEpoch = m.filesystemRead, m.fileEpoch
 	f.closePDF()
 	f.md = &markdown.Options{}
 	if f.cancel != nil {
@@ -116,9 +119,10 @@ func (a *application) loadDirectory(m *machine, chat *conversation, p string, mo
 		return
 	}
 	f.loading = true
-	ctx, cancel := context.WithTimeout(a.ctx, 30*time.Second)
+	reader := a.fileReader(m)
+	ctx, cancel := context.WithTimeout(reader.Context, 30*time.Second)
 	f.cancel = cancel
-	s, agent := m.session, f.agent
+	s, agent := reader, f.agent
 	go func() {
 		defer cancel()
 		page, err := relay.ListDirectory(ctx, s, agent, p, previous)
@@ -138,6 +142,7 @@ func (a *application) loadDirectory(m *machine, chat *conversation, p string, mo
 }
 func (a *application) openFile(m *machine, chat *conversation, p string) {
 	f := filesFor(chat)
+	f.filesystem, f.fileEpoch = m.filesystemRead, m.fileEpoch
 	f.closePDF()
 	f.attempted = true
 	if f.cancel != nil {
@@ -164,9 +169,10 @@ func (a *application) openFile(m *machine, chat *conversation, p string) {
 		return
 	}
 	f.loading = true
-	ctx, cancel := context.WithTimeout(a.ctx, 2*time.Minute)
+	reader := a.fileReader(m)
+	ctx, cancel := context.WithTimeout(reader.Context, 2*time.Minute)
 	f.cancel = cancel
-	s, agent := m.session, f.agent
+	s, agent := reader, f.agent
 	go func() {
 		defer cancel()
 		meta, err := relay.GetFileMetadata(ctx, s, agent, p)
@@ -217,9 +223,9 @@ func (a *application) downloadFile(m *machine, chat *conversation) {
 	if f.downloading || f.metadata == nil || m.session == nil || a.demo {
 		return
 	}
-	meta, agent, session := *f.metadata, f.agent, m.session
+	meta, agent, session := *f.metadata, f.agent, a.fileReader(m)
 	f.downloading, f.downloadBytes, f.downloadMessage = true, 0, "选择保存位置…"
-	ctx, cancel := context.WithCancel(a.ctx)
+	ctx, cancel := context.WithCancel(session.Context)
 	f.cancelDownload = cancel
 	go func() {
 		defer cancel()
@@ -314,7 +320,11 @@ func (a *application) fileView(c *ui.Context, m *machine, chat *conversation) {
 	}
 	panel.Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, "工作区文件").Bold().Grow(1)
+			title := "工作区文件"
+			if m.filesystemRead {
+				title = "电脑文件 · 只读"
+			}
+			ui.Text(c, title).Bold().Grow(1)
 			expandLabel := "展开预览"
 			if f.expanded {
 				expandLabel = "收窄预览"
@@ -326,6 +336,9 @@ func (a *application) fileView(c *ui.Context, m *machine, chat *conversation) {
 				a.files = false
 			}
 		})
+		if m.capabilities["filesystem_read_opt_in_v1"] && ui.Button(c, "访问范围").Disabled(m.session == nil).Clicked() {
+			a.openFileAccess(m)
+		}
 		if f.previewPath != "" {
 			ui.Row(c).Gap(8).Children(func() {
 				if ui.Button(c, "返回目录").Clicked() {
@@ -383,8 +396,15 @@ func (a *application) fileView(c *ui.Context, m *machine, chat *conversation) {
 				})
 			}
 		} else {
-			ui.Text(c, chat.agent.Cwd).FontSize(11).TextColor(t.TextMuted).Selectable()
+			directory := path.Join(chat.agent.Cwd, f.path)
+			if m.filesystemRead {
+				directory = "/" + f.path
+			}
+			ui.Text(c, directory).FontSize(11).TextColor(t.TextMuted).Selectable()
 			ui.Row(c).Gap(6).Children(func() {
+				if m.filesystemRead && ui.Button(c, "工作区").Clicked() {
+					a.loadDirectory(m, chat, fileHome(m, chat.agent), false)
+				}
 				if ui.Button(c, "根目录").Disabled(f.path == "").Clicked() {
 					a.loadDirectory(m, chat, "", false)
 				}
@@ -404,7 +424,7 @@ func (a *application) fileView(c *ui.Context, m *machine, chat *conversation) {
 			ui.Row(c).Gap(6).Children(func() {
 				ui.TextInput(c, &f.jumpPath).Label("文件路径").Placeholder("文件路径；目录以 / 结尾").Grow(1)
 				if ui.Button(c, "打开路径").Disabled(f.loading || strings.TrimSpace(f.jumpPath) == "").Clicked() {
-					p, _, err := workspaceReference(chat.agent.Cwd, "", strings.TrimSpace(f.jumpPath))
+					p, _, err := fileReference(chat.agent.Cwd, "", strings.TrimSpace(f.jumpPath), m.filesystemRead)
 					if err != nil {
 						f.message = err.Error()
 					} else if strings.HasSuffix(f.jumpPath, "/") {

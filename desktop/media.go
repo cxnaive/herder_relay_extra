@@ -114,7 +114,7 @@ func decodePreviewImage(data []byte) (*ui.Bitmap, error) {
 	}
 	return ui.DecodeBitmap(data)
 }
-func readImage(ctx context.Context, s *relay.Session, agent relay.Agent, base, source string) ([]byte, *ui.Bitmap, error) {
+func readImage(ctx context.Context, s relay.Requester, agent relay.Agent, base, source string, filesystem bool) ([]byte, *ui.Bitmap, error) {
 	var data []byte
 	if strings.HasPrefix(source, "data:image/") {
 		if len(source) > 16*1024*1024 {
@@ -133,7 +133,7 @@ func readImage(ctx context.Context, s *relay.Session, agent relay.Agent, base, s
 		if s == nil {
 			return nil, nil, errors.New("连接电脑后查看图像")
 		}
-		p, _, err := workspaceReference(agent.Cwd, base, source)
+		p, _, err := fileReference(agent.Cwd, base, source, filesystem)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -160,6 +160,9 @@ func readImage(ctx context.Context, s *relay.Session, agent relay.Agent, base, s
 		draw.CatmullRom.Scale(thumb, thumb.Bounds(), im, im.Bounds(), draw.Src, nil)
 		im = thumb
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
 	return data, ui.NewBitmap(im), nil
 }
 func (a *application) openReference(m *machine, chat *conversation, base, dest string) {
@@ -177,7 +180,7 @@ func (a *application) openReference(m *machine, chat *conversation, base, dest s
 		}
 		return
 	}
-	p, anchor, err := workspaceReference(chat.agent.Cwd, base, dest)
+	p, anchor, err := fileReference(chat.agent.Cwd, base, dest, m.filesystemRead)
 	if err != nil {
 		a.status = err.Error()
 		return
@@ -186,6 +189,10 @@ func (a *application) openReference(m *machine, chat *conversation, base, dest s
 	a.files = true
 	a.details = false
 	f := filesFor(chat)
+	if p == "" || strings.HasSuffix(dest, "/") {
+		a.loadDirectory(m, chat, p, false)
+		return
+	}
 	f.path = relay.ParentDirectory(p)
 	a.openFile(m, chat, p)
 	f.md.Anchor = anchor
@@ -202,9 +209,12 @@ func (a *application) configureChatMarkdown(m *machine, chat *conversation) {
 }
 func (a *application) configureFileMarkdown(m *machine, chat *conversation, f *fileBrowser) {
 	base := f.previewPath
-	s, agent := m.session, f.agent
+	s, agent := a.fileReader(m), f.agent
 	f.md = &markdown.Options{Anchor: f.md.Anchor, AnchorVersion: f.md.AnchorVersion}
 	f.md.OnLink = func(dest string) {
+		if chat.files != f || m.fileEpoch != f.fileEpoch {
+			return
+		}
 		if strings.HasPrefix(dest, "#") {
 			f.md.Anchor = dest
 			f.md.AnchorVersion++
@@ -215,9 +225,9 @@ func (a *application) configureFileMarkdown(m *machine, chat *conversation, f *f
 	f.md.WrapCode = true
 	f.md.Block = standaloneLinkBlock(f.md.OnLink)
 	f.md.LoadImage = func(source string) (ui.ImageSource, error) {
-		ctx, cancel := context.WithTimeout(a.ctx, 30*time.Second)
+		ctx, cancel := context.WithTimeout(s.Context, 30*time.Second)
 		defer cancel()
-		_, bitmap, err := readImage(ctx, s, agent, base, source)
+		_, bitmap, err := readImage(ctx, s, agent, base, source, s.Filesystem)
 		return bitmap, err
 	}
 }
@@ -263,12 +273,12 @@ func (a *application) conversationImagesView(c *ui.Context, m *machine, chat *co
 			}
 			pic = &conversationImage{label: ref.label, loading: true}
 			chat.images[key] = pic
-			s, agent, epoch := m.session, chat.agent, m.epoch
+			s, agent, epoch := a.fileReader(m), chat.agent, m.epoch
 			source := ref.source
 			load := func() {
-				ctx, cancel := context.WithTimeout(a.ctx, 30*time.Second)
+				ctx, cancel := context.WithTimeout(s.Context, 30*time.Second)
 				defer cancel()
-				data, bitmap, err := readImage(ctx, s, agent, "", source)
+				data, bitmap, err := readImage(ctx, s, agent, "", source, s.Filesystem)
 				update := func() {
 					if chat.images[key] != pic {
 						return

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/cxnaive/herdr-desktop/internal/relay"
@@ -12,6 +13,7 @@ type cachedConversation struct {
 	Entries  []entry
 	Revision string
 	Saved    time.Time
+	Bookmark historyBookmark
 }
 
 func (s *storage) cachedHistory(key string) cachedConversation {
@@ -19,7 +21,14 @@ func (s *storage) cachedHistory(key string) cachedConversation {
 	defer s.mu.Unlock()
 	return s.state.History[key]
 }
-func (s *storage) saveHistory(key string, entries []entry, revision string) error {
+func (s *storage) saveHistory(key string, entries []entry, revision string, bookmarks ...historyBookmark) error {
+	bookmark := historyBookmark{}
+	if len(entries) > 0 {
+		bookmark.Anchor = entries[0].ID
+	}
+	if len(bookmarks) > 0 {
+		bookmark = bookmarks[0]
+	}
 	if len(entries) > 300 {
 		entries = entries[len(entries)-300:]
 	}
@@ -30,7 +39,7 @@ func (s *storage) saveHistory(key string, entries []entry, revision string) erro
 		}
 		entries = entries[1:]
 	}
-	if len(entries) == 0 {
+	if len(entries) == 0 && bookmark.Anchor == "" && !bookmark.All {
 		return nil
 	}
 	s.mu.Lock()
@@ -40,7 +49,7 @@ func (s *storage) saveHistory(key string, entries []entry, revision string) erro
 	for k, v := range old {
 		next[k] = v
 	}
-	next[key] = cachedConversation{append([]entry{}, entries...), revision, time.Now()}
+	next[key] = cachedConversation{append([]entry{}, entries...), revision, time.Now(), bookmark}
 	for len(next) > 8 {
 		oldest := ""
 		var at time.Time
@@ -64,7 +73,7 @@ func (a *application) cacheHistory(m *machine, c *conversation) {
 		return
 	}
 	c.lastCached = time.Now()
-	if err := a.store.saveHistory(m.config.ID+":"+c.agent.Identity(), c.entries, c.revision); err != nil {
+	if err := a.store.saveHistory(m.config.ID+":"+c.agent.Identity(), c.entries, c.revision, c.historyBookmark); err != nil {
 		a.status = "未能保存最近对话：" + err.Error()
 	}
 }
@@ -170,21 +179,18 @@ func (c *conversation) applyBatch(batch relay.Message) bool {
 			out = append(out, e)
 		}
 	}
-	if len(out) > 2000 {
-		return false
-	}
 	c.entries = out
 	c.sequence = seq
 	return true
 }
 func (a *application) syncConversation() {
 	m, c := a.selected()
-	if m == nil || c == nil || m.session == nil || c.loading || c.updating || !c.agent.CanChat() {
+	if m == nil || c == nil || m.session == nil || c.loading || c.updating || c.historyWork != nil || c.historyBookmark.Paused || !c.agent.CanChat() {
 		return
 	}
 	if c.subscription == "" {
 		if a.refreshCount%3 == 0 {
-			a.loadHistory(false)
+			a.refreshRecentHistory(m, c)
 		}
 		return
 	}
@@ -199,15 +205,19 @@ func (a *application) syncConversation() {
 	go func() {
 		defer cancel()
 		batch, err := s.Request(ctx, request)
+		cancelled := errors.Is(ctx.Err(), context.Canceled)
 		a.update(func() {
 			c.updating = false
 			c.updateCancel = nil
+			if c.loading || cancelled {
+				return
+			}
 			if _, ok := exactAgent(m, agent); !ok || m.epoch != epoch || c.subscription != subscription {
 				return
 			}
 			if err != nil || !c.applyBatch(batch) {
 				a.stopConversationUpdates(m, c)
-				c.replaceHistory = true
+				c.historySynchronized = false
 				return
 			}
 			if relay.Text(batch, "kind") != "heartbeat" {

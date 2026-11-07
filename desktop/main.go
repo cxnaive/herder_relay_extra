@@ -60,7 +60,12 @@ type conversation struct {
 	updating                    bool
 	updateCancel                context.CancelFunc
 	lastCached                  time.Time
-	replaceHistory              bool
+	historyBookmark             historyBookmark
+	historyWork                 *historyRecovery
+	historyPages, historyCount  int
+	resumeOlder                 bool
+	historySynchronized         bool
+	provisionalIDs              map[string]bool
 	searchOpen                  bool
 	search                      string
 	terminalSearch              string
@@ -84,6 +89,10 @@ type machine struct {
 	termState      string
 	opening        bool
 	epoch          uint64
+	filesystemRead bool
+	fileEpoch      uint64
+	fileContext    context.Context
+	fileCancel     context.CancelFunc
 }
 type application struct {
 	win                            *mygo.Window
@@ -111,6 +120,7 @@ type application struct {
 	toolsPanel                     *toolsPanel
 	projectDialog                  *projectDialog
 	deviceDialog                   *deviceDialog
+	fileAccessDialog               *fileAccessDialog
 	operations                     map[string]string
 	busyOperations                 map[string]bool
 }
@@ -145,7 +155,7 @@ func main() {
 		app.win.OnReadyToShow(func() { app.win.Show() })
 		app.win.OnClosed(app.shutdown)
 		app.win.OnFileDrop(func(e *mygo.FileDropEvent) {
-			if app.mode == 0 && !app.pairing && app.management == nil && app.projectDialog == nil && app.deviceDialog == nil && app.toolsPanel == nil && app.imagePreview == nil {
+			if app.mode == 0 && !app.pairing && app.management == nil && app.projectDialog == nil && app.deviceDialog == nil && app.toolsPanel == nil && app.imagePreview == nil && app.fileAccessDialog == nil {
 				app.uploadPaths(e.Paths)
 			}
 		})

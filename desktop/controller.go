@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
@@ -27,7 +26,7 @@ func (a *application) selected() (*machine, *conversation) {
 							cached := a.store.cachedHistory(key)
 							chat.entries = cached.Entries
 							chat.revision = cached.Revision
-							chat.replaceHistory = true
+							chat.historyBookmark = cached.Bookmark
 							if len(chat.entries) > 0 {
 								chat.message = "正在同步，当前显示最近保存的对话"
 							}
@@ -54,6 +53,7 @@ func (a *application) saveCurrentDraft() {
 func (a *application) selectAgent(m *machine, agent relay.Agent) {
 	a.saveCurrentDraft()
 	if previous, old := a.selected(); old != nil {
+		a.cancelHistoryLoad(old, false)
 		a.stopConversationUpdates(previous, old)
 	}
 	if _, old := a.selected(); old != nil && old.uploadCancel != nil {
@@ -66,7 +66,9 @@ func (a *application) selectAgent(m *machine, agent relay.Agent) {
 	a.selectedMachine = m.config.ID
 	a.selectedAgent = agent.PaneID
 	a.pairing = false
-	a.loadHistory(false)
+	if _, chat := a.selected(); chat != nil && !chat.historyBookmark.Paused {
+		a.loadHistory(false)
+	}
 	a.refreshRun()
 	if a.files {
 		_, chat := a.selected()
@@ -104,9 +106,13 @@ func (a *application) pair() {
 	}()
 }
 func (a *application) connect(m *machine) {
+	a.applyFileAccess(m, false, true)
 	for key, chat := range a.chats {
 		if strings.HasPrefix(key, m.config.ID+":") {
-			chat.replaceHistory = true
+			chat.historySynchronized = false
+			chat.resumeOlder = chat.resumeOlder || chat.loading && chat.historyOlder
+			a.cancelHistoryLoad(chat, false)
+			chat.historyWork = nil
 			chat.subscription = ""
 			if chat.updateCancel != nil {
 				chat.updateCancel()
@@ -194,6 +200,7 @@ func (a *application) connect(m *machine) {
 		}
 		a.win.Update(func() {
 			if epoch == m.epoch {
+				a.applyFileAccess(m, false, true)
 				m.status = "连接已断开"
 				m.session = nil
 				if m.remote != nil {
@@ -239,6 +246,7 @@ func (a *application) event(m *machine, event relay.Message) {
 				}
 			}
 		}
+		a.applyFileAccess(m, event["filesystem_read"] == true, false)
 	case "agents":
 		next := relay.ParseAgents(event["agents"])
 		a.notifyAgentChanges(m, next)
@@ -266,116 +274,6 @@ func (a *application) event(m *machine, event relay.Message) {
 			m.remote.Accept(event)
 		}
 	}
-}
-func (a *application) loadHistory(older bool) {
-	m, c := a.selected()
-	if m == nil || c == nil || m.session == nil || c.loading || a.demo {
-		return
-	}
-	if !c.agent.CanChat() {
-		c.message = "Relay 尚未确认主会话，可切换终端直接操作。"
-		return
-	}
-	if c.preparing {
-		older = c.historyOlder
-	}
-	c.historyOlder = older
-	c.historyEpoch++
-	historyEpoch := c.historyEpoch
-	c.loading = true
-	if !older {
-		a.stopConversationUpdates(m, c)
-	}
-	agent, s, epoch := c.agent, m.session, m.epoch
-	request := agent.Request("get_conversation_history")
-	request["limit"] = 60
-	request["observe"] = !older
-	if older {
-		request["cursor"] = c.next
-	}
-	ctx, cancel := context.WithTimeout(a.ctx, 20*time.Second)
-	c.historyCancel = cancel
-	go func() {
-		defer cancel()
-		page, err := s.Request(ctx, request)
-		a.win.Update(func() {
-			if c.historyEpoch != historyEpoch {
-				return
-			}
-			c.loading = false
-			if epoch != m.epoch {
-				return
-			}
-			current := slices.ContainsFunc(m.agents, func(v relay.Agent) bool { return v.Target == agent.Target && v.CanChat() })
-			if !current {
-				return
-			}
-			if err != nil {
-				c.message = err.Error()
-				return
-			}
-			c.preparing = relay.Text(page, "state") == "preparing" || relay.Text(page, "state") == "building"
-			if page["available"] == false || c.preparing {
-				c.message = "对话暂不可用，请稍后重试"
-				if c.preparing {
-					c.message = "正在整理历史消息…"
-					if next := relay.Text(page, "next_cursor"); next != "" {
-						c.next = next
-					}
-					progress := relay.Object(page["progress"])
-					total := relay.Number(progress, "source_bytes")
-					scanned := relay.Number(progress, "scanned_bytes")
-					c.historyProgress = 0
-					if total > 0 && scanned >= 0 {
-						c.historyProgress = min(1, float64(scanned)/float64(total))
-					}
-				}
-				return
-			}
-			c.preparing = false
-			c.historyProgress = 0
-			revision := relay.Text(page, "source_revision")
-			if c.revision != "" && revision != "" && c.revision != revision {
-				if older {
-					c.next = ""
-					c.message = "对话已更新，请刷新后重新加载历史"
-					return
-				}
-				c.entries = nil
-				c.next = ""
-			}
-			c.revision = revision
-			b, _ := json.Marshal(page["entries"])
-			var incoming []entry
-			if err = json.Unmarshal(b, &incoming); err != nil {
-				c.message = "对话格式无法解析"
-				return
-			}
-			if older {
-				c.entries = mergeHistory(c.entries, incoming, true)
-				c.next = relay.Text(page, "next_cursor")
-			} else {
-				if c.replaceHistory {
-					c.entries = nil
-					c.next = ""
-					c.replaceHistory = false
-				}
-				c.entries = mergeHistory(c.entries, incoming, false)
-				c.subscription = relay.Text(page, "subscription_id")
-				c.sequence = relay.Number(page, "sequence")
-				provisional := relay.Decode[[]entry](page["provisional"])
-				c.entries = mergeHistory(c.entries, provisional, false)
-				if c.next == "" {
-					c.next = relay.Text(page, "next_cursor")
-				}
-			}
-			if len(c.entries) > 2000 {
-				c.entries = c.entries[len(c.entries)-2000:]
-			}
-			c.message = ""
-			a.cacheHistory(m, c)
-		})
-	}()
 }
 func (a *application) send() {
 	m, c := a.selected()

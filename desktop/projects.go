@@ -60,6 +60,9 @@ func (a *application) openProject(m *machine, w relay.Workspace, kind string) {
 	}
 }
 func (a *application) computerMenu(menu *ui.Menu, m *machine) {
+	if menu.Item("文件访问范围…").Disabled(m.session == nil || !m.capabilities["filesystem_read_opt_in_v1"]).Chosen() {
+		a.openFileAccess(m)
+	}
 	if menu.Item("配对设备…").Disabled(m.session == nil).Chosen() {
 		a.openDevices(m)
 	}
@@ -120,6 +123,9 @@ func (a *application) submitProject(d *projectDialog) {
 		a.collapsed = a.store.sidebarGroups()
 		a.operations = a.store.operations()
 		m.epoch++
+		if m.fileCancel != nil {
+			m.fileCancel()
+		}
 		if m.cancel != nil {
 			m.cancel()
 		}

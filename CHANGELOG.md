@@ -14,6 +14,8 @@ project follows [Semantic Versioning](https://semver.org/).
 - Codex associated-history and manual-pin overrides, terminal status-line identity parsing and automatic `/status` probing.
 
 ### Added
+- Desktop per-device opt-in for outside-workspace read-only files, shared by directory browsing, citations, Markdown images, previews and downloads. Revoking access cancels transfers and closes cached previews.
+- Restore long desktop conversations to the previous reading depth across reconnects, with full-history loading, page/message progress and pause/resume. Recover expired cursors without dropping already-read content or truncating conversations at 2,000 entries.
 - Desktop Agent creation, rename, stop/restart, context clearing, ordering, and live Codex model/reasoning settings through native project and Agent menus. Show Relay-provided default title arguments separately from user startup arguments.
 - Desktop approval and question cards, verified attachments from file selection, drag/drop and clipboard, incremental conversations and encrypted recent-history caches. Preserve uncertain writes across restarts to prevent duplicate operations.
 - Desktop project/Worktree and paired-device management, Git diffs, conversation/terminal search, slash commands, diagnostics, activity, and completion/attention notifications with per-Agent mute.

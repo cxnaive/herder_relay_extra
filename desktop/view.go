@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
@@ -44,6 +45,7 @@ func (a *application) view(c *ui.Context) {
 	a.toolsView(c)
 	a.projectView(c)
 	a.devicesView(c)
+	a.fileAccessView(c)
 }
 func statusLabel(s string) string {
 	switch s {
@@ -174,30 +176,31 @@ func (a *application) chatView(c *ui.Context, m *machine, chat *conversation) {
 		if chat.next != "" && ui.Button(c, "加载更早消息").Disabled(chat.loading).Clicked() {
 			a.loadHistory(true)
 		}
+		if ui.Button(c, "加载全部历史").Disabled(chat.loading || m.session == nil).Clicked() {
+			a.loadAllHistory()
+		}
+		if !chat.loading && (chat.historyWork != nil || chat.historyBookmark.Paused) && ui.Button(c, "继续加载").Disabled(m.session == nil).Clicked() {
+			a.resumeHistory()
+		}
 		if ui.Button(c, "刷新").Disabled(chat.loading || m.session == nil).Clicked() {
 			a.loadHistory(false)
 		}
-		if chat.loading || chat.preparing {
+	})
+	if chat.loading || chat.preparing {
+		ui.Row(c).Padding(4, 24).Gap(8).AlignItems(ui.Center).Children(func() {
 			ui.Spinner(c).Size(15, 15)
-			label := "正在同步…"
-			if chat.historyOlder {
-				label = "正在加载更早消息…"
-			}
+			label := chat.historyLabel()
 			ui.Text(c, label).FontSize(12).TextColor(t.TextMuted)
 			if chat.historyProgress > 0 {
 				ui.Progress(c, chat.historyProgress).Width(120)
 			}
 			if ui.Button(c, "取消加载").Clicked() {
-				if chat.historyCancel != nil {
-					chat.historyCancel()
-				}
-				chat.historyEpoch++
-				chat.loading = false
-				chat.preparing = false
-				chat.message = "已取消加载"
+				a.cancelHistoryLoad(chat, true)
+				chat.lastCached = time.Time{}
+				a.cacheHistory(m, chat)
 			}
-		}
-	})
+		})
+	}
 	if chat.searchOpen {
 		ui.TextInput(c, &chat.search).Label("查找对话").Placeholder("查找已加载的消息和工具输出").Margin(6, 24)
 	}
