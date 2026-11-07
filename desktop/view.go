@@ -111,7 +111,9 @@ func (a *application) workspaceView(c *ui.Context) {
 			ui.Row(c).AlignItems(ui.Center).Gap(12).Children(func() {
 				ui.Text(c, chat.agent.Title()).FontSize(20).Bold().Grow(1)
 				ui.MenuButton(c, "管理", func(menu *ui.Menu) { a.agentMenu(menu, m, chat.agent) })
-				ui.Segmented(c, &a.mode, "对话", "终端").Label("主视图")
+				mode := a.mode
+				ui.Segmented(c, &mode, "对话", "终端").Label("主视图")
+				a.setMode(mode)
 				if ui.Button(c, "文件").Selected(a.files).Clicked() {
 					a.files = !a.files
 					a.details = false

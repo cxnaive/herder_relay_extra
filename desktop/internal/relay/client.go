@@ -56,15 +56,17 @@ func parseMessage(b []byte) (Message, error) {
 }
 
 type Session struct {
-	wire    *wire
-	cipher  *sessionCipher
-	sendMu  sync.Mutex
-	mu      sync.Mutex
-	pending map[string]chan Message
-	closed  chan struct{}
-	once    sync.Once
-	err     error
-	Events  chan Message
+	wire       *wire
+	cipher     *sessionCipher
+	sendMu     sync.Mutex
+	mu         sync.Mutex
+	pending    map[string]chan Message
+	closed     chan struct{}
+	once       sync.Once
+	err        error
+	Events     chan Message
+	terminalMu sync.Mutex
+	terminal   *TerminalConn
 }
 
 // Connect persists enrollment before confirming the new credential. A lost
@@ -231,6 +233,9 @@ func (s *Session) readLoop() {
 			}
 			continue
 		}
+		if s.routeTerminalEvent(m) {
+			continue
+		}
 		select {
 		case s.Events <- m:
 		case <-s.closed:
@@ -239,8 +244,14 @@ func (s *Session) readLoop() {
 	}
 }
 func (s *Session) Send(m Message) error {
+	return s.send(context.Background(), m)
+}
+func (s *Session) send(ctx context.Context, m Message) error {
 	s.sendMu.Lock()
 	defer s.sendMu.Unlock()
+	if ctx.Err() != nil {
+		return &RequestError{Message: "请求已取消"}
+	}
 	select {
 	case <-s.closed:
 		return errors.New("连接已关闭")
@@ -262,6 +273,16 @@ func (s *Session) Send(m Message) error {
 
 // Request never retries writes. Callers retain drafts when delivery is unknown.
 func (s *Session) Request(ctx context.Context, m Message) (Message, error) {
+	wait, err := s.beginRequest(ctx, m)
+	if err != nil {
+		return nil, err
+	}
+	return wait()
+}
+
+// beginRequest writes in the caller's order but leaves acknowledgment waiting
+// separate, so a terminal can keep a bounded number of ordered writes in flight.
+func (s *Session) beginRequest(ctx context.Context, m Message) (func() (Message, error), error) {
 	if err := ctx.Err(); err != nil {
 		return nil, &RequestError{false, "请求已取消"}
 	}
@@ -277,22 +298,56 @@ func (s *Session) Request(ctx context.Context, m Message) (Message, error) {
 	s.mu.Lock()
 	s.pending[id] = ch
 	s.mu.Unlock()
-	defer func() { s.mu.Lock(); delete(s.pending, id); s.mu.Unlock() }()
-	if err := s.Send(copy); err != nil {
+	cleanup := func() { s.mu.Lock(); delete(s.pending, id); s.mu.Unlock() }
+	if err := s.send(ctx, copy); err != nil {
+		cleanup()
 		return nil, err
 	}
-	var reply Message
-	select {
-	case <-ctx.Done():
-		return nil, errors.New("请求超时，执行结果未确认；请先核对终端")
-	case <-s.closed:
-		// A peer may close immediately after sending its final response.
+	return func() (Message, error) {
+		defer cleanup()
+		var reply Message
 		select {
+		case <-ctx.Done():
+			return nil, errors.New("请求超时，执行结果未确认；请先核对终端")
+		case <-s.closed:
+			// A peer may close immediately after sending its final response.
+			select {
+			case reply = <-ch:
+			default:
+				return nil, errors.New("连接中断，执行结果未确认；请求不会自动重发")
+			}
 		case reply = <-ch:
-		default:
-			return nil, errors.New("连接中断，执行结果未确认；请求不会自动重发")
 		}
-	case reply = <-ch:
+		return commandReply(reply)
+	}, nil
+}
+
+func (s *Session) routeTerminalEvent(m Message) bool {
+	kind := Text(m, "type")
+	if kind != "terminal_output" && kind != "terminal_closed" {
+		return false
 	}
-	return commandReply(reply)
+	s.terminalMu.Lock()
+	terminal := s.terminal
+	s.terminalMu.Unlock()
+	if terminal != nil {
+		terminal.Accept(m)
+	}
+	return true
+}
+func (s *Session) attachTerminal(t *TerminalConn) error {
+	s.terminalMu.Lock()
+	defer s.terminalMu.Unlock()
+	if s.terminal != nil && s.terminal != t {
+		return errors.New("请先断开当前终端")
+	}
+	s.terminal = t
+	return nil
+}
+func (s *Session) detachTerminal(t *TerminalConn) {
+	s.terminalMu.Lock()
+	defer s.terminalMu.Unlock()
+	if s.terminal == t {
+		s.terminal = nil
+	}
 }

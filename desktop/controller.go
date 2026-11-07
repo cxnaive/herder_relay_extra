@@ -66,7 +66,7 @@ func (a *application) selectAgent(m *machine, agent relay.Agent) {
 	a.selectedMachine = m.config.ID
 	a.selectedAgent = agent.PaneID
 	a.pairing = false
-	if _, chat := a.selected(); chat != nil && !chat.historyBookmark.Paused {
+	if _, chat := a.selected(); chat != nil && !chat.historyBookmark.Paused && a.mode == 0 {
 		a.loadHistory(false)
 	}
 	a.refreshRun()
@@ -75,6 +75,24 @@ func (a *application) selectAgent(m *machine, agent relay.Agent) {
 		if chat != nil {
 			a.ensureFiles(m, chat)
 		}
+	}
+}
+
+func (a *application) setMode(mode int) {
+	if a.mode == mode {
+		return
+	}
+	a.mode = mode
+	m, chat := a.selected()
+	if chat == nil {
+		return
+	}
+	if mode == 1 {
+		a.cancelHistoryLoad(chat, false)
+		chat.historyWork = nil
+		a.stopConversationUpdates(m, chat)
+	} else if !chat.historyBookmark.Paused {
+		a.loadHistory(false)
 	}
 }
 func (a *application) pair() {
@@ -276,10 +294,6 @@ func (a *application) event(m *machine, event relay.Message) {
 		// Read a complete inventory after incremental changes; never infer identity.
 		if m.session != nil {
 			go m.session.Send(relay.Message{"type": "refresh_agents", "protocol": 3})
-		}
-	case "terminal_output", "terminal_closed":
-		if m.remote != nil {
-			m.remote.Accept(event)
 		}
 	}
 }

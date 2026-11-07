@@ -18,6 +18,7 @@ type TerminalConn struct {
 	mu        sync.Mutex
 	stateMu   sync.Mutex
 	sequence  uint64
+	inflight  chan struct{}
 	reader    *io.PipeReader
 	writer    *io.PipeWriter
 	events    chan Message
@@ -33,9 +34,13 @@ type TerminalConn struct {
 func NewTerminalConn(s *Session, a Agent) *TerminalConn {
 	r, w := io.Pipe()
 	life, cancel := context.WithCancel(context.Background())
-	return &TerminalConn{session: s, agent: a, reader: r, writer: w, events: make(chan Message, 32), done: make(chan struct{}), life: life, cancel: cancel}
+	return &TerminalConn{session: s, agent: a, reader: r, writer: w, events: make(chan Message, 32), inflight: make(chan struct{}, 32), done: make(chan struct{}), life: life, cancel: cancel}
 }
 func (t *TerminalConn) Open(ctx context.Context) error {
+	if err := t.session.attachTerminal(t); err != nil {
+		t.shutdown(err)
+		return err
+	}
 	m := t.agent.Request("terminal_open")
 	m["columns"] = 100
 	m["rows"] = 30
@@ -148,6 +153,12 @@ func (t *TerminalConn) operation(action string, fields Message) error {
 	select {
 	case <-t.done:
 		return io.ErrClosedPipe
+	case t.inflight <- struct{}{}:
+	}
+	select {
+	case <-t.done:
+		<-t.inflight
+		return io.ErrClosedPipe
 	default:
 	}
 	m := t.agent.Request(action)
@@ -159,17 +170,27 @@ func (t *TerminalConn) operation(action string, fields Message) error {
 		m[k] = v
 	}
 	ctx, cancel := context.WithTimeout(t.life, 8*time.Second)
-	defer cancel()
-	if _, err := t.session.Request(ctx, m); err != nil {
+	wait, err := t.session.beginRequest(ctx, m)
+	if err != nil {
+		cancel()
+		<-t.inflight
 		t.shutdown(err)
 		return err
 	}
 	t.sequence++
+	go func() {
+		defer cancel()
+		defer func() { <-t.inflight }()
+		if _, err := wait(); err != nil {
+			t.shutdown(err)
+		}
+	}()
 	return nil
 }
 func (t *TerminalConn) shutdown(err error) {
 	t.once.Do(func() {
 		t.cancel()
+		t.session.detachTerminal(t)
 		close(t.done)
 		t.reader.CloseWithError(err)
 		t.writer.CloseWithError(err)

@@ -143,8 +143,8 @@ func main() {
 	mygo.App.SetMenu(mygo.NewMenu([]*mygo.MenuItem{
 		{Role: mygo.RoleAppMenu}, {Role: mygo.RoleEditMenu},
 		{Label: "视图", Submenu: []*mygo.MenuItem{
-			{Label: "对话", Accelerator: "CmdOrCtrl+1", Click: func(_ *mygo.MenuItem, _ *mygo.Window) { app.mode = 0; app.win.Invalidate() }},
-			{Label: "终端", Accelerator: "CmdOrCtrl+2", Click: func(_ *mygo.MenuItem, _ *mygo.Window) { app.mode = 1; app.win.Invalidate() }},
+			{Label: "对话", Accelerator: "CmdOrCtrl+1", Click: func(_ *mygo.MenuItem, _ *mygo.Window) { app.setMode(0); app.win.Invalidate() }},
+			{Label: "终端", Accelerator: "CmdOrCtrl+2", Click: func(_ *mygo.MenuItem, _ *mygo.Window) { app.setMode(1); app.win.Invalidate() }},
 		}}, {Role: mygo.RoleWindowMenu},
 	}))
 	mygo.App.WhenReady(func() {

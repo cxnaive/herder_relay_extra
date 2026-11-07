@@ -34,8 +34,13 @@ type historyPage struct {
 		Scanned int64 `json:"scanned_bytes"`
 	} `json:"progress"`
 	Diagnostics struct {
-		Truncated  bool `json:"source_truncated"`
-		Incomplete bool `json:"continuation_incomplete"`
+		Truncated       bool   `json:"source_truncated"`
+		Incomplete      bool   `json:"continuation_incomplete"`
+		Reason          string `json:"continuation_reason"`
+		Corrupt         int    `json:"corrupt_records"`
+		Oversized       int    `json:"oversized_records"`
+		OmittedTools    int    `json:"omitted_tools"`
+		OmittedPayloads int    `json:"omitted_payloads"`
 	} `json:"diagnostics"`
 }
 type historyRecovery struct {
@@ -47,7 +52,7 @@ type historyRecovery struct {
 	cursors                            map[string]bool
 	base                               []entry
 	pages, restarts                    int
-	incomplete                         bool
+	diagnosticMessage                  string
 	fast                               bool
 	restoreAnchor                      string
 	restoreAll                         bool
@@ -152,7 +157,10 @@ func (r *historyRecovery) accept(p historyPage) (preparing bool, err error) {
 	if p.Cursor != "" {
 		r.cursors[p.Cursor] = true
 	}
-	r.incomplete = r.incomplete || p.Diagnostics.Truncated || p.Diagnostics.Incomplete
+	// The recent byte-window boundary is pagination, not lost source records.
+	if notice := p.diagnosticNotice(); notice != "" {
+		r.diagnosticMessage = notice
+	}
 	_, anchored := r.rows[r.anchor]
 	r.done = p.Cursor == "" || r.older || !r.all && r.hasUser && (r.anchor == "" || anchored)
 	return false, nil
@@ -298,6 +306,11 @@ func (a *application) beginHistory(m *machine, c *conversation) {
 	a.readHistoryPage(ctx, m, c, c.historyWork, c.historyEpoch, m.epoch, c.agent)
 }
 func (a *application) readHistoryPage(ctx context.Context, m *machine, c *conversation, r *historyRecovery, requestEpoch, epoch uint64, agent relay.Agent) {
+	if a.mode != 0 {
+		a.cancelHistoryLoad(c, false)
+		c.historyWork = nil
+		return
+	}
 	if m.session == nil || m.epoch != epoch || ctx.Err() != nil {
 		a.cancelHistoryLoad(c, false)
 		return
@@ -378,10 +391,7 @@ func (a *application) readHistoryPage(ctx context.Context, m *machine, c *conver
 			c.loading = false
 			c.preparing = false
 			c.historyWork = nil
-			c.message = ""
-			if r.incomplete {
-				c.message = "已加载 Relay 返回的历史；服务端提示部分源记录不完整。"
-			}
+			c.message = r.diagnosticMessage
 			if len(c.entries) > 0 {
 				c.historyBookmark.Anchor = c.entries[0].ID
 			}
@@ -408,6 +418,23 @@ func (a *application) readHistoryPage(ctx context.Context, m *machine, c *conver
 			}
 		})
 	}()
+}
+func (p historyPage) diagnosticNotice() string {
+	d := p.Diagnostics
+	if d.Incomplete {
+		message := "部分续接记录暂不可用，可稍后刷新。"
+		if d.Reason != "" {
+			message += "\n" + d.Reason
+		}
+		return message
+	}
+	if d.Corrupt > 0 {
+		return fmt.Sprintf("日志中有 %d 条记录无法解析，其余消息已加载。", d.Corrupt)
+	}
+	if d.Oversized > 0 || d.OmittedTools > 0 || d.OmittedPayloads > 0 {
+		return "部分过大的日志内容或工具详情未返回，其余消息已加载。"
+	}
+	return ""
 }
 func (c *conversation) historyLabel() string {
 	if c.preparing {

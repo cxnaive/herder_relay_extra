@@ -7,6 +7,7 @@ import (
 	"image/png"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/cxnaive/herdr-desktop/internal/relay"
@@ -205,5 +206,57 @@ func TestHistoryProgressPausesWithoutAutomaticRestart(t *testing.T) {
 	a.syncConversation()
 	if c.loading {
 		t.Fatal("polling resumed cancelled history")
+	}
+}
+
+func TestRecentByteWindowIsNotMissingHistory(t *testing.T) {
+	r := newHistoryRecovery(&conversation{}, false, true)
+	p := historyPage{Available: true, Revision: "rev", Cursor: "older", Entries: historyEntries(60, 120)}
+	p.Diagnostics.Truncated = true
+	if _, err := r.accept(p); err != nil {
+		t.Fatal(err)
+	}
+	p.Cursor = ""
+	p.Entries = historyEntries(0, 60)
+	p.Diagnostics.Truncated = false
+	if _, err := r.accept(p); err != nil {
+		t.Fatal(err)
+	}
+	if !r.done || len(r.entries()) != 120 || r.diagnosticMessage != "" {
+		t.Fatal("recent-window boundary reported missing source", r.diagnosticMessage)
+	}
+	p.Diagnostics.Truncated = true
+	if p.diagnosticNotice() != "" {
+		t.Fatal("ordinary pagination must not warn")
+	}
+}
+func TestActualHistoryDiagnosticsRemainVisible(t *testing.T) {
+	p := historyPage{}
+	p.Diagnostics.Incomplete = true
+	p.Diagnostics.Reason = "Missing continuation segment"
+	if notice := p.diagnosticNotice(); !strings.Contains(notice, p.Diagnostics.Reason) {
+		t.Fatal("lost actual continuation reason", notice)
+	}
+	p.Diagnostics.Incomplete = false
+	p.Diagnostics.Corrupt = 2
+	if !strings.Contains(p.diagnosticNotice(), "2 条记录无法解析") {
+		t.Fatal("lost corruption count")
+	}
+	p.Diagnostics.Corrupt = 0
+	p.Diagnostics.OmittedTools = 1
+	if p.diagnosticNotice() == "" {
+		t.Fatal("omitted details hidden")
+	}
+}
+func TestSwitchToTerminalCancelsHistoryBandwidth(t *testing.T) {
+	a, _, c := managementFixture(t)
+	ctx, cancel := context.WithCancel(a.ctx)
+	c.historyCancel = cancel
+	c.loading = true
+	c.historyWork = newHistoryRecovery(c, false, true)
+	c.historyBookmark.All = true
+	a.setMode(1)
+	if ctx.Err() == nil || c.loading || c.historyWork != nil || !c.historyBookmark.All || c.historyBookmark.Paused {
+		t.Fatal("terminal mode did not pause background history cleanly")
 	}
 }

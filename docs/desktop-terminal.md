@@ -20,9 +20,13 @@ Mutations require a paired controller and an exact live pane/terminal target. Te
 
 One stream is allowed per transport client, at most 64 per Relay. Disconnect, target replacement and revoked device authorization release it. The desktop creates `terminal.Terminal` with `Conn` and `ResizeByConn`, so Herdr owns the final dimensions. Scroll is forwarded semantically to Herdr's scrollback.
 
+The desktop writes input, resize and scroll requests in one sequence, allowing at most 32 unacknowledged operations. A write returns after transport dispatch; confirmations are checked asynchronously with an eight-second deadline. Rejections, unknown results and disconnection close the stream without replay. This avoids one network round trip per key while preserving the Relay's existing ordered admission and per-operation target/permission checks. It requires no Relay protocol change.
+
+The encrypted receive loop routes terminal frames directly to the bounded terminal queue, bypassing UI update scheduling. Entering terminal mode cancels conversation paging and its update subscription; returning to chat recovers the previously loaded history. File transfers still share the encrypted transport, so this is not a guarantee of identical performance to SSH under all workloads.
+
 ## Files
 
-The desktop uses existing `workspace_list`, `workspace_file_read` and `workspace_file_download` actions with `file_scope=workspace` and the captured exact target on every request. Directory responses are checked for path containment, duplicate rows, cursor progress and unchanged revisions. Preview chunks require a single complete SHA-256 digest. Original downloads require an unchanged download revision, exact offset/size/path and a matching per-chunk digest. A local temporary file is renamed into the user-selected destination only after successful completion.
+The desktop uses existing `workspace_list`, `workspace_file_read` and `workspace_file_download` actions with `file_scope=workspace` by default and the captured exact target on every request. Controllers may explicitly authorize `filesystem` reads for their own device through `file_access_set`; revocation cancels readers and clears previews. Directory responses are checked for path containment, duplicate rows, cursor progress and unchanged revisions. Preview chunks require a single complete SHA-256 digest. Original downloads require an unchanged download revision, exact offset/size/path and a matching per-chunk digest. A local temporary file is renamed into the user-selected destination only after successful completion.
 
 ## Validation
 
