@@ -1,0 +1,170 @@
+[
+  {
+    "path": "box.go",
+    "upstream_sha256": "6c3f83f4db03b7e4041c4f7943e2b6a72a5b3b6a641fe711819d3f8babb16c62"
+  },
+  {
+    "path": "font.go",
+    "upstream_sha256": "fa5efdfa22ac6c662a0c147b33711db2c927ca2461ec42b001fccf40df27a461"
+  },
+  {
+    "path": "ghostty_themes.go",
+    "upstream_sha256": "5a87ca81f4f0aec1ed9617149e89e0b735095f71386aa118bbfd2ab797cf6dca"
+  },
+  {
+    "path": "ghostty.go",
+    "upstream_sha256": "edf9d1fa32904f198724a8fe7b25d1548b649cfee04bb221e44a893b4f92cbd0"
+  },
+  {
+    "path": "images.go",
+    "upstream_sha256": "1cc04244d149ec0df0c5cb4b59c976be0d3eb16c8d0ad7cb8ad69f55ffd1986f"
+  },
+  {
+    "path": "keybind.go",
+    "upstream_sha256": "030fca4b84cf7de063c3ea5950211619bd036d726bb3c2e87b3207260a2f3271"
+  },
+  {
+    "path": "keys.go",
+    "upstream_sha256": "ffd3267f15df0618bdbbf86e5124a8f8989bc8a6ba69310c4bdb1dc4455dd87c"
+  },
+  {
+    "path": "library.go",
+    "upstream_sha256": "543252a67bdffc172298414c3576c4e1b39a121c8e9ae3bf025d105ca068eabd"
+  },
+  {
+    "path": "links.go",
+    "upstream_sha256": "405d407b85934130430445f8e33717ab53495fcd9a7259a8ac0c266f4dfe0d3c"
+  },
+  {
+    "path": "mirror_images.go",
+    "upstream_sha256": "9d546e98804f86b8c0cf74f220b1080da569c4542c89a0793ed3afb90a7214ca"
+  },
+  {
+    "path": "mirror.go",
+    "upstream_sha256": "bfbd9b74e0a9734823f615ca13ab6094b732d95f190376940dcc46667c21a727"
+  },
+  {
+    "path": "mygo-plugin.json",
+    "upstream_sha256": "2d7c464140e016bf4790671bcd4e61af8995c75a86e491f347297b1a637a29a4"
+  },
+  {
+    "path": "paint.go",
+    "upstream_sha256": "6fed3c553fb2ca6acfbb59b4bd227d1fb17e925a38e920a774d212993af019ea"
+  },
+  {
+    "path": "paste.go",
+    "upstream_sha256": "c7587f33691e5669d730a4f2f0cba8ea798425a67a476baf8d32692afd8b4ef1"
+  },
+  {
+    "path": "placeholders.go",
+    "upstream_sha256": "9dd768552f87c8f3c3db21a342dfa9b5af88dc6eb2ea08edd4a9f71af354ffcd"
+  },
+  {
+    "path": "prompt.go",
+    "upstream_sha256": "5f0a73eeda18ee71723aaea937550fe9d30865db03efcd1beda59c5f0ae7f80a"
+  },
+  {
+    "path": "search.go",
+    "upstream_sha256": "0517efb26a5fa8d3c544e65bde6058ab04259515f036d9d8842f9d803f337c38"
+  },
+  {
+    "path": "shell_integration.go",
+    "upstream_sha256": "33edefa16dde7a5064fe7a604deaae9640d011493e5b1c1d7ca4456d512b3d0d"
+  },
+  {
+    "path": "terminal.go",
+    "upstream_sha256": "f5b4b759d4339bf46600be70cba4947a67aa67621fe3688f2883430b30721e6e"
+  },
+  {
+    "path": "theme.go",
+    "upstream_sha256": "fed989c6cec5fdb3bcd521767656bf6a140ba129dfe80c3a32450c643ff2b70a"
+  },
+  {
+    "path": "view.go",
+    "upstream_sha256": "53035295f6412a208d1f204226c65daef5384e4a9e4687f4255fc3212ef4cd72"
+  },
+  {
+    "path": "internal/library/library.go",
+    "upstream_sha256": "be78f2612c48cd2343e7e249383ba186481f52d615db0573908025e8829b602c"
+  },
+  {
+    "path": "internal/pty/pty_darwin.go",
+    "upstream_sha256": "df792b0bb55173d0b698019dbdb4ff917f0201e8553cd03ac3e4b71008e0a1e8"
+  },
+  {
+    "path": "internal/pty/pty_linux.go",
+    "upstream_sha256": "d4e10520f2db186022f2612ac2ee36e117bdc2a97d2dc332aec0f13ae8f6b104"
+  },
+  {
+    "path": "internal/pty/pty_other.go",
+    "upstream_sha256": "126000f8122ff937d0bf5a72d16c191aa651014280424c03ab26442f495485b0"
+  },
+  {
+    "path": "internal/pty/pty_unix.go",
+    "upstream_sha256": "15e0df57aaae0b97d3d9e8d73468b81dab2c6904a9a4651a93f107e2ce3915ee"
+  },
+  {
+    "path": "internal/pty/pty_windows.go",
+    "upstream_sha256": "fa06db7a1017cd103640948c671b6c7743b1f504626484523f6355eafc1d1e9d"
+  },
+  {
+    "path": "internal/pty/pty.go",
+    "upstream_sha256": "f2b055f2be3e00795e2c65615a892265f7adca759a64eff585e6e1802ae06061"
+  },
+  {
+    "path": "internal/vt/clipboard.go",
+    "upstream_sha256": "d7301b6f20fa46da7df48c532aa0fdb18f47d7cc2316c0f1a156da6c64f5fe63"
+  },
+  {
+    "path": "internal/vt/encode.go",
+    "upstream_sha256": "1aacdea6cc49be7324b98b6a561b0c0cf17ebc1b7f080904f14dc89f9b9d456e"
+  },
+  {
+    "path": "internal/vt/ffi_other.go",
+    "upstream_sha256": "79417723e9e17acc0978dd88e97bb295afe096be790d6c2b4beb14cf8a0995ea"
+  },
+  {
+    "path": "internal/vt/ffi.go",
+    "upstream_sha256": "4d3d50c1f37b932cd211e1963707c4be23220e1bf117d9cf5c714d9169b66305"
+  },
+  {
+    "path": "internal/vt/images.go",
+    "upstream_sha256": "e3c270a8f8cc7d45f9c624ab291aa9e28ee45289d075660bd824768dc7a31837"
+  },
+  {
+    "path": "internal/vt/lib.go",
+    "upstream_sha256": "ef612617699fd5d47740a5a6297374e2611399f8f3bf713def1b43c0f2cfc77f"
+  },
+  {
+    "path": "internal/vt/open_unix.go",
+    "upstream_sha256": "8a9c72acd6fad9cf541350a0bb646621108ec937b5400f915ee2f44103bd202e"
+  },
+  {
+    "path": "internal/vt/open_windows.go",
+    "upstream_sha256": "9ede90c1cfb7a7bc11a4acaa337f2832647274ca7dc98c727598eccf1b68023d"
+  },
+  {
+    "path": "internal/vt/render.go",
+    "upstream_sha256": "491430ca89d3af19e7e26582ae126ae671f078820bdf412d4223c805f75efcc9"
+  },
+  {
+    "path": "internal/vt/rows.go",
+    "upstream_sha256": "294232eb6e83d60e0a982fca0e612b45a1506015621bf20727f38a7ddd2ef57d"
+  },
+  {
+    "path": "internal/vt/search.go",
+    "upstream_sha256": "0607843eb1068d8fc091e636f5b0f44603d0f5085b045eaa2fd3f6f83f9d3800"
+  },
+  {
+    "path": "internal/vt/selection.go",
+    "upstream_sha256": "df89c04c2e29d653aaee67e94c9b9df83810f1652feaa991abae92c317029e33"
+  },
+  {
+    "path": "internal/vt/terminal.go",
+    "upstream_sha256": "c0277ee374f4a6b131ee68881809c7140a8aee0face3a980397406f3db0ff3c4"
+  },
+  {
+    "path": "internal/vt/types.go",
+    "upstream_sha256": "b2b9325d1683971d50159b17032abd5aafc83a76ca4f66fc87c6611433040afb"
+  }
+]

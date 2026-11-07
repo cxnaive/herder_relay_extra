@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/cxnaive/herdr-desktop/internal/relay"
-	"github.com/egoist/mygo/plugins/terminal"
+	"github.com/egoist/mygo/herdr-terminal"
 )
 
 func (a *application) selected() (*machine, *conversation) {
@@ -287,6 +287,7 @@ func (a *application) event(m *machine, event relay.Message) {
 			}
 			m.termState = "终端身份已变化，请重新连接"
 		}
+		a.applyTerminalBackgrounds(m)
 		if a.selectedMachine == "" && len(m.agents) > 0 {
 			a.selectAgent(m, m.agents[0])
 		}
@@ -374,7 +375,7 @@ func (a *application) openTerminal() {
 		m.remote = nil
 	}
 	if a.demo {
-		term, err := terminal.New(a.terminalAppearanceOptions())
+		term, err := terminal.New(a.terminalAppearanceOptions(""))
 		if err != nil {
 			m.termState = err.Error()
 			return
@@ -416,7 +417,7 @@ func (a *application) openTerminal() {
 				m.remote = nil
 				return
 			}
-			opts := a.terminalAppearanceOptions()
+			opts := a.terminalAppearanceOptions(c.agent.Agent)
 			opts.Conn = remote
 			opts.ResizeByConn = true
 			opts.OnScroll = func(lines int) bool { go remote.Scroll(lines); return true }
@@ -443,6 +444,7 @@ func (a *application) openTerminal() {
 			m.term = term
 			m.termIdentity = identity
 			m.termState = "终端已连接"
+			a.applyTerminalBackgrounds(m)
 		})
 	}()
 }

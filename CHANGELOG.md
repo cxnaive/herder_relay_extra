@@ -29,6 +29,7 @@ project follows [Semantic Versioning](https://semver.org/).
 - Read-only, exact-workspace document downloads in 512 KiB verified chunks (up to 12 MiB per file), enabling native PDF/Markdown/image reviewers without raising transport limits or granting file-write access.
 
 ### Fixed
+- Soften Codex terminal's dark gray message and input backgrounds in desktop light mode, with an option to restore their original appearance. Preserve other Agent backgrounds, colored highlights, selection and terminal contents.
 - Read exact Codex standalone/embedded turn lifecycle records for running status and elapsed time. A temporary Herdr idle snapshot no longer ends an active turn; missing or conflicting evidence remains unknown.
 - Require an observed active Codex turn and explicit same-turn completion proof for Android and desktop completion notifications. Disconnections, replacement bindings, failures and unobserved old turns no longer generate successful completion alerts; notifications describe a single turn, not the entire ongoing task.
 - Avoid reporting the Relay's recent-log byte window as missing desktop conversation history; retain specific warnings for unavailable continuation records, parse errors and omitted large content.

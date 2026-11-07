@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/egoist/mygo/plugins/terminal"
+	"github.com/egoist/mygo/herdr-terminal"
 	"github.com/egoist/mygo/ui"
 )
 

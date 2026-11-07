@@ -2,14 +2,15 @@ package main
 
 import (
 	"github.com/egoist/mygo"
-	"github.com/egoist/mygo/plugins/terminal"
+	"github.com/egoist/mygo/herdr-terminal"
 	"github.com/egoist/mygo/ui"
 )
 
 type appearanceSettings struct {
-	Application    string
-	Terminal       string
-	OriginalColors bool
+	Application         string
+	Terminal            string
+	OriginalColors      bool
+	OriginalBackgrounds bool
 }
 
 func (p appearanceSettings) normalized() appearanceSettings {
@@ -53,8 +54,8 @@ func (p appearanceSettings) contrast() float32 {
 }
 
 // Both terminal theme slots receive the chosen palette, keeping the terminal
-// independent of the UI's light/dark mode. Explicit ANSI colors remain intact;
-// the renderer's contrast correction handles those against their actual cell.
+// independent of the UI's light/dark mode. Cell color adjustments happen only
+// in the renderer, preserving the original ANSI state across appearance changes.
 var softDarkTerminal = &terminal.Theme{
 	Background: ui.Hex("#202225"), Foreground: ui.Hex("#d7d9dc"),
 	Cursor: ui.Hex("#c2d5ce"), CursorText: ui.Hex("#202225"),
@@ -86,9 +87,29 @@ func (a *application) terminalTheme() *terminal.Theme {
 	}
 	return softLightTerminal
 }
-func (a *application) terminalAppearanceOptions() terminal.Options {
+func (p appearanceSettings) softenBackgrounds(agentKind string) bool {
+	return agentKind == "codex" && !p.OriginalBackgrounds
+}
+func (a *application) terminalAppearanceOptions(agentKind string) terminal.Options {
 	th := a.terminalTheme()
-	return terminal.Options{Theme: th, DarkTheme: th, MinimumContrast: a.appearance.contrast(), NoClipboardWrite: true}
+	return terminal.Options{Theme: th, DarkTheme: th, MinimumContrast: a.appearance.contrast(), SoftenDarkBackgrounds: a.appearance.softenBackgrounds(agentKind), NoClipboardWrite: true}
+}
+func (a *application) applyTerminalBackgrounds(m *machine) {
+	if m.term == nil {
+		return
+	}
+	agentKind := ""
+	// Demo terminals run a local shell. Remote terminals use their own identity,
+	// which may differ from the Agent currently selected in the sidebar.
+	if !a.demo {
+		for _, agent := range m.agents {
+			if agent.Identity() == m.termIdentity {
+				agentKind = agent.Agent
+				break
+			}
+		}
+	}
+	m.term.SetSoftenDarkBackgrounds(a.appearance.softenBackgrounds(agentKind))
 }
 func (a *application) applyTerminalAppearance() {
 	th := a.terminalTheme()
@@ -96,6 +117,7 @@ func (a *application) applyTerminalAppearance() {
 		if m.term != nil {
 			m.term.SetTheme(th, th)
 			m.term.SetMinimumContrast(a.appearance.contrast())
+			a.applyTerminalBackgrounds(m)
 		}
 	}
 }
@@ -214,6 +236,9 @@ func (a *application) appearanceView(c *ui.Context) {
 		enhance := !p.OriginalColors
 		ui.Checkbox(c, &enhance, "增强终端文字对比度")
 		p.OriginalColors = !enhance
+		soften := !p.OriginalBackgrounds
+		ui.Checkbox(c, &soften, "柔化浅色终端背景（仅 Codex）")
+		p.OriginalBackgrounds = !soften
 		if p != a.appearance {
 			a.changeAppearance(p)
 		}

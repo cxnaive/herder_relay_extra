@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"image"
 	"image/color"
 	"image/png"
@@ -10,13 +11,14 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/egoist/mygo/plugins/terminal"
+	"github.com/cxnaive/herdr-desktop/internal/relay"
+	"github.com/egoist/mygo/herdr-terminal"
 	"github.com/egoist/mygo/ui"
 )
 
 func TestAppearancePersistsAndSurvivesComputerRemoval(t *testing.T) {
 	a, m, _ := managementFixture(t)
-	p := appearanceSettings{Application: "dark", Terminal: "light", OriginalColors: true}
+	p := appearanceSettings{Application: "dark", Terminal: "light", OriginalColors: true, OriginalBackgrounds: true}
 	a.changeAppearance(p)
 	var saved savedState
 	if err := a.store.vault.Load(&saved); err != nil {
@@ -51,7 +53,7 @@ func TestAppearanceKeepsApplicationAndTerminalIndependent(t *testing.T) {
 		if a.interfaceTheme(ui.LightTheme()).Dark != row.appDark || a.appearance.terminalDark(a.systemDark) != row.termDark {
 			t.Fatal("wrong mode", row)
 		}
-		opts := a.terminalAppearanceOptions()
+		opts := a.terminalAppearanceOptions("codex")
 		if opts.Theme != opts.DarkTheme || !opts.NoClipboardWrite || opts.MinimumContrast != 4.5 {
 			t.Fatal("terminal follows system palette or lost protections")
 		}
@@ -63,7 +65,7 @@ func TestAppearanceEntryAndNativeControls(t *testing.T) {
 	if err := tt.Click("外观"); err != nil {
 		t.Fatal(err)
 	}
-	for _, label := range []string{"应用主题", "终端配色", "增强终端文字对比度", "终端预览"} {
+	for _, label := range []string{"应用主题", "终端配色", "增强终端文字对比度", "柔化浅色终端背景（仅 Codex）", "终端预览"} {
 		if !tt.HasText(label) {
 			t.Fatal("missing appearance control", label)
 		}
@@ -91,6 +93,12 @@ func TestAppearanceEntryAndNativeControls(t *testing.T) {
 	if !a.appearance.OriginalColors {
 		t.Fatal("contrast toggle did not apply")
 	}
+	if err := tt.Click("柔化浅色终端背景（仅 Codex）"); err != nil {
+		t.Fatal(err)
+	}
+	if !a.appearance.OriginalBackgrounds || !a.store.appearance().OriginalBackgrounds {
+		t.Fatal("background toggle did not persist")
+	}
 	if err := tt.Click("完成"); err != nil {
 		t.Fatal(err)
 	}
@@ -98,12 +106,12 @@ func TestAppearanceEntryAndNativeControls(t *testing.T) {
 		t.Fatal("dialog did not close")
 	}
 }
-func appearanceTerminal(t *testing.T, a *application) *terminal.Terminal {
+func appearanceTerminal(t *testing.T, a *application, agentKind string) *terminal.Terminal {
 	t.Helper()
 	prepareNativeTerminal(t)
 	r, w := io.Pipe()
 	conn := &terminalFixture{PipeReader: r, writer: w}
-	opts := a.terminalAppearanceOptions()
+	opts := a.terminalAppearanceOptions(agentKind)
 	opts.Conn = conn
 	term, err := terminal.New(opts)
 	if err != nil {
@@ -141,7 +149,8 @@ func TestTerminalContrastCorrectsRemoteTrueColorAndDarkStrip(t *testing.T) {
 	defer a.cancel()
 	a.appearance.Terminal = "light"
 	a.appearance.OriginalColors = true
-	term := appearanceTerminal(t, a)
+	a.appearance.OriginalBackgrounds = true
+	term := appearanceTerminal(t, a, "codex")
 	tt := ui.NewTester(func(c *ui.Context) { terminal.View(c, term).Fill() }, 500, 150)
 	term.Feed([]byte("\x1b[?25l\x1b[38;2;255;223;159mMMMM readable text\x1b[0m"))
 	tt.Frame()
@@ -176,8 +185,9 @@ func TestTerminalContrastCorrectsRemoteTrueColorAndDarkStrip(t *testing.T) {
 }
 func TestTerminalThemeSwitchKeepsSessionAndPreview(t *testing.T) {
 	a, m, _ := managementFixture(t)
+	a.demo = false
 	a.mode = 1
-	term := appearanceTerminal(t, a)
+	term := appearanceTerminal(t, a, "codex")
 	m.term = term
 	m.termIdentity = m.agents[0].Identity()
 	m.termState = "终端已连接"
@@ -202,5 +212,160 @@ func TestTerminalThemeSwitchKeepsSessionAndPreview(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
+	}
+}
+
+func pixelsOf(im image.Image, want ui.Color) int {
+	count := 0
+	for y := im.Bounds().Min.Y; y < im.Bounds().Max.Y; y++ {
+		for x := im.Bounds().Min.X; x < im.Bounds().Max.X; x++ {
+			r, g, b, a := im.At(x, y).RGBA()
+			if uint8(r>>8) == want.R && uint8(g>>8) == want.G && uint8(b>>8) == want.B && uint8(a>>8) == want.A {
+				count++
+			}
+		}
+	}
+	return count
+}
+func TestSoftBackgroundRecolorsExistingCellsWithoutChangingTerminalState(t *testing.T) {
+	a, m, _ := managementFixture(t)
+	a.demo = false
+	a.appearance = appearanceSettings{Application: "light", Terminal: "light"}
+	term := appearanceTerminal(t, a, "codex")
+	m.term = term
+	m.termIdentity = m.agents[0].Identity()
+	tt := ui.NewTester(func(c *ui.Context) { terminal.View(c, term).Fill() }, 600, 240)
+	// Include a long erased area: Ghostty stores blank-cell backgrounds outside
+	// the style table, so testing only letters misses most of the black rectangle.
+	term.Feed([]byte("\x1b[?25l\x1b[48;2;38;38;38m\x1b[38;2;210;210;210m 问题与输入栏        \x1b[K\r\n\x1b[48;5;236m 另一条深灰背景       \x1b[K\x1b[0m\r\n\x1b[48;2;100;20;20m 错误背景保留          \x1b[0m"))
+	tt.Frame()
+	original := append([]byte{}, term.Snapshot()...)
+	plain := term.Text()
+	if count := pixelsOf(tt.Image(), ui.RGB(38, 38, 38)); count != 0 {
+		t.Fatal("literal black strip remains", count)
+	}
+	if count := pixelsOf(tt.Image(), ui.RGB(214, 216, 214)); count < 1000 {
+		t.Fatal("neutral strip was not softened", count)
+	}
+	if count := pixelsOf(tt.Image(), ui.RGB(100, 20, 20)); count < 100 {
+		t.Fatal("colored error background was altered", count)
+	}
+	a.changeAppearance(appearanceSettings{Application: "light", Terminal: "light", OriginalBackgrounds: true})
+	tt.Frame()
+	if pixelsOf(tt.Image(), ui.RGB(38, 38, 38)) < 1000 {
+		t.Fatal("original backgrounds did not return immediately")
+	}
+	if !bytes.Equal(original, term.Snapshot()) || plain != term.Text() {
+		t.Fatal("appearance changed stored ANSI state or text")
+	}
+	a.changeAppearance(appearanceSettings{Application: "dark", Terminal: "dark"})
+	tt.Frame()
+	if pixelsOf(tt.Image(), ui.RGB(38, 38, 38)) < 1000 {
+		t.Fatal("dark mode changed original RGB background")
+	}
+	a.changeAppearance(appearanceSettings{Application: "light", Terminal: "light"})
+	tt.Frame()
+	if pixelsOf(tt.Image(), ui.RGB(38, 38, 38)) != 0 {
+		t.Fatal("switching back to light retained black background")
+	}
+	if m.term != term || term.Text() != plain {
+		t.Fatal("appearance switch replaced session")
+	}
+}
+func TestSoftBackgroundPreservesInverseAndSelection(t *testing.T) {
+	a := newApplication(true)
+	defer a.cancel()
+	a.appearance.Terminal = "light"
+	term := appearanceTerminal(t, a, "codex")
+	tt := ui.NewTester(func(c *ui.Context) { terminal.View(c, term).Fill() }, 600, 240)
+	term.Feed([]byte("\x1b[?25l\x1b[38;2;38;38;38;48;2;238;237;233;7m inverse selection      \x1b[0m\r\n\x1b[48;2;38;38;38m ordinary block        \x1b[0m"))
+	tt.Frame()
+	if count := pixelsOf(tt.Image(), ui.RGB(38, 38, 38)); count < 100 {
+		t.Fatal("inverse highlight was softened", count)
+	}
+	if count := pixelsOf(tt.Image(), ui.RGB(214, 216, 214)); count < 100 {
+		t.Fatal("ordinary background not softened", count)
+	}
+	if err := tt.RightClick("Terminal"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.ChooseMenuItem("Select All"); err != nil {
+		t.Fatal(err)
+	}
+	if count := pixelsOf(tt.Image(), softLightTerminal.Selection); count < 100 {
+		t.Fatal("text selection highlight lost", count)
+	}
+}
+
+func TestSoftBackgroundLeavesOtherAgentsUnchanged(t *testing.T) {
+	for _, kind := range []string{"claude", "pi", "gemini", "shell", "", "custom-codex"} {
+		t.Run(kind, func(t *testing.T) {
+			a, m, _ := managementFixture(t)
+			a.demo = false
+			a.appearance = appearanceSettings{Application: "light", Terminal: "light"}
+			m.agents[0].Agent = kind
+			// Keep a different Codex selected while this terminal stays attached.
+			a.selectedAgent = m.agents[1].PaneID
+			term := appearanceTerminal(t, a, kind)
+			m.term, m.termIdentity = term, m.agents[0].Identity()
+			tt := ui.NewTester(func(c *ui.Context) { terminal.View(c, term).Fill() }, 600, 240)
+			term.Feed([]byte("\x1b[?25l\x1b[48;2;38;38;38m background \x1b[K\x1b[0m"))
+			tt.Frame()
+			before := tt.Image()
+			if pixelsOf(before, ui.RGB(38, 38, 38)) < 1000 {
+				t.Fatal("non-Codex background altered on creation")
+			}
+			for _, original := range []bool{true, false} {
+				a.changeAppearance(appearanceSettings{Application: "light", Terminal: "light", OriginalBackgrounds: original})
+				tt.Frame()
+				if !bytes.Equal(before.Pix, tt.Image().Pix) {
+					t.Fatal("Codex-only setting changed another Agent's rendering")
+				}
+			}
+		})
+	}
+}
+
+func TestSoftBackgroundTracksAttachedAgentKind(t *testing.T) {
+	a, m, _ := managementFixture(t)
+	a.demo = false
+	a.appearance = appearanceSettings{Application: "light", Terminal: "light"}
+	term := appearanceTerminal(t, a, "codex")
+	m.term, m.termIdentity = term, m.agents[0].Identity()
+	tt := ui.NewTester(func(c *ui.Context) { terminal.View(c, term).Fill() }, 600, 240)
+	term.Feed([]byte("\x1b[?25l\x1b[48;2;38;38;38m background \x1b[K\x1b[0m"))
+	tt.Frame()
+	if pixelsOf(tt.Image(), ui.RGB(38, 38, 38)) != 0 {
+		t.Fatal("Codex background not softened")
+	}
+	before := append([]byte(nil), term.Snapshot()...)
+	m.agents[0].Agent = "claude"
+	a.event(m, relay.Message{"type": "agents", "agents": m.agents})
+	tt.Frame()
+	if m.term != term || pixelsOf(tt.Image(), ui.RGB(38, 38, 38)) < 1000 {
+		t.Fatal("provider update did not restore original background")
+	}
+	m.agents[0].Agent = "codex"
+	a.event(m, relay.Message{"type": "agents", "agents": m.agents})
+	tt.Frame()
+	if pixelsOf(tt.Image(), ui.RGB(38, 38, 38)) != 0 {
+		t.Fatal("provider update did not enable Codex softening")
+	}
+	// Missing inventory and local demo shells must never opt into the transform.
+	m.termIdentity = "unknown"
+	a.applyTerminalAppearance()
+	tt.Frame()
+	if pixelsOf(tt.Image(), ui.RGB(38, 38, 38)) < 1000 {
+		t.Fatal("unknown terminal identity was softened")
+	}
+	m.termIdentity = m.agents[0].Identity()
+	a.demo = true
+	a.applyTerminalAppearance()
+	tt.Frame()
+	if pixelsOf(tt.Image(), ui.RGB(38, 38, 38)) < 1000 {
+		t.Fatal("local demo shell was softened")
+	}
+	if !bytes.Equal(before, term.Snapshot()) {
+		t.Fatal("provider update changed terminal state")
 	}
 }

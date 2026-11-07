@@ -10,7 +10,7 @@ import (
 	"github.com/cxnaive/herdr-desktop/internal/pdfview"
 	"github.com/cxnaive/herdr-desktop/internal/relay"
 	"github.com/egoist/mygo"
-	"github.com/egoist/mygo/plugins/terminal"
+	"github.com/egoist/mygo/herdr-terminal"
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/markdown"
 )
