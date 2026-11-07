@@ -13,19 +13,19 @@
 <!-- android-downloads:start -->
 ## 安装
 
-**[0.2.30 / versionCode 33](https://github.com/cxnaive/herder_relay_extra/releases/tag/android-v0.2.30)**。
+**[0.2.31 / versionCode 34](https://github.com/cxnaive/herder_relay_extra/releases/tag/android-v0.2.31)**。
 
 | 设备架构 | 下载 |
 | --- | --- |
-| ARM64 手机 / 平板 | [Release · arm64-v8a](https://github.com/cxnaive/herder_relay_extra/releases/download/android-v0.2.30/Herdr-Pocket-0.2.30-release-arm64-v8a.apk) |
-| 32 位 ARM | [Release · armeabi-v7a](https://github.com/cxnaive/herder_relay_extra/releases/download/android-v0.2.30/Herdr-Pocket-0.2.30-release-armeabi-v7a.apk) |
-| x86_64 模拟器 / 设备 | [Release · x86_64](https://github.com/cxnaive/herder_relay_extra/releases/download/android-v0.2.30/Herdr-Pocket-0.2.30-release-x86_64.apk) |
+| ARM64 手机 / 平板 | [Release · arm64-v8a](https://github.com/cxnaive/herder_relay_extra/releases/download/android-v0.2.31/Herdr-Pocket-0.2.31-release-arm64-v8a.apk) |
+| 32 位 ARM | [Release · armeabi-v7a](https://github.com/cxnaive/herder_relay_extra/releases/download/android-v0.2.31/Herdr-Pocket-0.2.31-release-armeabi-v7a.apk) |
+| x86_64 模拟器 / 设备 | [Release · x86_64](https://github.com/cxnaive/herder_relay_extra/releases/download/android-v0.2.31/Herdr-Pocket-0.2.31-release-x86_64.apk) |
 
 附件还包含三种 ABI 的 Debug APK、`BUILD-INFO.json` 和 `SHA256SUMS.txt`。
 所有 APK 直接复用 CI 固定签名产物，不重新编译或签名。**直接覆盖安装，不要卸载旧版**，以保留配对和草稿。
 Android 9 / API 28 及以上；仍使用原有调试证书，不是 Play 商店版本。自行构建的签名可能不同。
 
-发布来源：[CI run 41978643304](https://github.com/cxnaive/herder_relay_extra/actions/runs/41978643304)，源码 `ae948ba0d59c226d5ae6fe9959c7ef01b5cd9d69`。
+发布来源：[CI run 42372075457](https://github.com/cxnaive/herder_relay_extra/actions/runs/42372075457)，源码 `8691e3be2435a8f4e02865c2be3326eeae6f6113`。
 构建成功不等于完整 check 或真机验收全绿；验证范围和已知缺口见 Release 说明及 `herdr-android/VALIDATION.md`。
 历史版本和更新内容保留在 Releases / CHANGELOG。
 <!-- android-downloads:end -->
