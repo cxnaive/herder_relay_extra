@@ -10,24 +10,8 @@ import (
 )
 
 func (a *application) view(c *ui.Context) {
-	theme := *c.Theme()
-	if theme.Dark {
-		theme.Background = ui.RGB(17, 20, 23)
-		theme.Surface = ui.RGB(27, 32, 37)
-		theme.Accent = ui.RGB(166, 219, 201)
-		theme.AccentText = ui.RGB(17, 43, 35)
-		theme.Text = ui.RGB(237, 240, 243)
-		theme.TextMuted = ui.RGB(165, 175, 185)
-		theme.Border = ui.RGB(48, 59, 67)
-	} else {
-		theme.Background = ui.RGB(250, 252, 249)
-		theme.Surface = ui.RGB(239, 244, 239)
-		theme.Accent = ui.RGB(40, 109, 85)
-		theme.AccentText = ui.RGB(255, 255, 255)
-	}
-	theme.FontSize = 14
-	theme.Radius = 8
-	c.SetTheme(&theme)
+	theme := a.interfaceTheme(c.Theme())
+	c.SetTheme(theme)
 	ui.Column(c).Fill().Background(theme.Background).Children(func() {
 		ui.Split(c, &a.sidebar, func() { a.sidebarView(c) }, func() {
 			if a.pairing {
@@ -46,6 +30,7 @@ func (a *application) view(c *ui.Context) {
 	a.projectView(c)
 	a.devicesView(c)
 	a.fileAccessView(c)
+	a.appearanceView(c)
 }
 func statusLabel(s string) string {
 	switch s {
@@ -267,6 +252,9 @@ func (a *application) terminalView(c *ui.Context, m *machine, chat *conversation
 			label = "尚未连接"
 		}
 		ui.Text(c, label).FontSize(12).TextColor(t.TextMuted).Grow(1)
+		if ui.Button(c, "终端配色").Clicked() {
+			a.appearanceOpen = true
+		}
 		if m.term != nil && ui.Button(c, "查找终端").Selected(chat.terminalSearchOpen).Clicked() {
 			chat.terminalSearchOpen = !chat.terminalSearchOpen
 			if !chat.terminalSearchOpen {

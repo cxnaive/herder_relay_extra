@@ -374,7 +374,7 @@ func (a *application) openTerminal() {
 		m.remote = nil
 	}
 	if a.demo {
-		term, err := terminal.New(terminal.Options{NoClipboardWrite: true})
+		term, err := terminal.New(a.terminalAppearanceOptions())
 		if err != nil {
 			m.termState = err.Error()
 			return
@@ -416,21 +416,23 @@ func (a *application) openTerminal() {
 				m.remote = nil
 				return
 			}
-			term, termErr := terminal.New(terminal.Options{Conn: remote, ResizeByConn: true, NoClipboardWrite: true,
-				OnScroll: func(lines int) bool { go remote.Scroll(lines); return true },
-				OnExit: func(_ int) {
-					a.win.Update(func() {
-						if m.epoch == epoch && m.remote == remote {
-							if m.term != nil {
-								m.term.Close()
-							}
-							m.term = nil
-							m.remote = nil
-							m.termState = "终端已断开，可重新连接"
+			opts := a.terminalAppearanceOptions()
+			opts.Conn = remote
+			opts.ResizeByConn = true
+			opts.OnScroll = func(lines int) bool { go remote.Scroll(lines); return true }
+			opts.OnExit = func(_ int) {
+				a.win.Update(func() {
+					if m.epoch == epoch && m.remote == remote {
+						if m.term != nil {
+							m.term.Close()
 						}
-					})
-				},
-			})
+						m.term = nil
+						m.remote = nil
+						m.termState = "终端已断开，可重新连接"
+					}
+				})
+			}
+			term, termErr := terminal.New(opts)
 			if termErr != nil {
 				remote.Close()
 				m.termState = termErr.Error()

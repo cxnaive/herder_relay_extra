@@ -20,6 +20,7 @@ type savedState struct {
 	Operations  map[string]string
 	Attachments map[string][]relay.Attachment
 	History     map[string]cachedConversation
+	Appearance  appearanceSettings
 }
 
 func (s *storage) attachments(key string) []relay.Attachment {

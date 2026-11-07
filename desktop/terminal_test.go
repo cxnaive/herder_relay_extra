@@ -35,7 +35,8 @@ func (f *terminalFixture) Resize(cols, rows int) error {
 	return nil
 }
 func (f *terminalFixture) Close() error { f.writer.Close(); return f.PipeReader.Close() }
-func TestNativeTerminalUnicodeInputResizeAndControls(t *testing.T) {
+func prepareNativeTerminal(t *testing.T) {
+	t.Helper()
 	if runtime.GOOS == "windows" {
 		p, err := filepath.Abs("build/ghostty-vt.dll")
 		if err != nil {
@@ -49,6 +50,9 @@ func TestNativeTerminalUnicodeInputResizeAndControls(t *testing.T) {
 		}
 		t.Setenv("MYGO_GHOSTTY_VT", p)
 	}
+}
+func TestNativeTerminalUnicodeInputResizeAndControls(t *testing.T) {
+	prepareNativeTerminal(t)
 	r, w := io.Pipe()
 	conn := &terminalFixture{PipeReader: r, writer: w}
 	term, err := terminal.New(terminal.Options{Conn: conn, NoClipboardWrite: true})

@@ -232,6 +232,7 @@ func (s *storage) removeComputer(id string) error {
 	defer s.mu.Unlock()
 	old := s.state
 	next := savedState{Computers: []relay.Computer{}, Drafts: map[string]string{}, Uncertain: map[string]bool{}, Collapsed: map[string]bool{}, Operations: map[string]string{}, Attachments: map[string][]relay.Attachment{}, History: map[string]cachedConversation{}}
+	next.Appearance = old.Appearance
 	for _, c := range old.Computers {
 		if c.ID != id {
 			next.Computers = append(next.Computers, c)

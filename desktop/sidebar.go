@@ -213,9 +213,14 @@ func (a *application) sidebarView(c *ui.Context) {
 				})
 			}
 		})
-		if ui.Button(c, "＋ 添加电脑").FillWidth().Disabled(a.store == nil && !a.demo).Clicked() {
-			a.saveCurrentDraft()
-			a.pairing = true
-		}
+		ui.Row(c).Gap(6).Children(func() {
+			if ui.Button(c, "＋ 添加电脑").Grow(1).Disabled(a.store == nil && !a.demo).Clicked() {
+				a.saveCurrentDraft()
+				a.pairing = true
+			}
+			if ui.Button(c, "外观").Clicked() {
+				a.appearanceOpen = true
+			}
+		})
 	})
 }

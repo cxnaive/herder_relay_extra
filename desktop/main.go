@@ -124,11 +124,15 @@ type application struct {
 	fileAccessDialog               *fileAccessDialog
 	operations                     map[string]string
 	busyOperations                 map[string]bool
+	appearance                     appearanceSettings
+	appearanceOpen                 bool
+	appearanceMessage              string
+	systemDark                     bool
 }
 
 func newApplication(demo bool) *application {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &application{ctx: ctx, cancel: cancel, sidebar: 260, chats: map[string]*conversation{}, collapsed: map[string]bool{}, operations: map[string]string{}, busyOperations: map[string]bool{}, demo: demo, status: "正在打开本机凭据…"}
+	return &application{ctx: ctx, cancel: cancel, sidebar: 260, chats: map[string]*conversation{}, collapsed: map[string]bool{}, operations: map[string]string{}, busyOperations: map[string]bool{}, appearance: appearanceSettings{}.normalized(), demo: demo, status: "正在打开本机凭据…"}
 }
 func main() {
 	log.Println("Herdr Desktop starting")
@@ -143,20 +147,37 @@ func main() {
 	mygo.App.SetMenu(mygo.NewMenu([]*mygo.MenuItem{
 		{Role: mygo.RoleAppMenu}, {Role: mygo.RoleEditMenu},
 		{Label: "视图", Submenu: []*mygo.MenuItem{
+			{Label: "外观…", Click: func(_ *mygo.MenuItem, _ *mygo.Window) { app.appearanceOpen = true; app.win.Invalidate() }},
 			{Label: "对话", Accelerator: "CmdOrCtrl+1", Click: func(_ *mygo.MenuItem, _ *mygo.Window) { app.setMode(0); app.win.Invalidate() }},
 			{Label: "终端", Accelerator: "CmdOrCtrl+2", Click: func(_ *mygo.MenuItem, _ *mygo.Window) { app.setMode(1); app.win.Invalidate() }},
 		}}, {Role: mygo.RoleWindowMenu},
 	}))
 	mygo.App.WhenReady(func() {
+		app.systemDark = mygo.Theme.IsDark()
+		mygo.Theme.OnUpdated(func() {
+			if mygo.Theme.Source() == mygo.ThemeSystem {
+				app.systemDark = mygo.Theme.IsDark()
+			}
+			app.applyTerminalAppearance()
+			if app.win != nil {
+				app.win.Invalidate()
+			}
+		})
 		log.Println("Creating native window")
 		app.win = mygo.NewWindow(mygo.WindowOptions{Title: "Herdr Desktop", Width: 1280, Height: 840, MinWidth: 800, MinHeight: 560, StateKey: "main", Content: ui.View(app.view)})
 		if err := app.win.SetIcon(appIcon); err != nil {
 			log.Printf("window icon: %v", err)
 		}
-		app.win.OnReadyToShow(func() { app.win.Show() })
+		windowReady, preferencesReady := false, app.demo
+		app.win.OnReadyToShow(func() {
+			windowReady = true
+			if preferencesReady {
+				app.win.Show()
+			}
+		})
 		app.win.OnClosed(app.shutdown)
 		app.win.OnFileDrop(func(e *mygo.FileDropEvent) {
-			if app.mode == 0 && !app.pairing && app.management == nil && app.projectDialog == nil && app.deviceDialog == nil && app.toolsPanel == nil && app.imagePreview == nil && app.fileAccessDialog == nil {
+			if app.mode == 0 && !app.pairing && app.management == nil && app.projectDialog == nil && app.deviceDialog == nil && app.toolsPanel == nil && app.imagePreview == nil && app.fileAccessDialog == nil && !app.appearanceOpen {
 				app.uploadPaths(e.Paths)
 			}
 		})
@@ -168,6 +189,12 @@ func main() {
 		go func() {
 			s, err := openStorage()
 			app.win.Update(func() {
+				preferencesReady = true
+				defer func() {
+					if windowReady {
+						app.win.Show()
+					}
+				}()
 				if err != nil {
 					app.status = "无法打开本机加密存储：" + err.Error()
 					return
@@ -175,6 +202,8 @@ func main() {
 				app.store = s
 				app.collapsed = s.sidebarGroups()
 				app.operations = s.operations()
+				app.appearance = s.appearance()
+				app.applyAppearance()
 				app.status = ""
 				for _, c := range s.computers() {
 					m := &machine{config: c, status: "未连接"}

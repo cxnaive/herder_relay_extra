@@ -14,6 +14,7 @@ project follows [Semantic Versioning](https://semver.org/).
 - Codex associated-history and manual-pin overrides, terminal status-line identity parsing and automatic `/status` probing.
 
 ### Added
+- Save independent desktop application and terminal appearance preferences, with soft light/dark palettes and a dark terminal by default. Improve low-contrast terminal text against its actual background, including explicit remote colors, without reconnecting or changing remote configuration.
 - Desktop per-device opt-in for outside-workspace read-only files, shared by directory browsing, citations, Markdown images, previews and downloads. Revoking access cancels transfers and closes cached previews.
 - Restore long desktop conversations to the previous reading depth across reconnects, with full-history loading, page/message progress and pause/resume. Recover expired cursors without dropping already-read content or truncating conversations at 2,000 entries.
 - Desktop Agent creation, rename, stop/restart, context clearing, ordering, and live Codex model/reasoning settings through native project and Agent menus. Show Relay-provided default title arguments separately from user startup arguments.
