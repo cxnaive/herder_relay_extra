@@ -22,7 +22,7 @@ func (a *application) interactionView(c *ui.Context, m *machine, chat *conversat
 		return
 	}
 	enabled := a.agentWriteAllowed(m, captured, "respond")
-	ui.Column(c.Key("attention")).FillWidth().MaxHeight(300).Padding(12, 24).Gap(9).Background(c.Theme().Surface).Children(func() {
+	ui.Column(c.Key("attention")).FillWidth().MaxWidth(chatContentWidth+2*chatGutter).AlignSelf(ui.Center).MaxHeight(300).Padding(12, chatGutter).Gap(9).Background(c.Theme().Surface).Children(func() {
 		if q == nil || q.ID == "" {
 			ui.Text(c, "等待审批").Bold().FontSize(13)
 			ui.Text(c, captured.Prompt).Selectable()

@@ -128,7 +128,7 @@ func (a *application) workspaceView(c *ui.Context) {
 		})
 		ui.Row(c).Grow(1).Children(func() {
 			if !a.files || !filesFor(chat).expanded {
-				ui.Column(c).Grow(1).FillHeight().Children(func() {
+				ui.Column(c).Grow(1).MinWidth(0).FillHeight().Children(func() {
 					if a.mode == 1 {
 						a.terminalView(c, m, chat)
 					} else {
@@ -150,7 +150,7 @@ func (a *application) chatView(c *ui.Context, m *machine, chat *conversation) {
 	if chat.message != "" {
 		ui.Text(c, chat.message).FontSize(12).TextColor(t.Warning).Padding(10, 24).Selectable()
 	}
-	ui.Row(c).Padding(7, 24).Gap(8).Children(func() {
+	ui.Row(c).FillWidth().MaxWidth(chatContentWidth+2*chatGutter).AlignSelf(ui.Center).Padding(7, chatGutter).Gap(8).Wrap().Children(func() {
 		if ui.Button(c, "查找").Selected(chat.searchOpen).Clicked() {
 			chat.searchOpen = !chat.searchOpen
 			if !chat.searchOpen {
@@ -174,7 +174,7 @@ func (a *application) chatView(c *ui.Context, m *machine, chat *conversation) {
 		}
 	})
 	if chat.loading || chat.preparing {
-		ui.Row(c).Padding(4, 24).Gap(8).AlignItems(ui.Center).Children(func() {
+		ui.Row(c).FillWidth().MaxWidth(chatContentWidth+2*chatGutter).AlignSelf(ui.Center).Padding(4, chatGutter).Gap(8).Wrap().AlignItems(ui.Center).Children(func() {
 			ui.Spinner(c).Size(15, 15)
 			label := chat.historyLabel()
 			ui.Text(c, label).FontSize(12).TextColor(t.TextMuted)
@@ -189,11 +189,13 @@ func (a *application) chatView(c *ui.Context, m *machine, chat *conversation) {
 		})
 	}
 	if chat.searchOpen {
-		ui.TextInput(c, &chat.search).Label("查找对话").Placeholder("查找已加载的消息和工具输出").Margin(6, 24)
+		ui.Column(c).FillWidth().MaxWidth(chatContentWidth+2*chatGutter).AlignSelf(ui.Center).Padding(6, chatGutter).Children(func() {
+			ui.TextInput(c, &chat.search).Label("查找对话").Placeholder("查找已加载的消息和工具输出")
+		})
 	}
 	a.timelineView(c, m, chat)
 	a.interactionView(c, m, chat)
-	ui.Column(c).Padding(14, 24, 20, 24).Gap(9).Children(func() {
+	ui.Column(c).FillWidth().MaxWidth(chatContentWidth+2*chatGutter).AlignSelf(ui.Center).Padding(14, chatGutter, 20, chatGutter).Gap(9).Children(func() {
 		a.attachmentsView(c, m, chat)
 		if chat.uncertain {
 			ui.Row(c).Gap(8).Children(func() {
@@ -217,7 +219,7 @@ func (a *application) chatView(c *ui.Context, m *machine, chat *conversation) {
 			}
 			return false
 		})
-		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+		ui.Row(c).AlignItems(ui.Center).Gap(8).Wrap().Children(func() {
 			ui.MenuButton(c, "＋ 附件", func(menu *ui.Menu) {
 				if menu.Item("选择文件…").Chosen() {
 					a.pickAttachments(m, chat)

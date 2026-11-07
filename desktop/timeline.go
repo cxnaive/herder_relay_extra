@@ -9,6 +9,9 @@ import (
 	"github.com/egoist/mygo/ui/markdown"
 )
 
+const chatContentWidth = 800
+const chatGutter = 24
+
 type timelineTool struct {
 	key   string
 	value map[string]any
@@ -109,17 +112,22 @@ func (a *application) timelineView(c *ui.Context, m *machine, chat *conversation
 	ui.List(c.Key(m.config.ID+chat.agent.Identity()), &chat.list, len(blocks), func(i int) {
 		block := blocks[i]
 		bc := c.Key(block.key)
-		ui.Column(bc).MaxWidth(800).FillWidth().Gap(10).Children(func() {
+		ui.Column(bc).MaxWidth(chatContentWidth).FillWidth().AlignSelf(ui.Center).Gap(10).Children(func() {
 			if e := block.message; e != nil {
 				if e.Role == "user" {
-					ui.Text(bc, e.Text).Selectable().Padding(12, 16).Radius(12).Background(c.Theme().Surface).Margin(0, 0, 0, 36)
+					ui.Column(bc).FillWidth().AlignItems(ui.End).Gap(8).Children(func() {
+						if e.Text != "" {
+							ui.Text(bc, e.Text).Selectable().MaxWidthPercent(85).Padding(12, 16).Radius(12).Background(c.Theme().Surface)
+						}
+						a.conversationImagesView(bc, m, chat, entryImages(*e, false))
+					})
 				} else {
 					ui.Text(bc, chat.agent.Provider()).FontSize(12).TextColor(c.Theme().TextMuted)
 					if e.Text != "" {
 						markdown.View(bc, chat.markdownText(e.ID, e.Text), chat.md)
 					}
+					a.conversationImagesView(bc, m, chat, entryImages(*e, false))
 				}
-				a.conversationImagesView(bc, m, chat, entryImages(*e, false))
 				return
 			}
 			if chat.folds[block.key] == nil {
@@ -162,7 +170,7 @@ func (a *application) timelineView(c *ui.Context, m *machine, chat *conversation
 			})
 			a.conversationImagesView(bc, m, chat, block.images)
 		})
-	}).Grow(1).Padding(14, 28).Gap(20).Children(func() {
+	}).Grow(1).Padding(14, chatGutter).Gap(20).Children(func() {
 		if len(blocks) == 0 {
 			if chat.loading || chat.preparing {
 				ui.Row(c).Gap(10).Children(func() { ui.Spinner(c).Size(20, 20); ui.Text(c, "正在加载对话…").TextColor(c.Theme().TextMuted) })
